@@ -1,0 +1,15 @@
+# Normalise line endings in the repository; check out native on Windows.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Reference vectors and fixtures are compared byte for byte. Any translation
+# would change a signature or a digest and fail the cross-implementation tests.
+spec/vectors/** -text
+*.tkpak binary
+*.pdf binary
+*.pkpass binary
+*.png binary
+*.jpg binary
