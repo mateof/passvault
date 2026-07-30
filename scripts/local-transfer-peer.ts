@@ -145,7 +145,11 @@ const offered: SignedOperation[] = [
   operation('event.create', { name: 'Concerto de proba' }, 2),
   operation(
     'ticket.add',
-    { ticketId: '0192f5b2-9999-7000-8000-777788889999', barcodeValue: '8412-PEER-0001' },
+    {
+      ticketId: '0192f5b2-9999-7000-8000-777788889999',
+      barcodeFormat: 'QR_CODE',
+      barcodeValue: '8412-PEER-0001',
+    },
     3,
   ),
 ]
