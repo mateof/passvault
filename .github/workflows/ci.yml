@@ -102,6 +102,12 @@ jobs:
 
       - run: npm ci
 
+      # The server imports its packages by their published entry points, which are the compiled
+      # ones. `check` builds as a side effect of typechecking; these jobs did not, so migrating
+      # failed on a missing module before it ever reached a database.
+      - name: Build
+        run: npm run build
+
       - name: Migrate
         env:
           DATABASE_URL: ${{ matrix.url }}
@@ -150,6 +156,9 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Build
+        run: npm run build
 
       - name: Create the database
         run: >-
@@ -206,6 +215,9 @@ jobs:
       # Oracle brings its own driver, which is what the code already assumes: both packages
       # are loaded through a variable module specifier and the failure names them. Not saved,
       # so the lock stays the same tree every other job installs.
+      - name: Build
+        run: npm run build
+
       - name: Install the Oracle driver
         run: npm install --no-save oracledb@^6.7.1 kysely-oracledb@^3.1.2
 
