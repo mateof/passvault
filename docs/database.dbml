@@ -27,7 +27,7 @@
 
 Project passvault {
   database_type: 'Engine-agnostic'
-  note: 'Offline-first event ticket management. Default SQLite; also PostgreSQL, MySQL, MariaDB, SQL Server, Oracle.'
+  note: 'Offline-first event ticket management. Default SQLite; also PostgreSQL, MySQL, MariaDB, SQL Server.'
 }
 
 // ─── Enumerations ────────────────────────────────────────────────────────────
