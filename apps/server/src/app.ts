@@ -18,7 +18,27 @@ import {
 } from './accounts.js'
 import { loadConfig, type ServerConfig } from './config.js'
 import { CryptoContext } from './crypto-context.js'
-import { AppError, forbidden, unauthorized } from './errors.js'
+import { AppError, forbidden, notFound, unauthorized } from './errors.js'
+import {
+  createEvent,
+  findEvent,
+  grantAccess,
+  openEventKey,
+  projectEvent,
+  revokeAccess,
+  type EventDeps,
+} from './events.js'
+import {
+  addTickets,
+  assignTicket,
+  ensureDevice,
+  issueClaimCoupons,
+  projectTickets,
+  reconcileTicket,
+  setPayment,
+  submitClaim,
+  withdrawTicket,
+} from './tickets.js'
 import { createMailer, type Mailer } from './mailer.js'
 import * as repo from './repository.js'
 import { VaultCache } from './vault.js'
@@ -356,6 +376,284 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         ? { setupUrl: `${config.publicUrl}/set-password?token=${created.setupToken}` }
         : {}),
     })
+  })
+
+  // ── Events and tickets ────────────────────────────────────────────────────────
+
+  const eventDeps: EventDeps = {
+    db,
+    crypto,
+    vaults,
+    ...(options.argon2Params ? { argon2Params: options.argon2Params } : {}),
+  }
+
+  /** Every ticket operation needs the event key, which needs an unlocked vault first. */
+  const openEvent = async (
+    request: FastifyRequest,
+    eventId: string,
+    password?: string,
+  ): Promise<{ session: repo.SessionRow; eventKey: Uint8Array }> => {
+    const session = await sessionOf(request)
+    const eventKey = await openEventKey(eventDeps, {
+      eventId,
+      sessionId: session.id,
+      userId: session.user_id,
+      ...(password ? { password } : {}),
+    })
+    return { session, eventKey }
+  }
+
+  const createEventBody = z.object({
+    name: z.string().min(1).max(200),
+    venue: z.string().max(200).optional(),
+    notes: z.string().max(2000).optional(),
+    startsAt: z.string().datetime().optional(),
+    timeZone: z.string().max(64).optional(),
+    defaultAssignmentMode: z.enum(['OPEN', 'ASSIGNED', 'SELF_CLAIM']).optional(),
+    password: z.string().min(4).optional(),
+  })
+
+  app.post('/api/v1/events', async (request, reply) => {
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    const body = createEventBody.parse(request.body)
+    const created = await createEvent(eventDeps, {
+      creatorUserId: session.user_id,
+      creatorDataKey: vault.dataKey,
+      ...body,
+    })
+    vaults.unlockEvent(session.id, created.eventId, created.eventKey)
+    return reply.status(201).send({
+      eventId: created.eventId,
+      passwordProtected: created.passwordProtected,
+      // Said plainly rather than buried: without a password the operator of this instance can
+      // read the tickets.
+      readableByServer: !created.passwordProtected,
+    })
+  })
+
+  const eventParams = z.object({ id: z.string().uuid() })
+  const openBody = z.object({ password: z.string().min(1).optional() })
+
+  app.post('/api/v1/events/:id/open', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const { password } = openBody.parse(request.body ?? {})
+    const { session, eventKey } = await openEvent(request, id, password)
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    return projectEvent(eventDeps, event, eventKey, session.user_id)
+  })
+
+  app.get('/api/v1/events/:id', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    return projectEvent(eventDeps, event, eventKey, session.user_id)
+  })
+
+  const accessBody = z.object({
+    subjectKind: z.enum(['GROUP', 'USER']),
+    subjectId: z.string().uuid(),
+    role: z.enum(['ORGANISER', 'MEMBER']).optional(),
+  })
+
+  app.post('/api/v1/events/:id/access', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    await grantAccess(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      ...accessBody.parse(request.body),
+    })
+    return reply.status(201).send({ granted: true })
+  })
+
+  app.delete('/api/v1/events/:id/access', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    const body = accessBody.parse(request.body)
+    await revokeAccess(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      subjectKind: body.subjectKind,
+      subjectId: body.subjectId,
+    })
+    // Named for what it does. It stops future access; it does not recall a file already sent.
+    return { revoked: true, recallsDeliveredTickets: false }
+  })
+
+  const ticketsBody = z.object({
+    password: z.string().optional(),
+    tickets: z
+      .array(
+        z.object({
+          label: z.string().max(200).optional(),
+          section: z.string().max(100).optional(),
+          row: z.string().max(20).optional(),
+          seat: z.string().max(20).optional(),
+          barcode: z
+            .object({
+              format: z.enum([
+                'QR_CODE',
+                'AZTEC',
+                'PDF_417',
+                'CODE_128',
+                'CODE_39',
+                'EAN_13',
+                'DATA_MATRIX',
+              ]),
+              value: z.string().min(1).max(4096),
+            })
+            .optional(),
+          assignmentMode: z.enum(['OPEN', 'ASSIGNED', 'SELF_CLAIM']).optional(),
+        }),
+      )
+      .min(1)
+      .max(512),
+  })
+
+  app.post('/api/v1/events/:id/tickets', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const body = ticketsBody.parse(request.body)
+    const { session, eventKey } = await openEvent(request, id, body.password)
+    const ids = await addTickets(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      eventKey,
+      tickets: body.tickets,
+    })
+    return reply.status(201).send({ ticketIds: ids })
+  })
+
+  app.get('/api/v1/events/:id/tickets', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    return {
+      tickets: await projectTickets(eventDeps, {
+        eventId: id,
+        viewerUserId: session.user_id,
+        eventKey,
+      }),
+    }
+  })
+
+  const ticketParams = z.object({ id: z.string().uuid() })
+
+  const assignBody = z.object({
+    holderUserId: z.string().uuid().optional(),
+    holderLabel: z.string().min(1).max(120).optional(),
+  })
+
+  app.post('/api/v1/tickets/:id/assign', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const ticket = await db.db
+      .selectFrom('tickets')
+      .select('event_id')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!ticket) {
+      throw notFound()
+    }
+    const { eventKey } = await openEvent(request, ticket.event_id)
+    await assignTicket(eventDeps, {
+      ticketId: id,
+      actorUserId: session.user_id,
+      eventKey,
+      ...assignBody.parse(request.body),
+    })
+    return { assigned: true }
+  })
+
+  const couponsBody = z.object({ allowance: z.number().int().min(1).max(20).optional() })
+
+  app.post('/api/v1/events/:id/coupons', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    const coupons = await issueClaimCoupons(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      ...couponsBody.parse(request.body ?? {}),
+    })
+    // Coupons appear once. Only their hashes are stored, so they cannot be listed again.
+    return reply.status(201).send({ coupons })
+  })
+
+  const claimBody = z.object({
+    coupon: z.string().min(1),
+    deviceId: z.string().uuid().optional(),
+    lamport: z.number().int().min(0).optional(),
+    operationId: z.string().uuid().optional(),
+    /** False when replaying a claim made offline, so a batch is reconciled once at the end. */
+    reconcile: z.boolean().optional(),
+  })
+
+  app.post('/api/v1/tickets/:id/claim', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const body = claimBody.parse(request.body)
+    const deviceId = await ensureDevice(eventDeps, {
+      userId: session.user_id,
+      ...(body.deviceId ? { deviceId: body.deviceId } : {}),
+    })
+    const requestId = await submitClaim(eventDeps, {
+      ticketId: id,
+      userId: session.user_id,
+      deviceId,
+      coupon: body.coupon,
+      lamport: body.lamport ?? 1,
+      ...(body.operationId ? { operationId: body.operationId } : {}),
+    })
+
+    if (body.reconcile === false) {
+      // Provisional, and reported as such. The interface must not present this as settled.
+      return { requestId, state: 'PROVISIONAL' }
+    }
+    const outcome = await reconcileTicket(eventDeps, id)
+    return {
+      requestId,
+      state:
+        outcome.confirmed?.requestId === requestId
+          ? 'CLAIMED'
+          : (outcome.rejected.find((entry) => entry.requestId === requestId)?.reason ?? 'PENDING'),
+      reconciliation: outcome,
+    }
+  })
+
+  app.post('/api/v1/tickets/:id/reconcile', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    await sessionOf(request)
+    return reconcileTicket(eventDeps, id)
+  })
+
+  const paymentBody = z.object({
+    state: z.enum(['UNPAID', 'PARTIAL', 'PAID', 'WAIVED']),
+    amountCents: z.number().int().min(0).optional(),
+    currency: z.string().length(3).optional(),
+    visibility: z.enum(['ALL', 'HOLDER_ONLY', 'CREATOR_ONLY']),
+  })
+
+  app.post('/api/v1/tickets/:id/payment', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    await setPayment(eventDeps, {
+      ticketId: id,
+      actorUserId: session.user_id,
+      ...paymentBody.parse(request.body),
+    })
+    return { recorded: true }
+  })
+
+  app.post('/api/v1/tickets/:id/withdraw', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    await withdrawTicket(eventDeps, { ticketId: id, actorUserId: session.user_id })
+    return { withdrawn: true, recallsDeliveredTickets: false }
   })
 
   return {

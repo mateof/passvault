@@ -46,6 +46,14 @@ export interface VaultCacheOptions {
 
 export class VaultCache {
   private readonly sessions = new Map<string, VaultSession>()
+  /**
+   * Event keys opened this session, keyed by session and event.
+   *
+   * So a member types an event password once rather than on every request. Bound to the session
+   * rather than the user, so signing out on one device does not leave a key usable on another,
+   * and cleared with the session it belongs to.
+   */
+  private readonly eventKeys = new Map<string, Uint8Array>()
   private readonly idleMs: number
   private readonly hardMs: number
   private readonly now: () => number
@@ -98,6 +106,23 @@ export class VaultCache {
     return session
   }
 
+  unlockEvent(sessionId: string, eventId: string, eventKey: Uint8Array): void {
+    this.eventKeys.set(`${sessionId}:${eventId}`, eventKey)
+  }
+
+  /**
+   * An event key opened earlier in this session.
+   *
+   * Returns nothing once the session's own key has expired, so an event key never outlives the
+   * session that opened it — otherwise a timed-out session would still be able to read tickets.
+   */
+  getEventKey(sessionId: string, eventId: string): Uint8Array | undefined {
+    if (!this.get(sessionId)) {
+      return undefined
+    }
+    return this.eventKeys.get(`${sessionId}:${eventId}`)
+  }
+
   evict(sessionId: string): void {
     const session = this.sessions.get(sessionId)
     if (session) {
@@ -105,6 +130,12 @@ export class VaultCache {
       // nothing and removes the obvious copy from a heap dump.
       session.dataKey.fill(0)
       this.sessions.delete(sessionId)
+    }
+    for (const key of [...this.eventKeys.keys()]) {
+      if (key.startsWith(`${sessionId}:`)) {
+        this.eventKeys.get(key)?.fill(0)
+        this.eventKeys.delete(key)
+      }
     }
   }
 
