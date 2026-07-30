@@ -20,6 +20,9 @@ name: passvault
 
 services:
   server:
+    # Built from this checkout, which is what somebody who cloned the repository wants.
+    # To run it without the source, replace this with the published image:
+    #   image: ghcr.io/mateof/passvault:latest
     build:
       context: .
     ports:
