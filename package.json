@@ -33,7 +33,8 @@
     "vectors:generate": "tsx packages/tkpak/scripts/generate-vectors.ts",
     "db:migrate": "npm run db:migrate --workspace @passvault/server",
     "db:backup": "npm run db:backup --workspace @passvault/server",
-    "db:restore": "npm run db:restore --workspace @passvault/server"
+    "db:restore": "npm run db:restore --workspace @passvault/server",
+    "interop:check": "tsx scripts/interop-check.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
