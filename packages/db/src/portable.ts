@@ -57,7 +57,7 @@ export function isExpired(instant: string, now: Date = new Date()): boolean {
 /**
  * Booleans as 0 and 1.
  *
- * SQLite has no boolean type, Oracle has none either, and MySQL's is an alias for
+ * SQLite has no boolean type, SQL Server has none either, and MySQL's is an alias for
  * TINYINT. Drivers therefore return `1`, `true` or `'1'` depending on the engine, so
  * reading goes through `toBoolean` rather than relying on truthiness — `'0'` is truthy
  * in JavaScript, which would invert every flag on one engine and nowhere else.
@@ -104,7 +104,7 @@ export function formatCents(cents: number, currency: string, locale: string): st
  * Binary values as `Uint8Array` regardless of driver.
  *
  * better-sqlite3 returns Buffer, pg returns Buffer, mysql2 returns Buffer, tedious
- * returns Buffer, oracledb returns Buffer or a Lob. Normalising on read keeps every
+ * returns Buffer, and tedious returns Buffer. Normalising on read keeps every
  * caller from having to know which.
  */
 export function toBytes(value: unknown): Uint8Array {

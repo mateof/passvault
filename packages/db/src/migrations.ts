@@ -11,7 +11,7 @@ import { columnTypes, type Engine } from './engine.js'
  *     differently on all six.
  *   * Check constraints avoid boolean-valued expressions. `(a IS NULL) = (b IS NULL)`
  *     is the compact way to write a coupling check and works on PostgreSQL, SQLite and
- *     MySQL, but SQL Server and Oracle have no boolean type to compare, so the verbose
+ *     MySQL, but SQL Server has no boolean type to compare, so the verbose
  *     OR form is used throughout rather than branching per engine.
  *   * No foreign key uses a cascade. SQL Server rejects multiple cascade paths and
  *     `event_id` reaches most tables by more than one route, so a cascade added for
@@ -401,7 +401,7 @@ function initialSchema(engine: Engine): Migration {
           sql`visibility in ('ALL', 'HOLDER_ONLY', 'CREATOR_ONLY')`,
         )
         // An amount without a currency is not a sum of money. Written in the verbose
-        // form because SQL Server and Oracle cannot compare two IS NULL results.
+        // form because SQL Server cannot compare two IS NULL results.
         .addCheckConstraint(
           'chk_payments_amount_currency_coupled',
           sql`(amount_cents is null and currency is null) or (amount_cents is not null and currency is not null)`,

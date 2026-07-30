@@ -16,9 +16,8 @@ export interface DatabaseHandle {
  * Opens a connection to whatever engine `DATABASE_URL` names.
  *
  * Drivers are imported dynamically so a default SQLite installation never loads the
- * PostgreSQL, MySQL, SQL Server or Oracle clients. That keeps startup quick and, more
- * usefully, means the Oracle driver — the only one requiring native Oracle client
- * libraries — is a problem exclusively for installations that actually use Oracle.
+ * PostgreSQL, MySQL or SQL Server clients. That keeps startup quick and means a driver
+ * an installation will never use is never loaded.
  */
 export async function openDatabase(url: string): Promise<DatabaseHandle> {
   const target = parseDatabaseUrl(url)
@@ -43,8 +42,6 @@ async function createDialect(target: EngineTarget): Promise<Dialect> {
       return mysqlDialect(target)
     case 'mssql':
       return mssqlDialect(target)
-    case 'oracle':
-      return oracleDialect(target)
   }
 }
 
@@ -114,46 +111,6 @@ async function mssqlDialect(target: EngineTarget): Promise<Dialect> {
           },
         }),
     },
-  })
-}
-
-/**
- * Oracle, which is the one engine with no dialect in Kysely core.
- *
- * It comes from a community package, and `oracledb` needs native Oracle client
- * libraries that do not install everywhere. Neither is a dependency of this package:
- * an installation pointed at Oracle installs them, and every other installation does
- * not carry them. Both are imported through a variable module specifier so TypeScript
- * does not resolve them at build time, so a tree without them still compiles and runs
- * on SQLite, and fails only if somebody actually points it at Oracle.
- *
- * They were declared as optional dependencies and that was worse than useless: npm
- * would not resolve `oracledb` into the lock file on every platform, so the lock and
- * the manifest disagreed and `npm ci` refused to install anything at all — on every
- * job, for a driver almost nobody needs.
- */
-async function oracleDialect(target: EngineTarget): Promise<Dialect> {
-  const dialectPackage = 'kysely-oracledb'
-  const driverPackage = 'oracledb'
-  let module: { OracleDialect: new (config: unknown) => Dialect }
-  let oracledb: { createPool: (config: unknown) => Promise<unknown> }
-  try {
-    module = (await import(dialectPackage)) as typeof module
-    const driver = (await import(driverPackage)) as { default?: typeof oracledb } & typeof oracledb
-    oracledb = driver.default ?? driver
-  } catch (cause) {
-    throw new Error(
-      `Oracle support needs the optional packages: npm install ${dialectPackage} ${driverPackage}`,
-      { cause },
-    )
-  }
-  const parsed = new URL(target.url)
-  return new module.OracleDialect({
-    pool: await oracledb.createPool({
-      user: decodeURIComponent(parsed.username),
-      password: decodeURIComponent(parsed.password),
-      connectString: `${parsed.hostname}:${parsed.port || 1521}/${parsed.pathname.replace(/^\//, '')}`,
-    }),
   })
 }
 

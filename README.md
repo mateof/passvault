@@ -107,7 +107,6 @@ and the same schema is created there:
 | PostgreSQL | `postgres://user:pass@host:5432/passvault` |
 | MySQL / MariaDB | `mysql://user:pass@host:3306/passvault` |
 | SQL Server | `mssql://user:pass@host:1433/passvault` |
-| Oracle | `oracle://user:pass@host:1521/FREEPDB1` |
 
 Portability is a design constraint rather than an afterthought, which is why the
 schema stores booleans as integers, timestamps as fixed-format ISO-8601 text,

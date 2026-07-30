@@ -86,7 +86,7 @@ describe('stored booleans', () => {
     expect(toInt(false)).toBe(0)
   })
 
-  it('reads the integer SQLite and Oracle return', () => {
+  it('reads the integer SQLite returns', () => {
     expect(toBoolean(1)).toBe(true)
   })
 

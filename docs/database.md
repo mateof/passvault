@@ -1,7 +1,7 @@
 # Database
 
 PassVault runs on SQLite by default and on PostgreSQL, MySQL, MariaDB, SQL Server or
-Oracle without a code change. This document explains what that costs and how the cost
+SQL Server without a code change. This document explains what that costs and how the cost
 is paid, because "engine-agnostic" is usually a claim rather than a property.
 
 The schema itself is [database.dbml](database.dbml), which is the canonical contract.
@@ -23,16 +23,21 @@ Point `DATABASE_URL` elsewhere and the same schema is created there:
 | MySQL | `mysql://user:pass@host:3306/passvault` |
 | MariaDB | `mariadb://user:pass@host:3306/passvault` |
 | SQL Server | `mssql://user:pass@host:1433/passvault` |
-| Oracle | `oracle://user:pass@host:1521/FREEPDB1` |
 
 Drivers load dynamically, so a SQLite installation never loads the PostgreSQL, MySQL,
-SQL Server or Oracle clients.
+SQL Server clients.
 
-**Oracle needs two extra packages**: `npm install kysely-oracledb oracledb`. Kysely has
-no Oracle dialect in core, and `oracledb` needs native Oracle client libraries that do
-not build everywhere. Both are optional dependencies and both are imported through a
-variable module specifier, so an installation where the native build failed still
-compiles and runs on every other engine — it only fails if someone points it at Oracle.
+**Oracle was supported and is not any more.** It was the one engine Kysely has no dialect
+for in core, so it came from a community package, and `oracledb` needs native Oracle client
+libraries that do not build everywhere. Both were optional dependencies loaded through a
+variable module specifier, which was tidy and hid the real problem: nothing had ever run
+against Oracle. The first CI run that did got `Error: Not implemented` out of the community
+dialect during the very first migration.
+
+So the support was a claim, not a capability. It has been removed rather than left in the
+list of engines with a footnote, because an engine named in a table is a promise, and this
+one could not be kept. The five conventions below still hold — they were chosen for the
+whole set and the four that remain need every one of them.
 
 ## Why not an ORM
 
@@ -62,7 +67,7 @@ truncation to seconds, no local-time surprise. A truncated form such as
 `2026-08-14T19:00:00Z` is rejected, because mixing widths would break the ordering
 guarantee.
 
-**Booleans are `int`, 0 or 1.** SQLite and Oracle have no boolean type and MySQL's is
+**Booleans are `int`, 0 or 1.** SQLite and SQL Server have no boolean type and MySQL's is
 an alias for `TINYINT`, so drivers return `1`, `true` or `'1'` depending on the engine.
 Reads go through `toBoolean` rather than relying on truthiness: `'0'` is truthy in
 JavaScript, which would invert every flag on one engine and nowhere else.
@@ -112,7 +117,7 @@ PostgreSQL and MySQL have one, and altering it later differs on each.
 
 Coupling checks avoid boolean-valued expressions. `(a IS NULL) = (b IS NULL)` is the
 compact way to say "both or neither" and works on PostgreSQL, SQLite and MySQL, but SQL
-Server and Oracle have no boolean type to compare, so the verbose OR form is used
+Server has no boolean type to compare, so the verbose OR form is used
 throughout:
 
 ```sql
@@ -152,7 +157,7 @@ unknown enum value being refused, foreign keys actually being enforced — SQLit
 them off unless `PRAGMA foreign_keys = ON`, which is the setting whose absence silently
 lets orphans accumulate — and the claim ordering that must not depend on a wall clock.
 
-The other five engines are exercised in CI, which runs the same suite against service
-containers for PostgreSQL, MySQL, MariaDB and SQL Server. Oracle is not in CI: the
-image is too large to pull on every run. Its type mapping is unit-tested, but a real
-Oracle deployment should be treated as needing a first-run check.
+The other four are exercised in CI, which runs the same suite against service containers
+for PostgreSQL, MySQL, MariaDB and SQL Server: each migrates twice — because a server
+that migrates on boot runs it again on every rolling restart — and then runs the whole
+suite against that engine.

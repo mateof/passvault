@@ -6,7 +6,7 @@
  * ruled out an ORM which fixes the provider when it generates code. Everything here
  * is decided at boot from `DATABASE_URL`.
  */
-export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mariadb' | 'mssql' | 'oracle'
+export type Engine = 'sqlite' | 'postgres' | 'mysql' | 'mariadb' | 'mssql'
 
 export const ENGINES: readonly Engine[] = [
   'sqlite',
@@ -14,7 +14,6 @@ export const ENGINES: readonly Engine[] = [
   'mysql',
   'mariadb',
   'mssql',
-  'oracle',
 ]
 
 export interface EngineTarget {
@@ -35,7 +34,6 @@ const SCHEMES: Record<string, Engine> = {
   mariadb: 'mariadb',
   mssql: 'mssql',
   sqlserver: 'mssql',
-  oracle: 'oracle',
 }
 
 export class UnsupportedEngineError extends Error {
@@ -94,10 +92,6 @@ export function columnTypes(engine: Engine): {
       return { binary: 'longblob', text: 'text', varchar: (n) => `varchar(${n})` }
     case 'mssql':
       return { binary: 'varbinary(max)', text: 'nvarchar(max)', varchar: (n) => `nvarchar(${n})` }
-    case 'oracle':
-      // Oracle's VARCHAR is a deprecated synonym for VARCHAR2, and its CLOB cannot be
-      // compared with = without a function, which is why no text column here is queried.
-      return { binary: 'blob', text: 'clob', varchar: (n) => `varchar2(${n})` }
   }
 }
 

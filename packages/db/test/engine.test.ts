@@ -36,10 +36,6 @@ describe('choosing an engine from DATABASE_URL', () => {
     expect(parseDatabaseUrl('sqlserver://user:pass@host:1433/passvault').engine).toBe('mssql')
   })
 
-  it('recognises Oracle', () => {
-    expect(parseDatabaseUrl('oracle://user:pass@host:1521/FREEPDB1').engine).toBe('oracle')
-  })
-
   it('rejects an unknown scheme instead of guessing', () => {
     expect(() => parseDatabaseUrl('mongodb://host/passvault')).toThrow(UnsupportedEngineError)
   })
@@ -62,10 +58,6 @@ describe('column types per engine', () => {
 
   it('uses varbinary(max) on SQL Server', () => {
     expect(columnTypes('mssql').binary).toBe('varbinary(max)')
-  })
-
-  it('uses varchar2 on Oracle, since varchar is a deprecated synonym there', () => {
-    expect(columnTypes('oracle').varchar(36)).toBe('varchar2(36)')
   })
 
   it('uses nvarchar on SQL Server so non-ASCII text survives', () => {

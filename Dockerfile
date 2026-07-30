@@ -11,7 +11,7 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
 
-# better-sqlite3 and oracledb build native code. Present in the build stage only — the
+# better-sqlite3 builds native code. Present in the build stage only — the
 # runtime stage receives the compiled artefacts and needs no compiler.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ \

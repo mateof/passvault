@@ -9,7 +9,7 @@
 //
 //   * Identifiers are application-generated UUIDv7 in varchar(36). Time-ordered
 //     without depending on any engine's sequence or default.
-//   * Booleans are int, 0 or 1. SQLite and Oracle have no native boolean.
+//   * Booleans are int, 0 or 1. SQLite and SQL Server have no native boolean.
 //   * Instants are varchar(24) holding ISO-8601 UTC with millisecond precision
 //     ('2026-07-30T10:15:00.000Z'). Fixed width means lexicographic order equals
 //     chronological order on every engine, so ORDER BY and range scans work
