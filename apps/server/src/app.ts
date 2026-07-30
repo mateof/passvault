@@ -3,6 +3,10 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { hashPassword, toBase64Url, type Argon2Params } from '@passvault/crypto'
 import { migrateToLatest, newId, openDatabase, toInstant, type DatabaseHandle } from '@passvault/db'
 import { createTranslator, resolveLocale, type Locale, type MessageKey } from '@passvault/i18n'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import fastifyStatic from '@fastify/static'
 import { z } from 'zod'
 import {
   PendingLogins,
@@ -229,6 +233,41 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       throw forbidden()
     }
     return session
+  }
+
+  /**
+   * The web interface, served by the same process that serves the API.
+   *
+   * One origin for both, which is not a convenience: the browser's WebAuthn ceremony is bound
+   * to an origin, and a front end on a different host than its API would need CORS, a second
+   * certificate and a second name for the same installation. It also means `PUBLIC_URL` is the
+   * whole answer to "where is PassVault", which is what the phone, the tunnel and the relying
+   * party identifier all read.
+   *
+   * Absent in development, where Vite serves the front end and proxies here — so a missing
+   * bundle is normal and must not stop the server. It is only fatal when somebody expected a
+   * web interface and got a 404, which is exactly what happened the first time this was
+   * deployed, and the log line below is what would have said so.
+   */
+  const webRoot = resolve(
+    process.env.WEB_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist'),
+  )
+  if (existsSync(join(webRoot, 'index.html'))) {
+    await app.register(fastifyStatic, { root: webRoot, wildcard: false })
+    // Anything that is not the API and not a file falls through to the application, because a
+    // single-page front end owns its own routes: /events/x is a screen, not a missing file.
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith('/api/')) {
+        return reply.status(404).send({ error: 'not_found' })
+      }
+      return reply.sendFile('index.html')
+    })
+    app.log.info(`serving the web interface from ${webRoot}`)
+  } else {
+    app.log.warn(
+      `no web interface at ${webRoot}: the API answers but the root will be 404. ` +
+        'Build it with `npm run build --workspace @passvault/web` or set WEB_ROOT.',
+    )
   }
 
   app.get('/api/v1/health', async () => ({ status: 'ok' }))

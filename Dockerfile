@@ -32,6 +32,7 @@ RUN npm ci
 COPY tsconfig*.json ./
 COPY packages packages
 COPY apps/server apps/server
+COPY apps/web apps/web
 
 RUN npm run build --workspace @passvault/server \
     || npm run build
@@ -57,6 +58,7 @@ COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/package.json package.json
 COPY --from=build /app/packages packages
 COPY --from=build /app/apps/server apps/server
+COPY --from=build /app/apps/web/dist apps/web/dist
 
 # Created before dropping privileges, and owned by the user that will write to it. A volume
 # mounted over it inherits this ownership, which is what stops the usual first-run failure
