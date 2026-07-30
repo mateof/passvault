@@ -73,10 +73,7 @@ function decodeRow(row: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, decodeValue(value)]))
 }
 
-export async function backupToFile(
-  handle: DatabaseHandle,
-  path: string,
-): Promise<BackupSummary> {
+export async function backupToFile(handle: DatabaseHandle, path: string): Promise<BackupSummary> {
   await mkdir(dirname(path), { recursive: true })
   const gzip = createGzip()
   const written = pipeline(gzip, createWriteStream(path))
@@ -93,13 +90,12 @@ export async function backupToFile(
   const perTable: Record<string, number> = {}
   let rows = 0
   for (const table of TABLES_IN_DEPENDENCY_ORDER) {
-    const records = await handle.db
-      .selectFrom(table)
-      .selectAll()
-      .execute()
+    const records = await handle.db.selectFrom(table).selectAll().execute()
     perTable[table] = records.length
     for (const record of records) {
-      gzip.write(`${JSON.stringify({ table, row: encodeRow(record as Record<string, unknown>) })}\n`)
+      gzip.write(
+        `${JSON.stringify({ table, row: encodeRow(record as Record<string, unknown>) })}\n`,
+      )
       rows += 1
     }
   }

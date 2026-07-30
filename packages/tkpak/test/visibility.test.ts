@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { applyPaymentVisibility, canSeePayment, openWithPassword, writeTkpak } from '@passvault/tkpak'
+import {
+  applyPaymentVisibility,
+  canSeePayment,
+  openWithPassword,
+  writeTkpak,
+} from '@passvault/tkpak'
 import { ARGON2, EVENT_PASSWORD, aBundle, anIssuer } from './fixtures.js'
 
 describe('who may see a payment record', () => {
@@ -74,10 +79,13 @@ describe('a private amount that was filtered out', () => {
 
     const { archive } = await writeTkpak({
       issuer: anIssuer(),
-      bundle: applyPaymentVisibility({ ...bundle, fileId: 'unused' }, {
-        isCreator: false,
-        holderLabel: 'Ana',
-      }),
+      bundle: applyPaymentVisibility(
+        { ...bundle, fileId: 'unused' },
+        {
+          isCreator: false,
+          holderLabel: 'Ana',
+        },
+      ),
       password: EVENT_PASSWORD,
       argon2Params: ARGON2,
     })

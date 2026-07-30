@@ -46,7 +46,10 @@ function rawPrivateKey(key: KeyObject): Uint8Array {
 
 function toPublicKeyObject(raw: Uint8Array): KeyObject {
   if (raw.length !== ED25519_PUBLIC_BYTES) {
-    throw new CryptoError('MALFORMED_INPUT', `Ed25519 public key must be ${ED25519_PUBLIC_BYTES} bytes`)
+    throw new CryptoError(
+      'MALFORMED_INPUT',
+      `Ed25519 public key must be ${ED25519_PUBLIC_BYTES} bytes`,
+    )
   }
   return createPublicKey({
     key: Buffer.concat([SPKI_PREFIX, Buffer.from(raw)]),

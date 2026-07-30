@@ -50,9 +50,7 @@ export function completePairing({
   // and every honest pairing would look like an attack.
   const initiatorKey = isInitiator ? ownPublicKey : peerPublicKey
   const responderKey = isInitiator ? peerPublicKey : ownPublicKey
-  const salt = new Uint8Array(
-    Buffer.concat([Buffer.from(initiatorKey), Buffer.from(responderKey)]),
-  )
+  const salt = new Uint8Array(Buffer.concat([Buffer.from(initiatorKey), Buffer.from(responderKey)]))
   return {
     shortAuthenticationString: digitsFrom(hkdf(sharedSecret, salt, 'passvault/v1/sas', SAS_BYTES)),
     sessionKey: hkdf(sharedSecret, salt, 'passvault/v1/session'),

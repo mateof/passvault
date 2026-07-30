@@ -269,12 +269,24 @@ describe('payment records', () => {
     const ticket = await aTicket(await anEvent(creator))
     await handle.db
       .insertInto('payments')
-      .values({ id: newId(), ticket_id: ticket, state: 'UNPAID', recorded_by: creator, updated_at: now })
+      .values({
+        id: newId(),
+        ticket_id: ticket,
+        state: 'UNPAID',
+        recorded_by: creator,
+        updated_at: now,
+      })
       .execute()
 
     const second = handle.db
       .insertInto('payments')
-      .values({ id: newId(), ticket_id: ticket, state: 'PAID', recorded_by: creator, updated_at: now })
+      .values({
+        id: newId(),
+        ticket_id: ticket,
+        state: 'PAID',
+        recorded_by: creator,
+        updated_at: now,
+      })
       .execute()
 
     await expect(second).rejects.toThrow(/UNIQUE|constraint/i)

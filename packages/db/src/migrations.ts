@@ -52,10 +52,7 @@ function initialSchema(engine: Engine): Migration {
         .addColumn('is_admin', 'integer', (column) => column.notNull().defaultTo(0))
         .addColumn('created_at', instant(), (column) => column.notNull())
         .addColumn('updated_at', instant(), (column) => column.notNull())
-        .addCheckConstraint(
-          'chk_users_status',
-          sql`status in ('ACTIVE', 'INVITED', 'SUSPENDED')`,
-        )
+        .addCheckConstraint('chk_users_status', sql`status in ('ACTIVE', 'INVITED', 'SUSPENDED')`)
         .execute()
       await db.schema.createIndex('idx_users_status').on('users').column('status').execute()
 
@@ -100,11 +97,7 @@ function initialSchema(engine: Engine): Migration {
         .columns(['provider', 'subject'])
         .unique()
         .execute()
-      await db.schema
-        .createIndex('idx_oidc_user')
-        .on('oidc_identities')
-        .column('user_id')
-        .execute()
+      await db.schema.createIndex('idx_oidc_user').on('oidc_identities').column('user_id').execute()
 
       await db.schema
         .createTable('webauthn_credentials')
@@ -243,11 +236,7 @@ function initialSchema(engine: Engine): Migration {
         .addColumn('created_at', instant(), (column) => column.notNull())
         .addColumn('updated_at', instant(), (column) => column.notNull())
         .execute()
-      await db.schema
-        .createIndex('idx_groups_owner')
-        .on('groups')
-        .column('owner_user_id')
-        .execute()
+      await db.schema.createIndex('idx_groups_owner').on('groups').column('owner_user_id').execute()
 
       await db.schema
         .createTable('group_members')
@@ -258,10 +247,7 @@ function initialSchema(engine: Engine): Migration {
         .addColumn('status', chars(16), (column) => column.notNull().defaultTo('ACTIVE'))
         .addColumn('created_at', instant(), (column) => column.notNull())
         .addColumn('updated_at', instant(), (column) => column.notNull())
-        .addCheckConstraint(
-          'chk_group_member_role',
-          sql`role in ('OWNER', 'ORGANISER', 'MEMBER')`,
-        )
+        .addCheckConstraint('chk_group_member_role', sql`role in ('OWNER', 'ORGANISER', 'MEMBER')`)
         .addCheckConstraint('chk_group_member_status', sql`status in ('ACTIVE', 'INACTIVE')`)
         .execute()
       await db.schema

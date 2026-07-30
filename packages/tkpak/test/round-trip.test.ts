@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generateAgreementKeyPair } from '@passvault/crypto'
-import {
-  inspectTkpak,
-  openWithPassword,
-  openWithRecipientKey,
-  writeTkpak,
-} from '@passvault/tkpak'
+import { inspectTkpak, openWithPassword, openWithRecipientKey, writeTkpak } from '@passvault/tkpak'
 import { ARGON2, EVENT_PASSWORD, aBundle, aPdfDocument, aRecipient, anIssuer } from './fixtures.js'
 
 describe('exporting and importing with an event password', () => {

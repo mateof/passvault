@@ -82,7 +82,11 @@ export function hkdf(
  * pair of parties. Deriving from the shared secret alone would let the same key
  * appear in a context the sender never intended.
  */
-export function sealedSlotKey(sharedSecret: Uint8Array, ephemeralPublicKey: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
+export function sealedSlotKey(
+  sharedSecret: Uint8Array,
+  ephemeralPublicKey: Uint8Array,
+  recipientPublicKey: Uint8Array,
+): Uint8Array {
   const salt = Buffer.concat([Buffer.from(ephemeralPublicKey), Buffer.from(recipientPublicKey)])
   return hkdf(sharedSecret, new Uint8Array(salt), 'tkpak/v1/seal')
 }

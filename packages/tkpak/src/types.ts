@@ -11,13 +11,7 @@ export const TKPAK_FORMAT = 'tkpak'
 export const TKPAK_VERSION = 1
 
 export type BarcodeFormat =
-  | 'QR_CODE'
-  | 'AZTEC'
-  | 'PDF_417'
-  | 'CODE_128'
-  | 'CODE_39'
-  | 'EAN_13'
-  | 'DATA_MATRIX'
+  'QR_CODE' | 'AZTEC' | 'PDF_417' | 'CODE_128' | 'CODE_39' | 'EAN_13' | 'DATA_MATRIX'
 
 export type AssignmentMode = 'OPEN' | 'ASSIGNED' | 'SELF_CLAIM'
 
@@ -28,10 +22,7 @@ export type PaymentState = 'UNPAID' | 'PARTIAL' | 'PAID' | 'WAIVED'
 export type PaymentVisibility = 'ALL' | 'HOLDER_ONLY' | 'CREATOR_ONLY'
 
 export type DocumentMediaType =
-  | 'application/pdf'
-  | 'image/png'
-  | 'image/jpeg'
-  | 'application/vnd.apple.pkpass'
+  'application/pdf' | 'image/png' | 'image/jpeg' | 'application/vnd.apple.pkpass'
 
 export interface TkpakIssuer {
   deviceId: string

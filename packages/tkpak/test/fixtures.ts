@@ -1,4 +1,8 @@
-import { TEST_ARGON2_PARAMS, generateAgreementKeyPair, generateSigningKeyPair } from '@passvault/crypto'
+import {
+  TEST_ARGON2_PARAMS,
+  generateAgreementKeyPair,
+  generateSigningKeyPair,
+} from '@passvault/crypto'
 import { v7 as uuidv7 } from 'uuid'
 import type { TkpakBundle, TkpakDocument, TkpakIssuerIdentity } from '@passvault/tkpak'
 
@@ -16,10 +20,9 @@ export function aRecipient(): { publicKey: Uint8Array; privateKey: Uint8Array } 
 }
 
 /** Four tickets for one event, the shape a real export takes. */
-export function aBundle(overrides: Partial<Omit<TkpakBundle, 'fileId'>> = {}): Omit<
-  TkpakBundle,
-  'fileId'
-> {
+export function aBundle(
+  overrides: Partial<Omit<TkpakBundle, 'fileId'>> = {},
+): Omit<TkpakBundle, 'fileId'> {
   return {
     exportedAt: '2026-07-30T10:15:00.000Z',
     event: {
@@ -39,7 +42,11 @@ export function aBundle(overrides: Partial<Omit<TkpakBundle, 'fileId'>> = {}): O
         row: '14',
         barcode: { format: 'QR_CODE', value: '8412-AAAA-0001' },
         assignmentMode: 'ASSIGNED',
-        assignment: { state: 'ASSIGNED', holderLabel: 'Ana', assignedAt: '2026-07-29T18:02:11.000Z' },
+        assignment: {
+          state: 'ASSIGNED',
+          holderLabel: 'Ana',
+          assignedAt: '2026-07-29T18:02:11.000Z',
+        },
         payment: { state: 'PAID', amountCents: 4500, currency: 'EUR', visibility: 'ALL' },
       },
       {

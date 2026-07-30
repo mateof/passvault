@@ -154,7 +154,11 @@ describe('a file altered after it was sealed', () => {
       plaintext: new Uint8Array(Buffer.from(JSON.stringify({ fileId: 'somebody-else' }), 'utf8')),
       aad: `tkpak/v1/payload:${manifest.fileId}`,
     })
-    manifest.payload = { nonce: toBase64Url(nonce), sha256: toBase64Url(sha256(bogus)), byteLength: bogus.length }
+    manifest.payload = {
+      nonce: toBase64Url(nonce),
+      sha256: toBase64Url(sha256(bogus)),
+      byteLength: bogus.length,
+    }
     manifest.keySlots = []
 
     const rebuilt = repackAndSign(manifest, issuer.privateKey, { ...parts, payload: bogus })

@@ -1,0 +1,25 @@
+{
+  "name": "@passvault/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@passvault/tkpak": "*",
+    "fflate": "^0.8.2",
+    "pdf-lib": "^1.17.1",
+    "uuid": "^11.0.5",
+    "zxing-wasm": "^3.1.2"
+  },
+  "optionalDependencies": {
+    "@napi-rs/canvas": "^0.1.0",
+    "pdfjs-dist": "^6.2.108"
+  }
+}

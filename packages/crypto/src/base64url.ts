@@ -26,10 +26,7 @@ export function fromBase64Url(text: string): Uint8Array {
 export function fromBase64UrlExact(text: string, expectedBytes: number): Uint8Array {
   const bytes = fromBase64Url(text)
   if (bytes.length !== expectedBytes) {
-    throw new CryptoError(
-      'MALFORMED_INPUT',
-      `expected ${expectedBytes} bytes, got ${bytes.length}`,
-    )
+    throw new CryptoError('MALFORMED_INPUT', `expected ${expectedBytes} bytes, got ${bytes.length}`)
   }
   return bytes
 }

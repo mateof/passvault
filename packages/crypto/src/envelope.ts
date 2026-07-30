@@ -1,12 +1,7 @@
 import { open, seal } from './aead.js'
 import { fromBase64Url, fromBase64UrlExact, toBase64Url } from './base64url.js'
 import { CryptoError } from './errors.js'
-import {
-  DEFAULT_ARGON2_PARAMS,
-  assertUsableParams,
-  deriveKey,
-  type Argon2Params,
-} from './kdf.js'
+import { DEFAULT_ARGON2_PARAMS, assertUsableParams, deriveKey, type Argon2Params } from './kdf.js'
 import { wrapKey, unwrapKey } from './keywrap.js'
 import { KEY_BYTES, NONCE_BYTES, randomKey, randomNonce, randomSalt } from './random.js'
 
@@ -164,11 +159,7 @@ export async function unlockWithPassword(
   )
 }
 
-export function unlockWithKey(
-  envelope: KeyEnvelope,
-  slotId: string,
-  kek: Uint8Array,
-): Uint8Array {
+export function unlockWithKey(envelope: KeyEnvelope, slotId: string, kek: Uint8Array): Uint8Array {
   const slot = requireSlot(envelope, slotId)
   if (slot.kind !== 'raw-key') {
     throw new CryptoError('MALFORMED_INPUT', `slot '${slotId}' is not opened by a key`)

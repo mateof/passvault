@@ -116,7 +116,12 @@ export async function writeTkpak(input: TkpakWriteInput): Promise<TkpakWriteResu
   const keySlots: TkpakKeySlot[] = []
   if (input.password !== undefined) {
     keySlots.push(
-      await passwordSlot(fileId, fileKey, input.password, input.argon2Params ?? DEFAULT_ARGON2_PARAMS),
+      await passwordSlot(
+        fileId,
+        fileKey,
+        input.password,
+        input.argon2Params ?? DEFAULT_ARGON2_PARAMS,
+      ),
     )
   }
   if (input.recipientPublicKey) {
