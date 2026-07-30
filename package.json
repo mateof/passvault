@@ -31,6 +31,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "vectors:generate": "tsx packages/tkpak/scripts/generate-vectors.ts",
+    "vectors:generate:operations": "tsx scripts/generate-operation-vectors.ts",
     "db:migrate": "npm run db:migrate --workspace @passvault/server",
     "db:backup": "npm run db:backup --workspace @passvault/server",
     "db:restore": "npm run db:restore --workspace @passvault/server",

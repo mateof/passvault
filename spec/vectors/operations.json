@@ -1,0 +1,141 @@
+{
+  "format": "passvault-operations",
+  "version": 1,
+  "domain": "passvault/v1/operation",
+  "generatedBy": "scripts/generate-operation-vectors.ts",
+  "note": "Signing key is fixed and deliberately trivial so output is reproducible. Never reuse it.",
+  "signingPrivateKey": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+  "signingPublicKey": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw",
+  "vectors": [
+    {
+      "name": "minimal",
+      "description": "The smallest operation: no actor, empty body.",
+      "operation": {
+        "operationId": "0192f5d0-1111-7000-8000-aaaabbbbcccc",
+        "deviceId": "0192f5c0-2222-7000-8000-ddddeeeeffff",
+        "actorUserId": null,
+        "lamport": 1,
+        "wallClock": "2026-07-30T10:15:00.000Z",
+        "scope": {
+          "kind": "event",
+          "id": "0192f5b1-4444-7000-8000-444455556666"
+        },
+        "type": "ticket.unassign",
+        "body": {}
+      },
+      "canonical": "{\"actorUserId\":null,\"body\":{},\"deviceId\":\"0192f5c0-2222-7000-8000-ddddeeeeffff\",\"lamport\":1,\"operationId\":\"0192f5d0-1111-7000-8000-aaaabbbbcccc\",\"scope\":{\"id\":\"0192f5b1-4444-7000-8000-444455556666\",\"kind\":\"event\"},\"type\":\"ticket.unassign\",\"wallClock\":\"2026-07-30T10:15:00.000Z\"}",
+      "canonicalSha256": "FCb6rnUU3I5R5DbkjKg3rPBFSj593sLMEQiLdIVtDHg",
+      "signingInputSha256": "fvHaeV6IdSLPRSCLYXniI1WnpA1z3EUxUoc1cDdgXSo",
+      "signature": "2ysKO_D3eaRmYhAbuz898SVLpxj6yfyZUauXFM7MnHLjcuaXCKUCSqAJYX4nQE2aWremHyvLwuC8auKa3lEkDA"
+    },
+    {
+      "name": "keys-out-of-order",
+      "description": "Body keys given in an order that is not sorted, to pin that both sides sort before hashing.",
+      "operation": {
+        "operationId": "0192f5d0-2222-7000-8000-aaaabbbbcccc",
+        "deviceId": "0192f5c0-2222-7000-8000-ddddeeeeffff",
+        "actorUserId": "0192f5b0-3333-7000-8000-111122223333",
+        "lamport": 42,
+        "wallClock": "2026-07-30T10:15:00.000Z",
+        "scope": {
+          "kind": "event",
+          "id": "0192f5b1-4444-7000-8000-444455556666"
+        },
+        "type": "ticket.assign",
+        "body": {
+          "zeta": 1,
+          "alpha": 2,
+          "Mid": 3,
+          "mid": 4,
+          "": 5
+        }
+      },
+      "canonical": "{\"actorUserId\":\"0192f5b0-3333-7000-8000-111122223333\",\"body\":{\"\":5,\"Mid\":3,\"alpha\":2,\"mid\":4,\"zeta\":1},\"deviceId\":\"0192f5c0-2222-7000-8000-ddddeeeeffff\",\"lamport\":42,\"operationId\":\"0192f5d0-2222-7000-8000-aaaabbbbcccc\",\"scope\":{\"id\":\"0192f5b1-4444-7000-8000-444455556666\",\"kind\":\"event\"},\"type\":\"ticket.assign\",\"wallClock\":\"2026-07-30T10:15:00.000Z\"}",
+      "canonicalSha256": "cwz7IVgorNasMUmiqXMwgiLHg94tj4cZpqjXyubgMyA",
+      "signingInputSha256": "Bh2oTl0icfoncuEnJNQtI4gQK2D9Z0YL-eXMaCHOHU4",
+      "signature": "EyXNbNGceVtmEI0PsIul9vEeVs7t7m9Fhlm-GgxY9uJ1b5GhYFwyzsEQkCD9c7SlQrqhNU8MD1sr3ksPQNaYAw"
+    },
+    {
+      "name": "galician-text",
+      "description": "Accented and non-ASCII text left literal, which is where a stricter escaper would diverge.",
+      "operation": {
+        "operationId": "0192f5d0-3333-7000-8000-aaaabbbbcccc",
+        "deviceId": "0192f5c0-2222-7000-8000-ddddeeeeffff",
+        "actorUserId": null,
+        "lamport": 7,
+        "wallClock": "2026-07-30T10:15:00.000Z",
+        "scope": {
+          "kind": "event",
+          "id": "0192f5b1-4444-7000-8000-444455556666"
+        },
+        "type": "event.update",
+        "body": {
+          "name": "Festival do Norte 2026 — Coruña",
+          "venue": "Recinto Ferial · A Grela"
+        }
+      },
+      "canonical": "{\"actorUserId\":null,\"body\":{\"name\":\"Festival do Norte 2026 — Coruña\",\"venue\":\"Recinto Ferial · A Grela\"},\"deviceId\":\"0192f5c0-2222-7000-8000-ddddeeeeffff\",\"lamport\":7,\"operationId\":\"0192f5d0-3333-7000-8000-aaaabbbbcccc\",\"scope\":{\"id\":\"0192f5b1-4444-7000-8000-444455556666\",\"kind\":\"event\"},\"type\":\"event.update\",\"wallClock\":\"2026-07-30T10:15:00.000Z\"}",
+      "canonicalSha256": "us0hI9gZ9_RgN-PXcBBGkoFcQt3-PPANOX0XHDlzm5U",
+      "signingInputSha256": "cqTRGguiQ_GCDmP6CUrt4v5xeRL6sWunhK8if-u4sXI",
+      "signature": "LAZ6Wu1269fL_6Vw05QqsJDj5BKLy61lM53mQUjJXcMLwkFF94CQBT_t-Gujk9TIYyHxBuZR-owUz2sBaBKAAg"
+    },
+    {
+      "name": "escapes-and-nesting",
+      "description": "Control characters, quotes and backslashes, plus a nested object and an array.",
+      "operation": {
+        "operationId": "0192f5d0-4444-7000-8000-aaaabbbbcccc",
+        "deviceId": "0192f5c0-2222-7000-8000-ddddeeeeffff",
+        "actorUserId": null,
+        "lamport": 99,
+        "wallClock": "2026-07-30T10:15:00.000Z",
+        "scope": {
+          "kind": "event",
+          "id": "0192f5b1-4444-7000-8000-444455556666"
+        },
+        "type": "ticket.add",
+        "body": {
+          "label": "a \"quoted\" \\ backslash\nnewline\ttab",
+          "nested": {
+            "inner": [
+              1,
+              "two",
+              null,
+              true,
+              false
+            ]
+          },
+          "empty": {},
+          "emptyList": []
+        }
+      },
+      "canonical": "{\"actorUserId\":null,\"body\":{\"empty\":{},\"emptyList\":[],\"label\":\"a \\\"quoted\\\" \\\\ backslash\\nnewline\\ttab\",\"nested\":{\"inner\":[1,\"two\",null,true,false]}},\"deviceId\":\"0192f5c0-2222-7000-8000-ddddeeeeffff\",\"lamport\":99,\"operationId\":\"0192f5d0-4444-7000-8000-aaaabbbbcccc\",\"scope\":{\"id\":\"0192f5b1-4444-7000-8000-444455556666\",\"kind\":\"event\"},\"type\":\"ticket.add\",\"wallClock\":\"2026-07-30T10:15:00.000Z\"}",
+      "canonicalSha256": "_LOjs1C8_FJmJYf-Qz4HnKtGlm1KOci87WOZ5PV31WU",
+      "signingInputSha256": "Y90nbozVuWRGKqT-IVZ6z-MAh9C_ApfwBB0LDKk5hCc",
+      "signature": "qvQf70l0D0ftWz7IamHWTZqRQrAKXsvNyBkdkD2bz3yKyVrcRy-Ft2FqV9TsSdOBeFiihVa6sgUhQyhXXCqjBQ"
+    },
+    {
+      "name": "claim-request",
+      "description": "A claim request, the operation the whole authority mechanism exists for.",
+      "operation": {
+        "operationId": "0192f5d0-5555-7000-8000-aaaabbbbcccc",
+        "deviceId": "0192f5c0-2222-7000-8000-ddddeeeeffff",
+        "actorUserId": "0192f5b0-3333-7000-8000-111122223333",
+        "lamport": 12,
+        "wallClock": "2026-07-30T10:15:00.000Z",
+        "scope": {
+          "kind": "event",
+          "id": "0192f5b1-4444-7000-8000-444455556666"
+        },
+        "type": "claim.request",
+        "body": {
+          "ticketId": "0192f5b2-5555-7000-8000-777788889999",
+          "coupon": "Q0FGRUJBQkVDQUZFQkFCRQ"
+        }
+      },
+      "canonical": "{\"actorUserId\":\"0192f5b0-3333-7000-8000-111122223333\",\"body\":{\"coupon\":\"Q0FGRUJBQkVDQUZFQkFCRQ\",\"ticketId\":\"0192f5b2-5555-7000-8000-777788889999\"},\"deviceId\":\"0192f5c0-2222-7000-8000-ddddeeeeffff\",\"lamport\":12,\"operationId\":\"0192f5d0-5555-7000-8000-aaaabbbbcccc\",\"scope\":{\"id\":\"0192f5b1-4444-7000-8000-444455556666\",\"kind\":\"event\"},\"type\":\"claim.request\",\"wallClock\":\"2026-07-30T10:15:00.000Z\"}",
+      "canonicalSha256": "l-GvebFyv5LWgQXR9syHLtdgqi9EKrRcSgbWBOJuFK8",
+      "signingInputSha256": "DqX1L74mZx1pi6ryYv6ZXifRjSMyAvzY6NdN6kI0avk",
+      "signature": "bMqBleXdxJ73Ee-AJ-6VwgFWfmbDpfZOm_RmYcmq6M1voaIjOeGfqw6wrLw5BGj1xISn1sTsXx0swntEyuc0BA"
+    }
+  ]
+}
