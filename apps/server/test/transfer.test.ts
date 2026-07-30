@@ -36,7 +36,6 @@ beforeEach(async () => {
   await server.app.inject({ method: 'POST', url: '/api/v1/registration', payload: MEMBER })
   member = await login(server, MEMBER)
   await unlock(member, MEMBER.passphrase)
-    .userId
 
   eventId = (
     await server.app.inject({

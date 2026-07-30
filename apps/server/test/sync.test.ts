@@ -42,7 +42,6 @@ beforeEach(async () => {
   await registerFirstAdmin(server)
   organiser = await login(server, ADMIN)
   await unlock(organiser, ADMIN.passphrase)
-    .userId
   await setRegistrationMode(server, organiser, 'OPEN')
   await server.app.inject({ method: 'POST', url: '/api/v1/registration', payload: MEMBER })
   member = await login(server, MEMBER)
