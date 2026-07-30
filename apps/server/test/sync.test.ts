@@ -538,7 +538,11 @@ describe('pulling operations', () => {
 
     const response = await sync(member, {})
 
-    expect(response.json().operations).toHaveLength(1)
+    // The event's own creation is in the log too — the server records what it does — so what
+    // matters is that the pushed operation came back, not that it arrived alone.
+    expect(response.json().operations.map((one: { type: string }) => one.type)).toContain(
+      'event.update',
+    )
   })
 
   it('returns the body in the clear, so a puller can verify the signature itself', async () => {
@@ -556,7 +560,10 @@ describe('pulling operations', () => {
 
     const response = await sync(member, {})
 
-    expect(response.json().operations[0].body.name).toBe('verifiable')
+    const pushed = response
+      .json()
+      .operations.find((one: { type: string }) => one.type === 'event.update')
+    expect(pushed.body.name).toBe('verifiable')
   })
 
   it('keeps the body out of the database in plaintext', async () => {
@@ -574,7 +581,11 @@ describe('pulling operations', () => {
 
     const stored = await server.db.db.selectFrom('operations').select('body_cipher').execute()
 
-    expect(Buffer.from(stored[0]!.body_cipher).toString('utf8')).not.toContain('secret-name')
+    // Every row, not the first: the log now holds the server's own entries as well, and the
+    // property being checked is about all of them.
+    for (const row of stored) {
+      expect(Buffer.from(row.body_cipher).toString('utf8')).not.toContain('secret-name')
+    }
   })
 
   it('does not return the same operation twice for a caller using the cursor', async () => {
@@ -653,7 +664,12 @@ describe('pulling operations', () => {
 
     const response = await sync(member, {})
 
-    expect(response.json().operations).toEqual([])
+    // The stranger's operation is quarantined, so nothing it signed comes back. What does come
+    // back is the server's own record of creating the event, which is not from a stranger.
+    const devices = response
+      .json()
+      .operations.map((one: { deviceId: string }) => one.deviceId)
+    expect(devices).not.toContain(stranger.id)
   })
 
   it('refuses somebody with no access to the event', async () => {

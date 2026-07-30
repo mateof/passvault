@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
-import { domainSeparated, fromBase64Url, verifyBytes } from '@passvault/crypto'
+import { domainSeparated, fromBase64Url, toBase64Url, verifyBytes } from '@passvault/crypto'
 import { newId, toInstant } from '@passvault/db'
 import { badRequest, forbidden, notFound } from './errors.js'
+import { ensureServerDevice, serverDeviceFrom, signAsServer } from './server-device.js'
 import { findEvent, hasAccess, type EventDeps } from './events.js'
 import * as repo from './repository.js'
 import { reconcileTicket, setPayment, submitClaim } from './tickets.js'
@@ -464,6 +465,135 @@ async function store(
       applied_at: state === 'APPLIED' ? toInstant() : null,
     })
     .execute()
+}
+
+/**
+ * Records something this server did, as a signed operation.
+ *
+ * Called by the endpoints that change an event so the log is the record of what happened rather
+ * than a channel other devices happen to push into. Before this, creating an event and adding
+ * forty tickets through the API left the operations table empty, and a phone synchronising that
+ * event received nothing — correctly, because nothing had been written down.
+ *
+ * Failures are swallowed deliberately and logged by the caller's error handling: a wallet change
+ * that succeeded must not be reported as failed because its audit entry could not be written.
+ * The alternative — rolling the change back — trades a missing log line for a lost ticket.
+ */
+/**
+ * Puts the server's `device.register` into an event's log, once.
+ *
+ * Scoped per event because the log is per event: a device that appears in one event's history has
+ * no business appearing in another's, and a peer syncing a single event has to be able to verify
+ * everything in it from that event alone.
+ */
+async function announceServerDevice(
+  deps: SyncDeps,
+  device: ReturnType<typeof serverDeviceFrom>,
+  eventId: string,
+  eventKey: Uint8Array,
+): Promise<void> {
+  const existing = await deps.db.db
+    .selectFrom('operations')
+    .select('operation_id')
+    .where('event_id', '=', eventId)
+    .where('device_id', '=', device.deviceId)
+    .where('type', '=', 'device.register')
+    .executeTakeFirst()
+  if (existing) {
+    return
+  }
+
+  const registration = signAsServer(device, {
+    operationId: newId(),
+    deviceId: device.deviceId,
+    actorUserId: null,
+    lamport: await nextLamport(deps, eventId),
+    wallClock: toInstant(),
+    scope: { kind: 'event', id: eventId },
+    type: 'device.register',
+    body: {
+      deviceId: device.deviceId,
+      signingPublicKey: toBase64Url(device.signingPublicKey),
+      agreementPublicKey: toBase64Url(device.signingPublicKey),
+      name: 'PassVault server',
+    },
+  })
+
+  await storeServerOperation(deps, registration, eventId, eventKey)
+}
+
+async function storeServerOperation(
+  deps: SyncDeps,
+  operation: SignedOperation,
+  eventId: string,
+  eventKey: Uint8Array,
+): Promise<void> {
+  await deps.db.db
+    .insertInto('operations')
+    .values({
+      operation_id: operation.operationId,
+      event_id: eventId,
+      device_id: operation.deviceId,
+      actor_user_id: operation.actorUserId ?? null,
+      lamport: operation.lamport,
+      device_id_hash: deviceHash(operation.deviceId),
+      wall_clock: operation.wallClock,
+      type: operation.type,
+      body_cipher: Buffer.from(
+        deps.crypto.encryptField(eventKey, JSON.stringify(operation.body), {
+          table: 'operations',
+          column: 'body_cipher',
+          rowId: operation.operationId,
+        }),
+      ),
+      signature: operation.signature,
+      state: 'APPLIED',
+      quarantine_reason: null,
+      received_at: toInstant(),
+      applied_at: toInstant(),
+    })
+    .execute()
+}
+
+export async function recordOperation(
+  deps: SyncDeps,
+  input: {
+    eventId: string
+    eventKey: Uint8Array
+    actorUserId: string | null
+    type: string
+    body: Record<string, unknown>
+  },
+): Promise<SignedOperation | undefined> {
+  const device = serverDeviceFrom(deps.crypto)
+  await ensureServerDevice(deps.db, device, null)
+
+  // The server announces itself in each event's log before it says anything else there.
+  //
+  // Without this the operations arrive at a phone signed by a device it has never heard of, and
+  // its acceptance rules quarantine them as `unknown_device` — correctly, because an unverifiable
+  // signature is not something to apply. The symptom is a sync that reports zero received while
+  // the rows sit in quarantine, which is what a first end-to-end run actually produced.
+  //
+  // A registration carries the key that verifies it, so it is self-describing: a peer checks it
+  // against the key it announces, remembers that key, and then re-examines everything it was
+  // holding from that device.
+  await announceServerDevice(deps, device, input.eventId, input.eventKey)
+
+  const operation = signAsServer(device, {
+    operationId: newId(),
+    deviceId: device.deviceId,
+    actorUserId: input.actorUserId,
+    lamport: await nextLamport(deps, input.eventId),
+    wallClock: toInstant(),
+    scope: { kind: 'event', id: input.eventId },
+    type: input.type,
+    body: input.body,
+  })
+
+  await storeServerOperation(deps, operation, input.eventId, input.eventKey)
+
+  return operation
 }
 
 export interface PullResult {

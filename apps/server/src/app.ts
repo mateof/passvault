@@ -71,6 +71,7 @@ import {
   nextLamport,
   pullOperations,
   pushOperations,
+  recordOperation,
   registerDevice,
 } from './operations.js'
 import {
@@ -737,6 +738,19 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       ...body,
     })
     vaults.unlockEvent(session.id, created.eventId, created.eventKey)
+    // Written down as it happens. The log is the record of what the event is, not a channel other
+    // devices push into — a phone that synchronises an event created here has to receive it.
+    await recordOperation(eventDeps, {
+      eventId: created.eventId,
+      eventKey: created.eventKey,
+      actorUserId: session.user_id,
+      type: 'event.create',
+      body: {
+        name: body.name,
+        ...(body.venue ? { venue: body.venue } : {}),
+        ...(body.startsAt ? { startsAt: body.startsAt } : {}),
+      },
+    })
     return reply.status(201).send({
       eventId: created.eventId,
       passwordProtected: created.passwordProtected,
@@ -855,6 +869,25 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       eventKey,
       tickets: body.tickets,
     })
+    // One operation per ticket rather than one for the batch: a ticket is the unit that gets
+    // assigned, claimed and paid for, so it is the unit the log has to name.
+    for (const [index, ticketId] of ids.entries()) {
+      const ticket = body.tickets[index]
+      await recordOperation(eventDeps, {
+        eventId: id,
+        eventKey,
+        actorUserId: session.user_id,
+        type: 'ticket.add',
+        body: {
+          ticketId,
+          ...(ticket?.label ? { label: ticket.label } : {}),
+          ...(ticket?.seat ? { seat: ticket.seat } : {}),
+          ...(ticket?.barcode
+            ? { barcodeFormat: ticket.barcode.format, barcodeValue: ticket.barcode.value }
+            : {}),
+        },
+      })
+    }
     return reply.status(201).send({ ticketIds: ids })
   })
 
