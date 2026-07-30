@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { hashPassword, toBase64Url, type Argon2Params } from '@passvault/crypto'
-import { migrateToLatest, openDatabase, type DatabaseHandle } from '@passvault/db'
-import { createTranslator, resolveLocale, type Locale } from '@passvault/i18n'
+import { migrateToLatest, newId, openDatabase, toInstant, type DatabaseHandle } from '@passvault/db'
+import { createTranslator, resolveLocale, type Locale, type MessageKey } from '@passvault/i18n'
 import { z } from 'zod'
 import {
   PendingLogins,
@@ -18,7 +18,37 @@ import {
 } from './accounts.js'
 import { loadConfig, type ServerConfig } from './config.js'
 import { CryptoContext } from './crypto-context.js'
-import { AppError, forbidden, notFound, unauthorized } from './errors.js'
+import {
+  INGEST_LIMITS,
+  IngestError,
+  createPdfJsRasterizer,
+  detectMediaType,
+  propose,
+  type IngestErrorCode,
+  type PageRasterizer,
+} from '@passvault/ingest'
+import { TkpakError, type DocumentMediaType } from '@passvault/tkpak'
+
+/**
+ * Ingestion failures mapped onto message keys.
+ *
+ * Written out rather than derived from the code, because the codes and the catalogue keys are
+ * separate vocabularies on purpose: the code is a stable API contract and the wording is free to
+ * change. An exhaustive record means adding a code without a message fails the build.
+ */
+const INGEST_MESSAGE_KEYS: Record<IngestErrorCode, MessageKey> = {
+  UNSUPPORTED_FILE: 'ingest.error.unsupportedFile',
+  FILE_TOO_LARGE: 'ingest.error.fileTooLarge',
+  ENCRYPTED_PDF: 'ingest.error.encryptedPdf',
+  DAMAGED_FILE: 'ingest.error.damagedFile',
+  TOO_MANY_PAGES: 'ingest.error.fileTooLarge',
+  PKPASS_SIGNATURE_INVALID: 'ingest.error.pkpassSignatureInvalid',
+  PKPASS_MALFORMED: 'ingest.error.damagedFile',
+  RASTERIZER_UNAVAILABLE: 'error.unexpected',
+}
+import { readBlob, storeBlob } from './blobs.js'
+import { AppError, badRequest, forbidden, notFound, unauthorized } from './errors.js'
+import { exportEvent, importArchive, inspectArchive, type TransferDeps } from './transfer.js'
 import {
   createEvent,
   findEvent,
@@ -114,6 +144,22 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       return reply.status(error.status).send({
         error: error.messageKey,
         message: t(error.messageKey, error.values),
+      })
+    }
+    // Errors raised by the packages carry their own codes, and every one of those codes has a
+    // translated message. Letting them fall through to the generic handler would waste that and
+    // report "something went wrong" for a wrong password.
+    if (error instanceof TkpakError) {
+      const key = `tkpak.error.${error.code}` as MessageKey
+      return reply
+        .status(error.code === 'WRONG_PASSWORD' ? 401 : 400)
+        .send({ error: key, message: t(key) })
+    }
+    if (error instanceof IngestError) {
+      const key = INGEST_MESSAGE_KEYS[error.code]
+      return reply.status(400).send({
+        error: key,
+        message: t(key, { maxMegabytes: Math.floor(INGEST_LIMITS.fileBytes / 1024 / 1024) }),
       })
     }
     if (error instanceof z.ZodError) {
@@ -656,6 +702,208 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     return { withdrawn: true, recallsDeliveredTickets: false }
   })
 
+  // ── Interchange files and ingestion ───────────────────────────────────────────
+
+  const transferDeps: TransferDeps = { ...eventDeps, blobDir: config.blobDir }
+
+  /**
+   * Binary bodies are taken as-is.
+   *
+   * Base64 in JSON would inflate a six-megabyte export by a third and force the whole thing
+   * through a JSON parser for no benefit.
+   */
+  app.addContentTypeParser(
+    [
+      'application/octet-stream',
+      'application/vnd.passvault.tkpak',
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'application/vnd.apple.pkpass',
+      'application/zip',
+    ],
+    { parseAs: 'buffer' },
+    (_request, body, done) => done(null, body),
+  )
+
+  const exportBody = z.object({
+    password: z.string().min(4),
+    ticketIds: z.array(z.string().uuid()).optional(),
+    includeDocuments: z.boolean().optional(),
+    preview: z.enum(['full', 'minimal', 'none']).optional(),
+    exportedFor: z.string().max(200).optional(),
+    eventPassword: z.string().optional(),
+  })
+
+  app.post('/api/v1/events/:id/export', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const body = exportBody.parse(request.body)
+    const { session, eventKey } = await openEvent(request, id, body.eventPassword)
+    const result = await exportEvent(transferDeps, {
+      eventId: id,
+      viewerUserId: session.user_id,
+      eventKey,
+      password: body.password,
+      ...(body.ticketIds ? { ticketIds: body.ticketIds } : {}),
+      ...(body.includeDocuments === undefined ? {} : { includeDocuments: body.includeDocuments }),
+      ...(body.preview ? { preview: body.preview } : {}),
+      ...(body.exportedFor ? { exportedFor: body.exportedFor } : {}),
+    })
+    return (
+      reply
+        .header('content-type', 'application/vnd.passvault.tkpak')
+        .header('content-disposition', `attachment; filename="${result.fileId}.tkpak"`)
+        .header('x-passvault-ticket-count', String(result.ticketCount))
+        // The recipient cannot be made to forget this file once they have it, and the client is
+        // told so here rather than being left to work it out.
+        .header('x-passvault-revocable', 'false')
+        .send(Buffer.from(result.archive))
+    )
+  })
+
+  app.post('/api/v1/import/inspect', async (request) => {
+    await sessionOf(request)
+    return inspectArchive(asBytes(request.body))
+  })
+
+  app.post('/api/v1/import', async (request, reply) => {
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    const password = request.headers['x-passvault-password']
+    if (typeof password !== 'string' || password.length === 0) {
+      throw badRequest('tkpak.error.WRONG_PASSWORD')
+    }
+    const result = await importArchive(transferDeps, {
+      importerUserId: session.user_id,
+      importerDataKey: vault.dataKey,
+      sessionId: session.id,
+      archive: asBytes(request.body),
+      password,
+    })
+    return reply.status(201).send(result)
+  })
+
+  /** Built once and reused: creating a pdf.js rasterizer per request is expensive. */
+  let rasterizer: PageRasterizer | undefined
+  const rasterizerOf = async (): Promise<PageRasterizer> => {
+    rasterizer ??= await createPdfJsRasterizer()
+    return rasterizer
+  }
+
+  app.post('/api/v1/events/:id/ingest', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    const bytes = asBytes(request.body)
+
+    const source = await storeBlob(transferDeps, {
+      eventId: id,
+      eventKey,
+      mediaType: detectMediaType(bytes),
+      bytes,
+    })
+    const proposal = await propose(bytes, { rasterizer: await rasterizerOf() })
+
+    const batchId = newId()
+    await db.db
+      .insertInto('ingest_batches')
+      .values({
+        id: batchId,
+        event_id: id,
+        created_by: session.user_id,
+        source_media_type: mediaTypeCode(source.mediaType),
+        source_blob_id: source.id,
+        page_count: proposal.pageCount,
+        detected_count: proposal.tickets.filter((ticket) => ticket.barcode).length,
+        state: 'PROPOSED',
+        failure_reason: null,
+        created_at: toInstant(),
+        updated_at: toInstant(),
+      })
+      .execute()
+
+    // A proposal, never a saved result. The entries carry no bytes: the client shows the page
+    // numbers and warnings, and confirming re-splits from the stored source.
+    return reply.status(201).send({
+      ingestId: batchId,
+      pageCount: proposal.pageCount,
+      requiresReview: proposal.requiresReview,
+      warnings: proposal.warnings,
+      entries: proposal.tickets.map((ticket, index) => ({
+        index,
+        suggestedLabel: ticket.suggestedLabel,
+        barcode: ticket.barcode ?? null,
+        pageNumber: ticket.pageNumber ?? null,
+        include: ticket.include,
+        warnings: ticket.warnings,
+      })),
+    })
+  })
+
+  const confirmBody = z.object({
+    include: z.array(z.number().int().min(0)).optional(),
+    assignmentMode: z.enum(['OPEN', 'ASSIGNED', 'SELF_CLAIM']).optional(),
+  })
+
+  app.post('/api/v1/events/:id/ingest/:ingestId/confirm', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { ingestId } = z.object({ ingestId: z.string().uuid() }).parse(request.params)
+    const body = confirmBody.parse(request.body ?? {})
+    const { session, eventKey } = await openEvent(request, id)
+
+    const batch = await db.db
+      .selectFrom('ingest_batches')
+      .selectAll()
+      .where('id', '=', ingestId)
+      .where('event_id', '=', id)
+      .executeTakeFirst()
+    if (!batch?.source_blob_id) {
+      throw notFound()
+    }
+
+    const source = await readBlob(transferDeps, { blobId: batch.source_blob_id, eventKey })
+    const proposal = await propose(source.bytes, { rasterizer: await rasterizerOf() })
+    const chosen = proposal.tickets.filter((ticket, index) =>
+      body.include ? body.include.includes(index) : ticket.include,
+    )
+
+    const created: string[] = []
+    for (const entry of chosen) {
+      const stored = await storeBlob(transferDeps, {
+        eventId: id,
+        eventKey,
+        mediaType: entry.document.mediaType,
+        bytes: entry.document.bytes,
+      })
+      const [ticketId] = await addTickets(eventDeps, {
+        eventId: id,
+        actorUserId: session.user_id,
+        eventKey,
+        tickets: [
+          {
+            label: entry.suggestedLabel,
+            ...(entry.barcode ? { barcode: entry.barcode } : {}),
+            documentBlobId: stored.id,
+            ...(entry.pageNumber === undefined ? {} : { documentPage: entry.pageNumber }),
+            ...(body.assignmentMode ? { assignmentMode: body.assignmentMode } : {}),
+          },
+        ],
+      })
+      if (ticketId) {
+        created.push(ticketId)
+      }
+    }
+
+    await db.db
+      .updateTable('ingest_batches')
+      .set({ state: 'CONFIRMED', updated_at: toInstant() })
+      .where('id', '=', ingestId)
+      .execute()
+
+    return reply
+      .status(201)
+      .send({ ticketIds: created, skipped: proposal.tickets.length - chosen.length })
+  })
+
   return {
     app,
     db,
@@ -668,6 +916,23 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     },
   }
 }
+
+/** Fastify hands a Buffer for the binary content types registered above. */
+function asBytes(body: unknown): Uint8Array {
+  if (Buffer.isBuffer(body)) {
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+  }
+  throw new AppError(400, 'ingest.error.unsupportedFile')
+}
+
+const MEDIA_TYPE_CODES: Record<DocumentMediaType, 'PDF' | 'PNG' | 'JPEG' | 'PKPASS'> = {
+  'application/pdf': 'PDF',
+  'image/png': 'PNG',
+  'image/jpeg': 'JPEG',
+  'application/vnd.apple.pkpass': 'PKPASS',
+}
+
+const mediaTypeCode = (mediaType: DocumentMediaType) => MEDIA_TYPE_CODES[mediaType]
 
 /** Kept out of buildServer so tests can drive the app without binding a port. */
 export async function listen(server: PassVaultServer): Promise<string> {
