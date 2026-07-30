@@ -23,7 +23,6 @@ import {
 let server: TestServer
 let organiser: string
 let member: string
-let memberUserId: string
 let eventId: string
 
 const EXPORT_PASSWORD = 'sempre-en-galiza'
@@ -37,7 +36,6 @@ beforeEach(async () => {
   await server.app.inject({ method: 'POST', url: '/api/v1/registration', payload: MEMBER })
   member = await login(server, MEMBER)
   await unlock(member, MEMBER.passphrase)
-  memberUserId = (await server.app.inject({ url: '/api/v1/me', headers: bearer(member) })).json()
     .userId
 
   eventId = (

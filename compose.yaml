@@ -1,0 +1,102 @@
+# Running PassVault with Docker.
+#
+# The default is the whole point of the project's persistence design: `docker compose up`
+# starts the server on SQLite with no database container at all. Everything is in the volume.
+#
+#   docker compose up --build
+#
+# Pointing it at another engine is a `--profile` and a `DATABASE_URL`, nothing else. There is
+# no per-engine build and no code path chosen at compile time:
+#
+#   docker compose --profile postgres up --build
+#   docker compose --profile mysql    up --build
+#   docker compose --profile mariadb  up --build
+#
+# MASTER_KEY and BLIND_INDEX_KEY are generated on first boot and written into DATA_DIR if
+# unset. That is right for a laptop and wrong for a server: on a real deployment set them
+# yourself, because losing the volume then means losing the key that decrypts everything.
+
+name: passvault
+
+services:
+  server:
+    build:
+      context: .
+    ports:
+      - '${PORT:-8080}:8080'
+    environment:
+      # SQLite inside the volume unless something overrides it. The compose profiles below
+      # do exactly that and nothing more.
+      DATABASE_URL: ${DATABASE_URL:-sqlite:/data/passvault.sqlite}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-gl}
+      MASTER_KEY: ${MASTER_KEY:-}
+      BLIND_INDEX_KEY: ${BLIND_INDEX_KEY:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      mysql:
+        condition: service_healthy
+        required: false
+      mariadb:
+        condition: service_healthy
+        required: false
+
+  postgres:
+    profiles: [postgres]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: passvault
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-passvault}
+      POSTGRES_DB: passvault
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U passvault']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mysql:
+    profiles: [mysql]
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-passvault}
+      MYSQL_USER: passvault
+      MYSQL_PASSWORD: ${DB_PASSWORD:-passvault}
+      MYSQL_DATABASE: passvault
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -p${DB_PASSWORD:-passvault}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mariadb:
+    profiles: [mariadb]
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-passvault}
+      MARIADB_USER: passvault
+      MARIADB_PASSWORD: ${DB_PASSWORD:-passvault}
+      MARIADB_DATABASE: passvault
+    volumes:
+      - mariadb:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'healthcheck.sh --connect --innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  data:
+  postgres:
+  mysql:
+  mariadb:

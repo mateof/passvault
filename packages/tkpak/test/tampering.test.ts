@@ -55,7 +55,7 @@ function repackAndSign(
 
 describe('a file altered after it was sealed', () => {
   it('is rejected when a byte of the payload is flipped', async () => {
-    const { archive, parts } = await aSignedFile()
+    const { parts } = await aSignedFile()
     const payload = Uint8Array.from(parts.payload)
     payload[0] ^= 0x01
 
@@ -69,7 +69,7 @@ describe('a file altered after it was sealed', () => {
   })
 
   it('is rejected when the cleartext preview is edited', async () => {
-    const { archive, parts } = await aSignedFile()
+    const { parts } = await aSignedFile()
     const manifest = JSON.parse(Buffer.from(parts.manifestBytes).toString('utf8')) as TkpakManifest
     manifest.preview = { ticketCount: 40, eventName: 'A different event' }
 

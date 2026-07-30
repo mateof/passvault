@@ -28,7 +28,6 @@ import {
  */
 let server: TestServer
 let organiser: string
-let organiserId: string
 let member: string
 let memberId: string
 let eventId: string
@@ -43,7 +42,6 @@ beforeEach(async () => {
   await registerFirstAdmin(server)
   organiser = await login(server, ADMIN)
   await unlock(organiser, ADMIN.passphrase)
-  organiserId = (await server.app.inject({ url: '/api/v1/me', headers: bearer(organiser) })).json()
     .userId
   await setRegistrationMode(server, organiser, 'OPEN')
   await server.app.inject({ method: 'POST', url: '/api/v1/registration', payload: MEMBER })

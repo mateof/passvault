@@ -1,0 +1,214 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Everything that needs no database beyond the embedded one. Fast, and it is what
+  # a pull request waits on.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: The operation vectors still match what this implementation produces
+        # Regenerating must be a no-op, so a vector edited by hand — or a canonical-form
+        # change that forgot to regenerate them — shows up here rather than as the Android
+        # suite failing in the other repository weeks later.
+        #
+        # Only the operation vectors. The `.tkpak` ones cannot be checked this way: they
+        # carry fresh nonces, salts and file ids on every run, so regenerating them always
+        # produces different bytes and this would fail on every commit. What guards those
+        # is that both implementations open the committed files.
+        run: |
+          npm run vectors:generate:operations
+          git diff --exit-code spec/vectors/operations.json
+
+  # The engines other than SQLite.
+  #
+  # This job is the whole reason the schema is written the way it is — no cascading foreign
+  # keys because SQL Server rejects multiple paths, mirror columns because it treats NULLs
+  # as equal in a unique index, application-generated UUIDs because no engine's sequence
+  # behaves the same. All of that was reasoned about and, until this existed, never once
+  # executed against the engines it was reasoned about for.
+  engines:
+    runs-on: ubuntu-latest
+    strategy:
+      # Every engine reports, rather than the first failure hiding the rest. Finding out
+      # that Postgres and MySQL are both broken takes one run, not two.
+      fail-fast: false
+      matrix:
+        include:
+          - engine: postgres
+            image: postgres:16-alpine
+            url: postgres://passvault:passvault@127.0.0.1:5432/passvault
+            port: 5432:5432
+            env: '{"POSTGRES_USER":"passvault","POSTGRES_PASSWORD":"passvault","POSTGRES_DB":"passvault"}'
+            health: pg_isready -U passvault
+          - engine: mysql
+            image: mysql:8.4
+            url: mysql://passvault:passvault@127.0.0.1:3306/passvault
+            port: 3306:3306
+            env: '{"MYSQL_ROOT_PASSWORD":"passvault","MYSQL_USER":"passvault","MYSQL_PASSWORD":"passvault","MYSQL_DATABASE":"passvault"}'
+            health: mysqladmin ping -h 127.0.0.1 -ppassvault
+          - engine: mariadb
+            image: mariadb:11
+            url: mariadb://passvault:passvault@127.0.0.1:3306/passvault
+            port: 3306:3306
+            env: '{"MARIADB_ROOT_PASSWORD":"passvault","MARIADB_USER":"passvault","MARIADB_PASSWORD":"passvault","MARIADB_DATABASE":"passvault"}'
+            health: healthcheck.sh --connect --innodb_initialized
+
+    services:
+      database:
+        image: ${{ matrix.image }}
+        ports:
+          - ${{ matrix.port }}
+        env: ${{ fromJSON(matrix.env) }}
+        options: >-
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Migrate
+        env:
+          DATABASE_URL: ${{ matrix.url }}
+        run: npm run db:migrate
+
+      - name: Migrate again, which must be a no-op
+        # Idempotence is the property that decides whether a deployment can safely restart.
+        # The server migrates on boot, so a rolling restart runs this repeatedly.
+        env:
+          DATABASE_URL: ${{ matrix.url }}
+        run: npm run db:migrate
+
+      - name: Tests against ${{ matrix.engine }}
+        env:
+          DATABASE_URL: ${{ matrix.url }}
+        run: npm test
+
+  # SQL Server is its own job rather than a matrix row: it needs a licence variable, a
+  # password the image itself validates, and it takes long enough to start that sharing a
+  # health-check shape with the others made both harder to read.
+  mssql:
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: 'Y'
+          # The image rejects anything it considers weak and then fails to start with a
+          # message that does not say so. Uppercase, lowercase, digit, symbol, 8+.
+          MSSQL_SA_PASSWORD: 'PassVault!2026'
+          MSSQL_PID: Developer
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'PassVault!2026' -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create the database
+        run: >-
+          docker exec $(docker ps -q --filter ancestor=mcr.microsoft.com/mssql/server:2022-latest)
+          /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'PassVault!2026'
+          -Q "IF DB_ID('passvault') IS NULL CREATE DATABASE passvault"
+
+      - name: Migrate
+        env:
+          DATABASE_URL: mssql://sa:PassVault!2026@127.0.0.1:1433/passvault
+        run: npm run db:migrate
+
+      - name: Migrate again, which must be a no-op
+        env:
+          DATABASE_URL: mssql://sa:PassVault!2026@127.0.0.1:1433/passvault
+        run: npm run db:migrate
+
+      - name: Tests against SQL Server
+        env:
+          DATABASE_URL: mssql://sa:PassVault!2026@127.0.0.1:1433/passvault
+        run: npm test
+
+  # Oracle is slow to start and large to pull, so it does not gate a pull request. It runs
+  # on main and on demand, which is often enough to catch a schema change that VARCHAR2 or
+  # CLOB will not accept.
+  oracle:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: gvenzl/oracle-free:23-slim
+        ports:
+          - 1521:1521
+        env:
+          ORACLE_PASSWORD: PassVault2026
+          APP_USER: passvault
+          APP_USER_PASSWORD: PassVault2026
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Migrate
+        env:
+          DATABASE_URL: oracle://passvault:PassVault2026@127.0.0.1:1521/FREEPDB1
+        run: npm run db:migrate
+
+      - name: Migrate again, which must be a no-op
+        env:
+          DATABASE_URL: oracle://passvault:PassVault2026@127.0.0.1:1521/FREEPDB1
+        run: npm run db:migrate
