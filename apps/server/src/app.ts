@@ -11,8 +11,10 @@ import {
   completeSecondFactor,
   completeSetup,
   confirmTotpEnrolment,
+  loginWithOidc,
   loginWithPassword,
   register,
+  setVaultPassphrase,
   unlockSessionVault,
   type AccountsDeps,
 } from './accounts.js'
@@ -71,7 +73,25 @@ import {
 } from './tickets.js'
 import { createMailer, type Mailer } from './mailer.js'
 import * as repo from './repository.js'
+import {
+  OidcClient,
+  OidcFlows,
+  createPkcePair,
+  newNonce,
+  providerSettings,
+  type OidcFetcher,
+  type OidcProviderName,
+} from './oidc.js'
 import { VaultCache } from './vault.js'
+import {
+  WebAuthnChallenges,
+  beginPasskeyLogin,
+  beginPasskeyRegistration,
+  finishPasskeyLogin,
+  finishPasskeyRegistration,
+  listCredentials,
+  removeCredential,
+} from './webauthn.js'
 
 export interface BuildOptions {
   config?: ServerConfig
@@ -79,6 +99,8 @@ export interface BuildOptions {
   /** Lowered in tests so Argon2id does not dominate the run. */
   argon2Params?: Argon2Params
   logger?: boolean
+  /** Injected so the provider flow can be exercised without a network. */
+  oidcFetcher?: OidcFetcher
 }
 
 export interface PassVaultServer {
@@ -422,6 +444,204 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         ? { setupUrl: `${config.publicUrl}/set-password?token=${created.setupToken}` }
         : {}),
     })
+  })
+
+  // ── Delegated sign-in and passkeys ────────────────────────────────────────────
+
+  const oidcClients = new Map<OidcProviderName, OidcClient>()
+  for (const name of ['google', 'microsoft'] as const) {
+    const credentials = config.oidc[name]
+    if (credentials) {
+      oidcClients.set(
+        name,
+        new OidcClient(name, providerSettings(name, credentials), options.oidcFetcher),
+      )
+    }
+  }
+  const oidcFlows = new OidcFlows()
+  const challenges = new WebAuthnChallenges()
+  const webAuthnDeps = { ...deps, challenges }
+
+  app.get('/api/v1/auth/providers', async () => ({
+    // So a client knows which buttons to show rather than offering a provider this instance has
+    // no credentials for.
+    providers: [...oidcClients.keys()],
+    passkeys: true,
+  }))
+
+  const providerParams = z.object({ provider: z.enum(['google', 'microsoft']) })
+  const startBody = z.object({
+    redirectUri: z.string().url(),
+    invitationCode: z.string().optional(),
+  })
+
+  app.post('/api/v1/auth/oidc/:provider/start', async (request) => {
+    const { provider } = providerParams.parse(request.params)
+    const client = oidcClients.get(provider)
+    if (!client) {
+      throw notFound()
+    }
+    const body = startBody.parse(request.body)
+    const pkce = createPkcePair()
+    const nonce = newNonce()
+    const state = oidcFlows.start({
+      provider,
+      verifier: pkce.verifier,
+      nonce,
+      redirectUri: body.redirectUri,
+      ...(body.invitationCode ? { invitationCode: body.invitationCode } : {}),
+    })
+    return {
+      state,
+      authorizationUrl: await client.authorizationUrl({
+        redirectUri: body.redirectUri,
+        state,
+        nonce,
+        challenge: pkce.challenge,
+      }),
+    }
+  })
+
+  const callbackBody = z.object({
+    state: z.string().min(1),
+    code: z.string().min(1),
+    deviceId: z.string().uuid().optional(),
+  })
+
+  app.post('/api/v1/auth/oidc/callback', async (request) => {
+    const body = callbackBody.parse(request.body)
+    // Single use, and unknown state is refused. This is what stops a callback being replayed or
+    // forged from another site.
+    const flow = oidcFlows.take(body.state)
+    if (!flow) {
+      throw unauthorized('auth.error.invalidCredentials')
+    }
+    const client = oidcClients.get(flow.provider)
+    if (!client) {
+      throw notFound()
+    }
+    const claims = await client.exchangeCode({
+      code: body.code,
+      verifier: flow.verifier,
+      redirectUri: flow.redirectUri,
+      nonce: flow.nonce,
+    })
+    const outcome = await loginWithOidc(deps, {
+      provider: flow.provider,
+      subject: claims.sub,
+      ...(claims.email ? { email: claims.email } : {}),
+      ...(claims.email_verified === undefined ? {} : { emailVerified: claims.email_verified }),
+      ...(claims.name ? { displayName: claims.name } : {}),
+      ...(flow.invitationCode ? { invitationCode: flow.invitationCode } : {}),
+      ...(body.deviceId ? { deviceId: body.deviceId } : {}),
+    })
+    if (outcome.login.status !== 'complete') {
+      throw unauthorized('auth.error.secondFactorRequired')
+    }
+    return {
+      status: 'complete',
+      token: outcome.login.token,
+      userId: outcome.login.userId,
+      createdAccount: outcome.createdAccount,
+      // Signing in through a provider proves who you are and decrypts nothing. The client has to
+      // ask for a passphrase before showing a wallet.
+      needsPassphrase: outcome.needsPassphrase,
+    }
+  })
+
+  const passphraseBody = z.object({
+    passphrase: z.string().min(1),
+    currentPassphrase: z.string().min(1).optional(),
+  })
+
+  app.post('/api/v1/vault/passphrase', async (request) => {
+    const session = await sessionOf(request)
+    const body = passphraseBody.parse(request.body)
+    const result = await setVaultPassphrase(deps, {
+      userId: session.user_id,
+      sessionId: session.id,
+      passphrase: body.passphrase,
+      ...(body.currentPassphrase ? { currentPassphrase: body.currentPassphrase } : {}),
+    })
+    return {
+      created: result.created,
+      ...(result.recoveryCode
+        ? {
+            recoveryCode: result.recoveryCode,
+            recoveryCodeWarning: createTranslator(request.locale).t('vault.warning.noRecovery'),
+          }
+        : {}),
+      vaultUnlocked: true,
+    }
+  })
+
+  app.post('/api/v1/passkeys/register/options', async (request) => {
+    const session = await sessionOf(request)
+    return beginPasskeyRegistration(webAuthnDeps, session.user_id)
+  })
+
+  const passkeyRegisterBody = z.object({
+    response: z.unknown(),
+    name: z.string().max(120).optional(),
+  })
+
+  app.post('/api/v1/passkeys/register', async (request, reply) => {
+    const session = await sessionOf(request)
+    const body = passkeyRegisterBody.parse(request.body)
+    const result = await finishPasskeyRegistration(webAuthnDeps, {
+      userId: session.user_id,
+      response: body.response,
+      ...(body.name ? { name: body.name } : {}),
+    })
+    return reply.status(201).send(result)
+  })
+
+  app.post('/api/v1/passkeys/login/options', async () => beginPasskeyLogin(webAuthnDeps))
+
+  const passkeyLoginBody = z.object({
+    response: z.unknown(),
+    deviceId: z.string().uuid().optional(),
+  })
+
+  app.post('/api/v1/passkeys/login', async (request) => {
+    const body = passkeyLoginBody.parse(request.body)
+    const outcome = await finishPasskeyLogin(webAuthnDeps, {
+      response: body.response,
+      ...(body.deviceId ? { deviceId: body.deviceId } : {}),
+    })
+    if (outcome.status !== 'complete') {
+      throw unauthorized('auth.error.secondFactorRequired')
+    }
+    return {
+      status: outcome.status,
+      token: outcome.token,
+      userId: outcome.userId,
+      needsPassphrase: outcome.needsPassphrase,
+    }
+  })
+
+  app.get('/api/v1/passkeys', async (request) => {
+    const session = await sessionOf(request)
+    const credentials = await listCredentials(webAuthnDeps, session.user_id)
+    return {
+      passkeys: credentials.map((credential) => ({
+        id: credential.id,
+        name: credential.name,
+        backedUp: credential.backed_up === 1,
+        createdAt: credential.created_at,
+        lastUsedAt: credential.last_used_at,
+      })),
+    }
+  })
+
+  app.delete('/api/v1/passkeys/:id', async (request, reply) => {
+    const session = await sessionOf(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await removeCredential(webAuthnDeps, {
+      userId: session.user_id,
+      credentialRowId: id,
+    })
+    return reply.status(204).send()
   })
 
   // ── Events and tickets ────────────────────────────────────────────────────────

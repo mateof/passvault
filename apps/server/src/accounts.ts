@@ -8,7 +8,7 @@ import {
   verifyPassword,
   type Argon2Params,
 } from '@passvault/crypto'
-import { toInstant, type DatabaseHandle } from '@passvault/db'
+import { newId, toInstant, type DatabaseHandle } from '@passvault/db'
 import { isLocale, type Locale } from '@passvault/i18n'
 import type { ServerConfig } from './config.js'
 import type { CryptoContext } from './crypto-context.js'
@@ -16,7 +16,7 @@ import { badRequest, conflict, forbidden, tooManyRequests, unauthorized } from '
 import { sendLocalised, type Mailer } from './mailer.js'
 import * as repo from './repository.js'
 import { generateTotpSecret, totpUri, verifyTotp } from './totp.js'
-import { createVault, VaultCache, unlockVault } from './vault.js'
+import { changePassphrase, createVault, VaultCache, unlockVault } from './vault.js'
 
 export const MINIMUM_PASSPHRASE_LENGTH = 8
 
@@ -418,7 +418,7 @@ export async function loginWithPassword(
     return { status: 'second-factor', challenge, methods }
   }
 
-  return issueSession(deps, user.id, input.deviceId)
+  return issueSessionFor(deps, user.id, input.deviceId)
 }
 
 export async function sendEmailOtp(deps: AccountsDeps, userId: string): Promise<string> {
@@ -486,7 +486,7 @@ export async function completeSecondFactor(
   }
 
   deps.pending.consume(input.challenge)
-  return issueSession(deps, pending.userId, input.deviceId)
+  return issueSessionFor(deps, pending.userId, input.deviceId)
 }
 
 /**
@@ -540,7 +540,13 @@ export async function confirmTotpEnrolment(
   })
 }
 
-async function issueSession(
+/**
+ * Mints a session.
+ *
+ * Exported so the passkey and provider flows end the same way a password login does. Three code
+ * paths that each built their own session row is how one of them ends up missing the audit entry.
+ */
+export async function issueSessionFor(
   deps: AccountsDeps,
   userId: string,
   deviceId?: string,
@@ -560,6 +566,225 @@ async function issueSession(
     subjectId: session.id,
   })
   return { status: 'complete', token, sessionId: session.id, userId }
+}
+
+export interface OidcLoginOutcome {
+  login: LoginOutcome
+  createdAccount: boolean
+  /** True when the account has no vault yet, so the client must ask for a passphrase. */
+  needsPassphrase: boolean
+}
+
+/**
+ * Signing in through Google or Microsoft.
+ *
+ * Three paths, and the middle one is where account takeover lives:
+ *
+ *   1. The provider subject is already linked — sign in.
+ *   2. It is not, but an account exists with that email address — link them, **only if the
+ *      provider says the address is verified**. Without that check, anybody who can get a token
+ *      from the provider carrying an unverified address of their choosing takes over the matching
+ *      PassVault account. This is the classic OIDC account-linking vulnerability and the reason
+ *      `email_verified` is not a nicety.
+ *   3. Neither — a registration, subject to whichever mode the instance is in.
+ *
+ * The subject, not the address, is the join key. Addresses change hands; `sub` does not.
+ */
+export async function loginWithOidc(
+  deps: AccountsDeps & { pending: PendingLogins },
+  input: {
+    provider: string
+    subject: string
+    email?: string
+    emailVerified?: boolean
+    displayName?: string
+    invitationCode?: string
+    deviceId?: string
+  },
+): Promise<OidcLoginOutcome> {
+  const existing = await deps.db.db
+    .selectFrom('oidc_identities')
+    .select('user_id')
+    .where('provider', '=', input.provider)
+    .where('subject', '=', input.subject)
+    .executeTakeFirst()
+
+  if (existing) {
+    const user = await repo.findUserById(deps.db, existing.user_id)
+    if (!user) {
+      throw unauthorized('auth.error.invalidCredentials')
+    }
+    if (user.status === 'SUSPENDED') {
+      throw forbidden('auth.error.accountSuspended')
+    }
+    return {
+      login: await issueSessionFor(deps, user.id, input.deviceId),
+      createdAccount: false,
+      needsPassphrase: (await repo.findUserKeys(deps.db, user.id)) === undefined,
+    }
+  }
+
+  if (!input.email) {
+    // Without an address there is no way to place this identity, and creating an account with no
+    // way to reach the user is worse than refusing.
+    throw badRequest('registration.error.emailInUse')
+  }
+
+  const emailKey = deps.crypto.emailIndex(input.email)
+  const byEmail = await repo.findUserByEmailIndex(deps.db, emailKey)
+
+  if (byEmail) {
+    if (input.emailVerified !== true) {
+      throw forbidden('auth.error.invalidCredentials')
+    }
+    await linkIdentity(deps, byEmail.id, input.provider, input.subject)
+    if (byEmail.status === 'INVITED') {
+      // An administrator created the account and the user has now proved the address. Signing in
+      // through a provider is a legitimate way to complete that.
+      await repo.activateUser(deps.db, byEmail.id)
+    }
+    return {
+      login: await issueSessionFor(deps, byEmail.id, input.deviceId),
+      createdAccount: false,
+      needsPassphrase: (await repo.findUserKeys(deps.db, byEmail.id)) === undefined,
+    }
+  }
+
+  const settings = await repo.readRegistrationSettings(deps.db)
+  switch (settings.mode) {
+    case 'OPEN':
+      break
+    case 'WHITELIST':
+      if (!(await repo.isWhitelisted(deps.db, emailKey))) {
+        throw forbidden('registration.error.notWhitelisted')
+      }
+      break
+    case 'INVITATION':
+      await consumeInvitationFor(deps, input.invitationCode, emailKey)
+      break
+    case 'CLOSED':
+      if ((await repo.countUsers(deps.db)) > 0) {
+        throw forbidden('registration.error.closed')
+      }
+      break
+  }
+
+  const isFirstAccount = (await repo.countUsers(deps.db)) === 0
+  const userId = await repo.insertUser(deps.db, {
+    emailCipher: new Uint8Array(),
+    emailKey,
+    displayNameCipher: null,
+    // No password: this account signs in through the provider. A vault passphrase is set
+    // separately, which is exactly why the two secrets are separate.
+    passwordHash: null,
+    locale: deps.config.defaultLocale,
+    isAdmin: isFirstAccount,
+    status: 'ACTIVE',
+  })
+  await deps.db.db
+    .updateTable('users')
+    .set({ email_cipher: Buffer.from(encryptEmail(deps, userId, input.email)) })
+    .where('id', '=', userId)
+    .execute()
+  await linkIdentity(deps, userId, input.provider, input.subject)
+  await repo.recordAudit(deps.db, {
+    actorUserId: userId,
+    action: `account.created.${input.provider}`,
+    subjectKind: 'user',
+    subjectId: userId,
+  })
+
+  return {
+    login: await issueSessionFor(deps, userId, input.deviceId),
+    createdAccount: true,
+    needsPassphrase: true,
+  }
+}
+
+async function linkIdentity(
+  deps: AccountsDeps,
+  userId: string,
+  provider: string,
+  subject: string,
+): Promise<void> {
+  await deps.db.db
+    .insertInto('oidc_identities')
+    .values({
+      id: newId(),
+      user_id: userId,
+      provider,
+      subject,
+      created_at: toInstant(),
+    })
+    .execute()
+  await repo.recordAudit(deps.db, {
+    actorUserId: userId,
+    action: `identity.linked.${provider}`,
+    subjectKind: 'user',
+    subjectId: userId,
+  })
+}
+
+/**
+ * Sets a vault passphrase, or changes an existing one.
+ *
+ * The path that matters is the first one: an account created through a provider, a passkey or an
+ * administrator has no vault at all until this is called. Until then it can sign in and see
+ * nothing, which is the correct state rather than a bug — there is no key, so there is nothing to
+ * decrypt.
+ *
+ * Changing an existing passphrase re-wraps the data key rather than re-encrypting anything, so it
+ * is a single row update whatever the size of the wallet.
+ */
+export async function setVaultPassphrase(
+  deps: AccountsDeps,
+  input: {
+    userId: string
+    sessionId: string
+    passphrase: string
+    currentPassphrase?: string
+  },
+): Promise<{ created: boolean; recoveryCode?: string }> {
+  if (input.passphrase.length < MINIMUM_PASSPHRASE_LENGTH) {
+    throw badRequest('vault.error.passphraseTooShort', { minimum: MINIMUM_PASSPHRASE_LENGTH })
+  }
+  const existing = await repo.findUserKeys(deps.db, input.userId)
+
+  if (!existing) {
+    const vault = await createVault(deps.crypto.masterKey, input.passphrase, deps.argon2Params)
+    await repo.saveUserKeys(deps.db, input.userId, vault.sealedEnvelope, true)
+    deps.vaults.unlock(input.sessionId, input.userId, vault.dataKey)
+    await repo.recordAudit(deps.db, {
+      actorUserId: input.userId,
+      action: 'vault.created',
+      subjectKind: 'user',
+      subjectId: input.userId,
+    })
+    return { created: true, recoveryCode: vault.recoveryCode }
+  }
+
+  if (!input.currentPassphrase) {
+    // Changing a passphrase needs the old one. A session alone must not be enough, or a stolen
+    // token would let somebody lock the owner out of their own data.
+    throw badRequest('vault.passphraseRequired')
+  }
+  const resealed = await changePassphrase(
+    deps.crypto.masterKey,
+    existing,
+    input.currentPassphrase,
+    input.passphrase,
+    deps.argon2Params,
+  )
+  await repo.replaceUserKeys(deps.db, input.userId, resealed)
+  const dataKey = await unlockVault(deps.crypto.masterKey, resealed, input.passphrase)
+  deps.vaults.unlock(input.sessionId, input.userId, dataKey)
+  await repo.recordAudit(deps.db, {
+    actorUserId: input.userId,
+    action: 'vault.passphrase.changed',
+    subjectKind: 'user',
+    subjectId: input.userId,
+  })
+  return { created: false }
 }
 
 /**
