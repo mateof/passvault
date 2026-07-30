@@ -49,6 +49,8 @@ export const en: Catalogue = {
 
   'vault.passphraseRequired': 'Enter your vault passphrase to see your tickets.',
   'vault.error.wrongPassphrase': 'That passphrase is not correct.',
+  'vault.error.passphraseTooShort':
+    'The vault passphrase must be at least {minimum} characters long.',
   'vault.error.notSet': 'You have not set a vault passphrase yet.',
   'vault.error.invalidRecoveryCode': 'That recovery code is not correct.',
   'vault.warning.noRecovery':

@@ -50,6 +50,8 @@ export const es: Catalogue = {
 
   'vault.passphraseRequired': 'Introduce tu frase de acceso al baúl para ver las entradas.',
   'vault.error.wrongPassphrase': 'La frase de acceso no es correcta.',
+  'vault.error.passphraseTooShort':
+    'La frase de acceso al baúl tiene que tener al menos {minimum} caracteres.',
   'vault.error.notSet': 'Todavía no has establecido una frase de acceso al baúl.',
   'vault.error.invalidRecoveryCode': 'El código de recuperación no es correcto.',
   'vault.warning.noRecovery':

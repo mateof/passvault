@@ -61,6 +61,8 @@ export const gl = {
   // ─── Vault passphrase ───
   'vault.passphraseRequired': 'Introduce a túa frase de acceso ao baúl para ver as entradas.',
   'vault.error.wrongPassphrase': 'A frase de acceso non é correcta.',
+  'vault.error.passphraseTooShort':
+    'A frase de acceso ao baúl ten que ter polo menos {minimum} caracteres.',
   'vault.error.notSet': 'Aínda non estableceches unha frase de acceso ao baúl.',
   'vault.error.invalidRecoveryCode': 'O código de recuperación non é correcto.',
   'vault.warning.noRecovery':
