@@ -1,0 +1,31 @@
+{
+  "name": "@passvault/db",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "kysely": "^0.28.2",
+    "mysql2": "^3.12.0",
+    "pg": "^8.13.1",
+    "tarn": "^3.0.2",
+    "tedious": "^20.0.0",
+    "uuid": "^11.0.5"
+  },
+  "optionalDependencies": {
+    "kysely-oracledb": "^3.1.2",
+    "oracledb": "^6.7.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/pg": "^8.11.10"
+  }
+}

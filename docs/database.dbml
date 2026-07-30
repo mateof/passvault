@@ -1,0 +1,494 @@
+// PassVault relational schema — canonical contract.
+//
+// This file governs. Migrations in packages/db/src/migrations implement it, and a
+// test compares the shape it creates against this document. If the two disagree,
+// this one is right.
+//
+// Portability rules, applied throughout and enforced by running the migrations
+// against every supported engine in CI:
+//
+//   * Identifiers are application-generated UUIDv7 in varchar(36). Time-ordered
+//     without depending on any engine's sequence or default.
+//   * Booleans are int, 0 or 1. SQLite and Oracle have no native boolean.
+//   * Instants are varchar(24) holding ISO-8601 UTC with millisecond precision
+//     ('2026-07-30T10:15:00.000Z'). Fixed width means lexicographic order equals
+//     chronological order on every engine, so ORDER BY and range scans work
+//     without a date type.
+//   * Money is integer cents. Never a float.
+//   * Encrypted values are varbinary/blob and are suffixed _cipher. Anything not
+//     suffixed is plaintext and therefore queryable.
+//   * No foreign key cascades anywhere. SQL Server rejects multiple cascade paths,
+//     and event_id appears in most tables, so the paths would collide immediately.
+//     Deletion is a status transition; hard deletes are handled in application code
+//     in dependency order.
+//   * Every unique index over a nullable natural key uses a non-null mirror column,
+//     because SQL Server treats two NULLs as equal in a unique index and would
+//     permit only one such row.
+
+Project passvault {
+  database_type: 'Engine-agnostic'
+  note: 'Offline-first event ticket management. Default SQLite; also PostgreSQL, MySQL, MariaDB, SQL Server, Oracle.'
+}
+
+// ─── Enumerations ────────────────────────────────────────────────────────────
+// Stored as varchar with a check constraint rather than a native enum type: only
+// PostgreSQL and MySQL have one, and altering it later differs on each.
+
+enum user_status { ACTIVE INVITED SUSPENDED }
+enum registration_mode { OPEN WHITELIST INVITATION CLOSED }
+enum device_status { ACTIVE REVOKED }
+enum group_member_role { OWNER ORGANISER MEMBER }
+enum group_member_status { ACTIVE INACTIVE }
+enum event_status { ACTIVE ARCHIVED }
+enum access_subject_kind { GROUP USER }
+enum access_role { ORGANISER MEMBER }
+enum assignment_mode { OPEN ASSIGNED SELF_CLAIM }
+enum assignment_state { FREE PROVISIONAL CLAIMED ASSIGNED TRANSFERRED }
+enum ticket_status { ACTIVE WITHDRAWN }
+enum payment_state { UNPAID PARTIAL PAID WAIVED }
+enum payment_visibility { ALL HOLDER_ONLY CREATOR_ONLY }
+enum barcode_format { QR_CODE AZTEC PDF_417 CODE_128 CODE_39 EAN_13 DATA_MATRIX }
+enum claim_request_state { PENDING CONFIRMED REJECTED DISCARDED }
+enum operation_state { APPLIED QUARANTINED REJECTED }
+enum ingest_state { PENDING PROPOSED CONFIRMED FAILED }
+enum blob_media_type { PDF PNG JPEG PKPASS }
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+Table users {
+  id varchar(36) [pk]
+  email_cipher varbinary [not null, note: 'AES-256-GCM. The address itself is never stored in the clear.']
+  email_key varchar(43) [not null, unique, note: 'HMAC-SHA256 blind index. What lookups and uniqueness use. Non-null so SQL Server accepts the unique index.']
+  display_name_cipher varbinary [null]
+  password_hash varchar(255) [null, note: 'Argon2id PHC string. Null for accounts that only sign in through a provider or a passkey.']
+  status varchar(16) [not null, default: 'ACTIVE']
+  locale varchar(8) [not null, default: 'gl', note: 'Language for emails, which are sent outside any request. Defaults to Galician.']
+  is_admin int [not null, default: 0]
+  created_at varchar(24) [not null]
+  updated_at varchar(24) [not null]
+
+  indexes {
+    status
+  }
+  note: 'Deletion is a status transition. An account is never removed while operations reference it, or the audit trail would lose its actors.'
+}
+
+Table user_keys {
+  user_id varchar(36) [pk]
+  sealed_envelope varbinary [not null, note: 'The key envelope, sealed under the server master key. Holds the passphrase and recovery slots that wrap the data key.']
+  has_recovery_slot int [not null, default: 0]
+  passphrase_set_at varchar(24) [null]
+  updated_at varchar(24) [not null]
+  note: 'One row per user. Separate from users so a query for a profile never loads key material by accident.'
+}
+
+Table devices {
+  id varchar(36) [pk]
+  user_id varchar(36) [null, note: 'Null for a device with no account, which can still hold and exchange tickets.']
+  name varchar(120) [not null]
+  signing_public_key varchar(43) [not null, note: 'Ed25519, base64url. Verifies operations and .tkpak manifests from this device.']
+  agreement_public_key varchar(43) [not null, note: 'X25519, base64url. Used for local pairing and sealed exports.']
+  status varchar(16) [not null, default: 'ACTIVE']
+  created_at varchar(24) [not null]
+  last_seen_at varchar(24) [null]
+
+  indexes {
+    (user_id, status)
+    signing_public_key [unique]
+  }
+}
+
+Table oidc_identities {
+  id varchar(36) [pk]
+  user_id varchar(36) [not null]
+  provider varchar(32) [not null, note: 'google | microsoft']
+  subject varchar(255) [not null, note: 'The provider sub claim. Stable; the email is not, so it is never the join key.']
+  created_at varchar(24) [not null]
+
+  indexes {
+    (provider, subject) [unique]
+    user_id
+  }
+}
+
+Table webauthn_credentials {
+  id varchar(36) [pk]
+  user_id varchar(36) [not null]
+  credential_id varchar(255) [not null, unique]
+  public_key varbinary [not null]
+  sign_count int [not null, default: 0]
+  transports varchar(64) [null]
+  backed_up int [not null, default: 0]
+  name varchar(120) [null]
+  created_at varchar(24) [not null]
+  last_used_at varchar(24) [null]
+
+  indexes {
+    user_id
+  }
+}
+
+Table totp_secrets {
+  user_id varchar(36) [pk]
+  secret_cipher varbinary [not null]
+  confirmed_at varchar(24) [null, note: 'Null while enrolment is unfinished. An unconfirmed secret must not satisfy a second factor.']
+  created_at varchar(24) [not null]
+}
+
+Table email_otp_challenges {
+  id varchar(36) [pk]
+  user_id varchar(36) [not null]
+  code_hash varchar(255) [not null, note: 'Argon2id. A one-time code is short, so a leaked table must not yield it.']
+  purpose varchar(32) [not null, note: 'second_factor | password_reset']
+  attempts int [not null, default: 0]
+  expires_at varchar(24) [not null]
+  consumed_at varchar(24) [null]
+  created_at varchar(24) [not null]
+
+  indexes {
+    (user_id, purpose)
+    expires_at
+  }
+}
+
+Table sessions {
+  id varchar(36) [pk]
+  user_id varchar(36) [not null]
+  token_hash varchar(255) [not null, unique, note: 'SHA-256 of the bearer token. The token itself is never stored.']
+  device_id varchar(36) [null]
+  created_at varchar(24) [not null]
+  idle_expires_at varchar(24) [not null, note: 'Advanced on use. Bounds how long an unwrapped data key stays in memory.']
+  hard_expires_at varchar(24) [not null]
+  revoked_at varchar(24) [null]
+
+  indexes {
+    (user_id, revoked_at)
+    idle_expires_at
+  }
+}
+
+// ─── Registration ────────────────────────────────────────────────────────────
+
+Table registration_settings {
+  id int [pk, note: 'Always 1. A single-row table, so the mode is changeable at runtime without a restart.']
+  mode varchar(16) [not null, default: 'CLOSED', note: 'Defaults to CLOSED: a fresh instance reachable from the internet must not accept signups until its owner decides to.']
+  allow_password_login int [not null, default: 1]
+  require_second_factor int [not null, default: 0]
+  updated_at varchar(24) [not null]
+  updated_by varchar(36) [null]
+}
+
+Table email_whitelist {
+  id varchar(36) [pk]
+  email_key varchar(43) [not null, unique, note: 'Blind index, as in users. The whitelist never holds addresses in the clear either.']
+  email_cipher varbinary [not null]
+  added_by varchar(36) [null]
+  created_at varchar(24) [not null]
+}
+
+Table invitations {
+  id varchar(36) [pk]
+  code_hash varchar(255) [not null, unique, note: 'Argon2id of the invitation code. The code appears once, in the link and the QR.']
+  email_key varchar(43) [null, note: 'Set when the invitation is bound to one address. Not unique: an address may be re-invited after expiry.']
+  created_by varchar(36) [not null]
+  max_uses int [not null, default: 1]
+  uses int [not null, default: 0]
+  expires_at varchar(24) [not null]
+  revoked_at varchar(24) [null]
+  created_at varchar(24) [not null]
+
+  indexes {
+    created_by
+    expires_at
+  }
+}
+
+Table password_setup_tokens {
+  id varchar(36) [pk]
+  user_id varchar(36) [not null]
+  token_hash varchar(255) [not null, unique]
+  expires_at varchar(24) [not null]
+  consumed_at varchar(24) [null]
+  created_at varchar(24) [not null]
+
+  indexes {
+    user_id
+  }
+  note: 'Closed registration, option B: the administrator creates the account and the user sets their own password through this token.'
+}
+
+// ─── Groups ──────────────────────────────────────────────────────────────────
+
+Table groups {
+  id varchar(36) [pk]
+  name_cipher varbinary [not null]
+  owner_user_id varchar(36) [not null]
+  status varchar(16) [not null, default: 'ACTIVE']
+  created_at varchar(24) [not null]
+  updated_at varchar(24) [not null]
+
+  indexes {
+    owner_user_id
+  }
+}
+
+Table group_members {
+  id varchar(36) [pk]
+  group_id varchar(36) [not null]
+  user_id varchar(36) [not null]
+  role varchar(16) [not null, default: 'MEMBER']
+  status varchar(16) [not null, default: 'ACTIVE']
+  created_at varchar(24) [not null]
+  updated_at varchar(24) [not null]
+
+  indexes {
+    (group_id, user_id) [unique]
+    (user_id, status)
+  }
+  note: 'A membership transitions between ACTIVE and INACTIVE and is never deleted, so a ticket assigned to a former member still resolves to a real row.'
+}
+
+// ─── Events and tickets ──────────────────────────────────────────────────────
+
+Table events {
+  id varchar(36) [pk]
+  creator_user_id varchar(36) [not null]
+  name_cipher varbinary [not null]
+  venue_cipher varbinary [null]
+  notes_cipher varbinary [null]
+  starts_at varchar(24) [null, note: 'Plaintext: the wallet sorts and filters by it.']
+  time_zone varchar(64) [null]
+  default_assignment_mode varchar(16) [not null, default: 'OPEN']
+  password_protected int [not null, default: 0]
+  sealed_key_envelope varbinary [not null, note: 'Event data key, wrapped by the event password slot and by the creator slot, then sealed under the master key.']
+  authority_device_id varchar(36) [null, note: 'Null while this server is the authority for claims. Set when the event originated on a device that keeps that role.']
+  status varchar(16) [not null, default: 'ACTIVE']
+  created_at varchar(24) [not null]
+  updated_at varchar(24) [not null]
+
+  indexes {
+    (creator_user_id, status)
+    starts_at
+  }
+}
+
+Table event_access {
+  id varchar(36) [pk]
+  event_id varchar(36) [not null]
+  subject_kind varchar(8) [not null, note: 'GROUP or USER. An event may grant to both at once.']
+  subject_id varchar(36) [not null]
+  role varchar(16) [not null, default: 'MEMBER']
+  granted_by varchar(36) [not null]
+  granted_at varchar(24) [not null]
+  revoked_at varchar(24) [null, note: 'Revoking removes future access. It does not recall anything already delivered; see docs/threat-model.md.']
+
+  indexes {
+    (event_id, subject_kind, subject_id) [unique]
+    (subject_kind, subject_id)
+  }
+}
+
+Table blobs {
+  id varchar(36) [pk]
+  event_id varchar(36) [not null]
+  media_type varchar(16) [not null]
+  byte_length int [not null]
+  sha256 varchar(43) [not null, note: 'Of the ciphertext, so integrity is checkable without the key.']
+  nonce varchar(16) [not null]
+  storage_path varchar(512) [not null, note: 'Relative to the blob root. Documents live on disk, not in the database: a 30 MiB PDF in a row makes every backup and every query slower for no gain.']
+  created_at varchar(24) [not null]
+
+  indexes {
+    event_id
+  }
+}
+
+Table tickets {
+  id varchar(36) [pk]
+  event_id varchar(36) [not null]
+  label_cipher varbinary [null]
+  section_cipher varbinary [null]
+  row_cipher varbinary [null]
+  seat_cipher varbinary [null]
+  barcode_format varchar(16) [null]
+  barcode_cipher varbinary [null, note: 'The asset. Encrypted with the event data key, so an event password the recipient lacks leaves this unusable.']
+  document_blob_id varchar(36) [null]
+  document_page int [null]
+  assignment_mode varchar(16) [not null, note: 'Per ticket, not per event: one event can mix assigned seats with self-claim ones.']
+  assignment_state varchar(16) [not null, default: 'FREE']
+  holder_user_id varchar(36) [null]
+  holder_label_cipher varbinary [null, note: 'For a holder with no account. The organiser typed a name.']
+  assigned_at varchar(24) [null]
+  exported_at varchar(24) [null, note: 'When a copy last left this installation. Hygiene, not revocation.']
+  status varchar(16) [not null, default: 'ACTIVE']
+  created_at varchar(24) [not null]
+  updated_at varchar(24) [not null]
+
+  indexes {
+    (event_id, assignment_state)
+    (holder_user_id, status)
+    document_blob_id
+  }
+}
+
+Table payments {
+  id varchar(36) [pk]
+  ticket_id varchar(36) [not null, unique, note: 'At most one record per ticket.']
+  state varchar(16) [not null, default: 'UNPAID']
+  amount_cents int [null]
+  currency varchar(3) [null]
+  visibility varchar(16) [not null, default: 'CREATOR_ONLY', note: 'Defaults to the most private option. Widening it is a deliberate act by the organiser.']
+  settled_at varchar(24) [null]
+  recorded_by varchar(36) [not null]
+  updated_at varchar(24) [not null]
+  note: 'amount_cents and currency are coupled: both present or both absent. Enforced in a check constraint the migration adds as (amount_cents IS NULL) = (currency IS NULL).'
+}
+
+// ─── Claims ──────────────────────────────────────────────────────────────────
+
+Table claim_coupons {
+  id varchar(36) [pk]
+  event_id varchar(36) [not null]
+  ticket_id varchar(36) [not null]
+  coupon_hash varchar(255) [not null, unique]
+  allowance int [not null, default: 1, note: 'How many tickets one member may claim in this event.']
+  issued_by varchar(36) [not null]
+  issued_at varchar(24) [not null]
+  consumed_at varchar(24) [null]
+
+  indexes {
+    (event_id, ticket_id)
+  }
+  note: 'Pre-issued by the organiser so an offline claim can be bounded: a client cannot claim a ticket that was never offered.'
+}
+
+Table claim_requests {
+  id varchar(36) [pk]
+  operation_id varchar(36) [not null, unique, note: 'The operation that made the request. Uniqueness is what makes replaying a sync idempotent.']
+  ticket_id varchar(36) [not null]
+  device_id varchar(36) [not null]
+  user_id varchar(36) [null]
+  lamport int [not null, note: 'Logical clock. Ordering is (lamport, hash of device_id) so no wall clock decides a race.']
+  device_id_hash varchar(43) [not null, note: 'Precomputed SHA-256 of device_id, so the tiebreak is an index-friendly comparison.']
+  state varchar(16) [not null, default: 'PENDING']
+  reason varchar(64) [null, note: 'Why a request was rejected or discarded, as a code the interface translates.']
+  created_at varchar(24) [not null]
+  resolved_at varchar(24) [null]
+
+  indexes {
+    (ticket_id, state)
+    (ticket_id, lamport, device_id_hash)
+  }
+}
+
+// ─── Synchronisation ─────────────────────────────────────────────────────────
+
+Table operations {
+  operation_id varchar(36) [pk, note: 'Supplied by the originating device, not generated here. The idempotency key.']
+  event_id varchar(36) [not null]
+  device_id varchar(36) [not null]
+  actor_user_id varchar(36) [null]
+  lamport int [not null]
+  device_id_hash varchar(43) [not null]
+  wall_clock varchar(24) [not null, note: 'Informational. Never used for ordering.']
+  type varchar(48) [not null]
+  body_cipher varbinary [not null]
+  signature varchar(86) [not null, note: 'Ed25519 over the canonical form. base64url.']
+  state varchar(16) [not null, default: 'APPLIED']
+  quarantine_reason varchar(64) [null, note: 'Why an operation is held rather than applied — usually an unknown device key that has not been exchanged yet.']
+  received_at varchar(24) [not null]
+  applied_at varchar(24) [null]
+
+  indexes {
+    (event_id, lamport, device_id_hash)
+    (event_id, state)
+    device_id
+  }
+  note: 'Append-only. Never deleted: retention is what makes replay total and the audit trail meaningful.'
+}
+
+// ─── Ingestion ───────────────────────────────────────────────────────────────
+
+Table ingest_batches {
+  id varchar(36) [pk]
+  event_id varchar(36) [null, note: 'Null until the proposal is confirmed into an event.']
+  created_by varchar(36) [not null]
+  source_media_type varchar(16) [not null]
+  source_blob_id varchar(36) [null]
+  page_count int [null]
+  detected_count int [null, note: 'How many barcodes were found. Differs from page_count when a page holds two passes or none.']
+  state varchar(16) [not null, default: 'PENDING']
+  failure_reason varchar(255) [null]
+  created_at varchar(24) [not null]
+  updated_at varchar(24) [not null]
+
+  indexes {
+    (created_by, state)
+  }
+  note: 'A batch is a reviewable proposal. Splitting is never applied without the user confirming it, because real tickets do not always come one per page.'
+}
+
+// ─── Audit ───────────────────────────────────────────────────────────────────
+
+Table audit_events {
+  id varchar(36) [pk]
+  actor_user_id varchar(36) [null]
+  actor_device_id varchar(36) [null]
+  action varchar(64) [not null]
+  subject_kind varchar(32) [null]
+  subject_id varchar(36) [null]
+  detail_cipher varbinary [null]
+  created_at varchar(24) [not null]
+
+  indexes {
+    (subject_kind, subject_id)
+    created_at
+    actor_user_id
+  }
+  note: 'Append-only log of security-relevant actions: logins, key changes, access grants, exports. Separate from operations, which are domain history.'
+}
+
+// ─── References ──────────────────────────────────────────────────────────────
+// Every reference is NO ACTION. See the portability note at the top: no cascades,
+// deletion is a status transition, and hard deletes run in dependency order in
+// application code.
+
+Ref: user_keys.user_id > users.id [delete: no action]
+Ref: devices.user_id > users.id [delete: no action]
+Ref: oidc_identities.user_id > users.id [delete: no action]
+Ref: webauthn_credentials.user_id > users.id [delete: no action]
+Ref: totp_secrets.user_id > users.id [delete: no action]
+Ref: email_otp_challenges.user_id > users.id [delete: no action]
+Ref: sessions.user_id > users.id [delete: no action]
+Ref: sessions.device_id > devices.id [delete: no action]
+Ref: registration_settings.updated_by > users.id [delete: no action]
+Ref: email_whitelist.added_by > users.id [delete: no action]
+Ref: invitations.created_by > users.id [delete: no action]
+Ref: password_setup_tokens.user_id > users.id [delete: no action]
+Ref: groups.owner_user_id > users.id [delete: no action]
+Ref: group_members.group_id > groups.id [delete: no action]
+Ref: group_members.user_id > users.id [delete: no action]
+Ref: events.creator_user_id > users.id [delete: no action]
+Ref: events.authority_device_id > devices.id [delete: no action]
+Ref: event_access.event_id > events.id [delete: no action]
+Ref: event_access.granted_by > users.id [delete: no action]
+Ref: blobs.event_id > events.id [delete: no action]
+Ref: tickets.event_id > events.id [delete: no action]
+Ref: tickets.document_blob_id > blobs.id [delete: no action]
+Ref: tickets.holder_user_id > users.id [delete: no action]
+Ref: payments.ticket_id > tickets.id [delete: no action]
+Ref: payments.recorded_by > users.id [delete: no action]
+Ref: claim_coupons.event_id > events.id [delete: no action]
+Ref: claim_coupons.ticket_id > tickets.id [delete: no action]
+Ref: claim_coupons.issued_by > users.id [delete: no action]
+Ref: claim_requests.ticket_id > tickets.id [delete: no action]
+Ref: claim_requests.device_id > devices.id [delete: no action]
+Ref: claim_requests.user_id > users.id [delete: no action]
+Ref: operations.event_id > events.id [delete: no action]
+Ref: operations.device_id > devices.id [delete: no action]
+Ref: operations.actor_user_id > users.id [delete: no action]
+Ref: ingest_batches.event_id > events.id [delete: no action]
+Ref: ingest_batches.created_by > users.id [delete: no action]
+Ref: ingest_batches.source_blob_id > blobs.id [delete: no action]
+Ref: audit_events.actor_user_id > users.id [delete: no action]
+Ref: audit_events.actor_device_id > devices.id [delete: no action]
