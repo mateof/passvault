@@ -180,6 +180,66 @@ export async function findEvent(deps: EventDeps, eventId: string): Promise<Event
 }
 
 /** Whether a user may see an event at all, through the group and individual grants. */
+/**
+ * Every event a user can reach, newest first.
+ *
+ * Added when the web client turned out to have no way of showing somebody their own events:
+ * the API could create one and fetch one by id, and nothing could answer "which ones are
+ * mine". The client had been working around it by remembering ids for the length of a
+ * session, which is not a list — it is a list of what you happened to do since you signed in.
+ *
+ * The three sources of access are the same three `hasAccess` checks one at a time: created by
+ * you, granted to you, or granted to a group you are an active member of. Combined here in one
+ * query rather than by checking every event, which would be a scan of the whole table per
+ * request.
+ */
+export async function listEventsForUser(
+  deps: EventDeps,
+  userId: string,
+): Promise<{ id: string; createdAt: string; creatorUserId: string; passwordProtected: boolean }[]> {
+  const created = await deps.db.db
+    .selectFrom('events')
+    .select(['id', 'created_at', 'creator_user_id', 'password_protected'])
+    .where('creator_user_id', '=', userId)
+    .execute()
+
+  const granted = await deps.db.db
+    .selectFrom('events')
+    .innerJoin('event_access', 'event_access.event_id', 'events.id')
+    .select(['events.id', 'events.created_at', 'events.creator_user_id', 'events.password_protected'])
+    .where('event_access.subject_kind', '=', 'USER')
+    .where('event_access.subject_id', '=', userId)
+    .where('event_access.revoked_at', 'is', null)
+    .execute()
+
+  const throughGroup = await deps.db.db
+    .selectFrom('events')
+    .innerJoin('event_access', 'event_access.event_id', 'events.id')
+    .innerJoin('group_members', 'group_members.group_id', 'event_access.subject_id')
+    .select(['events.id', 'events.created_at', 'events.creator_user_id', 'events.password_protected'])
+    .where('event_access.subject_kind', '=', 'GROUP')
+    .where('event_access.revoked_at', 'is', null)
+    .where('group_members.user_id', '=', userId)
+    .where('group_members.status', '=', 'ACTIVE')
+    .execute()
+
+  const byId = new Map<string, (typeof created)[number]>()
+  for (const row of [...created, ...granted, ...throughGroup]) {
+    // A user can reach the same event three ways; it appears once.
+    byId.set(row.id, row)
+  }
+
+  return [...byId.values()]
+    // Fixed-width instants, so a string comparison is a chronological one on every engine.
+    .sort((left, right) => (left.created_at < right.created_at ? 1 : -1))
+    .map((row) => ({
+      id: row.id,
+      createdAt: row.created_at,
+      creatorUserId: row.creator_user_id,
+      passwordProtected: row.password_protected === 1,
+    }))
+}
+
 export async function hasAccess(
   deps: EventDeps,
   eventId: string,

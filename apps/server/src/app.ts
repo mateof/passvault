@@ -60,6 +60,7 @@ import {
   projectEvent,
   revokeAccess,
   type EventDeps,
+  listEventsForUser,
 } from './events.js'
 import {
   listQuarantined,
@@ -704,6 +705,20 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       // read the tickets.
       readableByServer: !created.passwordProtected,
     })
+  })
+
+  /**
+   * The events this user can reach.
+   *
+   * Names only what is readable without an event key: an event's own name is ciphertext under
+   * that key, so a list cannot show it until the event is opened. The client shows what it has
+   * and fetches the rest per event, which is the same shape the encryption already forces on
+   * every other screen.
+   */
+  app.get('/api/v1/events', async (request) => {
+    const session = await sessionOf(request)
+    vaults.require(session.id)
+    return { events: await listEventsForUser(eventDeps, session.user_id) }
   })
 
   const eventParams = z.object({ id: z.string().uuid() })

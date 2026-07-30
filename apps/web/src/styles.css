@@ -1,0 +1,288 @@
+/*
+ * Plain CSS, no framework.
+ *
+ * The one decision here worth stating is the same one the Android app had to learn: the
+ * colours that *mean* something are fixed, and only the surfaces follow the user's theme. A
+ * provisional claim and a settled one must not be told apart by a shade the operating system
+ * is free to change — the user has to be able to learn what a colour means.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --surface: #ffffff;
+  --surface-sunken: #f4f4f7;
+  --ink: #16181d;
+  --ink-muted: #5c6070;
+  --line: #dcdde5;
+  --accent: #2f4858;
+
+  /* Semantic, and deliberately outside the theme. */
+  --state-free: #6b7280;
+  --state-provisional: #b45309;
+  --state-held: #0f766e;
+  --state-withdrawn: #9f1239;
+  --warning-bg: #fff7ed;
+  --warning-ink: #7c2d12;
+  --error-bg: #fef2f2;
+  --error-ink: #991b1b;
+  --success-bg: #f0fdf4;
+  --success-ink: #14532d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #16181d;
+    --surface-sunken: #101216;
+    --ink: #e8e9ee;
+    --ink-muted: #a0a4b4;
+    --line: #2a2d36;
+    --accent: #8fb3c7;
+    --warning-bg: #2a1c0c;
+    --error-bg: #2a1214;
+    --success-bg: #0d2016;
+    --warning-ink: #fdba74;
+    --error-ink: #fca5a5;
+    --success-ink: #86efac;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.shell {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.5rem 0 1rem;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.top nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+a {
+  color: var(--accent);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.card-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.field-label {
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+}
+
+.field-input {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.field-help {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.button {
+  padding: 0.6rem 1rem;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.button-quiet {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.button-danger {
+  background: var(--error-ink);
+  color: #fff;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.muted {
+  color: var(--ink-muted);
+}
+
+.list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ticket {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 0.75rem;
+}
+
+.ticket-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ticket-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+}
+
+.barcode {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 1.1rem;
+}
+
+.badge {
+  margin-left: auto;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 2px solid var(--state-free);
+  color: var(--state-free);
+}
+
+/* Colour and shape both carry the meaning: colour alone fails a colour-blind user and fails
+   anybody reading a phone in the sun. Free is an outline, everything settled is filled. */
+.badge-free {
+  background: transparent;
+}
+
+.badge-provisional {
+  border-color: var(--state-provisional);
+  background: var(--state-provisional);
+  color: #fff;
+}
+
+.badge-claimed,
+.badge-assigned {
+  border-color: var(--state-held);
+  background: var(--state-held);
+  color: #fff;
+}
+
+.badge-withdrawn,
+.badge-transferred {
+  border-color: var(--state-withdrawn);
+  background: var(--state-withdrawn);
+  color: #fff;
+}
+
+.banner {
+  padding: 0.7rem 0.85rem;
+  border-radius: 9px;
+  margin: 0.5rem 0;
+}
+
+.banner-warning {
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+
+.banner-error {
+  background: var(--error-bg);
+  color: var(--error-ink);
+}
+
+.banner-success {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
+.banner-info {
+  background: var(--surface-sunken);
+  color: var(--ink-muted);
+}
+
+.providers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.loading {
+  color: var(--ink-muted);
+}
