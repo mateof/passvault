@@ -34,8 +34,15 @@ COPY packages packages
 COPY apps/server apps/server
 COPY apps/web apps/web
 
-RUN npm run build --workspace @passvault/server \
-    || npm run build
+# The root script, not a per-workspace one: `tsc --build` walks the project references, so the
+# server and the packages it imports are built in dependency order by one command. The server
+# workspace has no build script of its own, and the first draft called one that does not exist —
+# it only ever worked because of an `|| npm run build` fallback that hid the mistake.
+RUN npm run build
+
+# The web interface is served by the same process, so it has to be in the image. Without this the
+# API answers and the root is a 404, which is what a first deployment actually did.
+RUN npm run build --workspace @passvault/web
 
 # Drop development dependencies rather than reinstalling, so the native modules built above
 # are the ones that ship — a fresh `npm ci --omit=dev` would rebuild them.
