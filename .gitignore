@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+apps/web/dist/
+
+# Runtime data: encrypted blobs, embedded database, logical backups
+data/
+backups/
+
+# Secrets. Never commit these.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+signing-credentials.txt
+
+# Test and coverage artefacts
+coverage/
+.vitest/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

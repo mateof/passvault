@@ -1,0 +1,48 @@
+{
+  "name": "passvault",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline-first event ticket management, splitting and distribution",
+  "license": "GPL-3.0-or-later",
+  "author": "Mateo Fuentes Pombo <mateof@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mateof/passvault.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "typecheck": "tsc --build --force",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "dev": "npm run dev --workspace @passvault/server",
+    "dev:web": "npm run dev --workspace @passvault/web",
+    "start": "npm run start --workspace @passvault/server",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "vectors:generate": "tsx packages/tkpak/scripts/generate-vectors.ts",
+    "db:migrate": "npm run db:migrate --workspace @passvault/server",
+    "db:backup": "npm run db:backup --workspace @passvault/server",
+    "db:restore": "npm run db:restore --workspace @passvault/server"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^2.1.8"
+  }
+}

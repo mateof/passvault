@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/crypto" },
+    { "path": "./packages/tkpak" },
+    { "path": "./packages/ingest" },
+    { "path": "./packages/db" },
+    { "path": "./packages/i18n" },
+    { "path": "./apps/server" }
+  ]
+}

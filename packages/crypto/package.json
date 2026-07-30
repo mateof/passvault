@@ -1,0 +1,17 @@
+{
+  "name": "@passvault/crypto",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@node-rs/argon2": "^2.0.2"
+  }
+}
