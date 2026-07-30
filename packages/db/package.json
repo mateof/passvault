@@ -22,10 +22,6 @@
     "tedious": "^20.0.0",
     "uuid": "^11.0.5"
   },
-  "optionalDependencies": {
-    "kysely-oracledb": "^3.1.2",
-    "oracledb": "^6.7.1"
-  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/pg": "^8.11.10"

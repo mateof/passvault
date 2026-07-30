@@ -22,11 +22,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Without optionals. `oracledb` is one, and the lock file has no entry for it — npm on
-      # the machine this project is developed on will not resolve it, so `npm ci` fails on
-      # every job for the sake of a driver only the Oracle job needs. That job installs it
-      # itself, below.
-      - run: npm ci --omit=optional
+      - run: npm ci
 
       - name: Typecheck
         run: npm run typecheck
@@ -104,11 +100,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Without optionals. `oracledb` is one, and the lock file has no entry for it — npm on
-      # the machine this project is developed on will not resolve it, so `npm ci` fails on
-      # every job for the sake of a driver only the Oracle job needs. That job installs it
-      # itself, below.
-      - run: npm ci --omit=optional
+      - run: npm ci
 
       - name: Migrate
         env:
@@ -157,11 +149,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Without optionals. `oracledb` is one, and the lock file has no entry for it — npm on
-      # the machine this project is developed on will not resolve it, so `npm ci` fails on
-      # every job for the sake of a driver only the Oracle job needs. That job installs it
-      # itself, below.
-      - run: npm ci --omit=optional
+      - run: npm ci
 
       - name: Create the database
         run: >-
@@ -213,15 +201,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Without optionals. `oracledb` is one, and the lock file has no entry for it — npm on
-      # the machine this project is developed on will not resolve it, so `npm ci` fails on
-      # every job for the sake of a driver only the Oracle job needs. That job installs it
-      # itself, below.
-      - run: npm ci --omit=optional
+      - run: npm ci
 
-      # The one job that needs the Oracle driver installs it here rather than every job
-      # carrying it. Not saved: the lock file is the same on every platform, and this is a
-      # dependency one CI job needs rather than a change to what the project depends on.
+      # Oracle brings its own driver, which is what the code already assumes: both packages
+      # are loaded through a variable module specifier and the failure names them. Not saved,
+      # so the lock stays the same tree every other job installs.
       - name: Install the Oracle driver
         run: npm install --no-save oracledb@^6.7.1 kysely-oracledb@^3.1.2
 

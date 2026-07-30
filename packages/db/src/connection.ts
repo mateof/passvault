@@ -121,10 +121,16 @@ async function mssqlDialect(target: EngineTarget): Promise<Dialect> {
  * Oracle, which is the one engine with no dialect in Kysely core.
  *
  * It comes from a community package, and `oracledb` needs native Oracle client
- * libraries that do not install everywhere. Both are optional dependencies, and both
- * are imported through a variable module specifier so TypeScript does not resolve them
- * at build time: an installation where the native package failed to build must still
- * compile and run on SQLite, and only fail if someone actually points it at Oracle.
+ * libraries that do not install everywhere. Neither is a dependency of this package:
+ * an installation pointed at Oracle installs them, and every other installation does
+ * not carry them. Both are imported through a variable module specifier so TypeScript
+ * does not resolve them at build time, so a tree without them still compiles and runs
+ * on SQLite, and fails only if somebody actually points it at Oracle.
+ *
+ * They were declared as optional dependencies and that was worse than useless: npm
+ * would not resolve `oracledb` into the lock file on every platform, so the lock and
+ * the manifest disagreed and `npm ci` refused to install anything at all — on every
+ * job, for a driver almost nobody needs.
  */
 async function oracleDialect(target: EngineTarget): Promise<Dialect> {
   const dialectPackage = 'kysely-oracledb'
