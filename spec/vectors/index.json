@@ -1,0 +1,303 @@
+{
+  "format": "tkpak",
+  "version": 1,
+  "generatedBy": "packages/tkpak/scripts/generate-vectors.ts",
+  "issuerPublicKey": "q3PoiOanptmHIJfRQLgzP-uLegKQxA6UDQlmm6Lawg4",
+  "note": "Argon2 parameters are deliberately weak so tests stay fast. Never reuse these keys or passwords.",
+  "vectors": [
+    {
+      "name": "01-single-ticket-password",
+      "description": "One ticket, one argon2id key slot, no documents.",
+      "archive": "01-single-ticket-password.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fdfd-715c-abae-4d733433ebde",
+        "eventName": "Festival do Norte 2026",
+        "ticketCount": 1,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          }
+        ],
+        "documents": [],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "02-multi-ticket-pdf-blobs",
+      "description": "Four tickets and three PDF page documents.",
+      "archive": "02-multi-ticket-pdf-blobs.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fe14-70bc-b9ec-ae3f6bda4176",
+        "eventName": "Festival do Norte 2026",
+        "ticketCount": 4,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          },
+          {
+            "format": "AZTEC",
+            "value": "8412-VECT-0002"
+          },
+          {
+            "format": "PDF_417",
+            "value": "8412-VECT-0003"
+          },
+          {
+            "format": "CODE_128",
+            "value": "8412-VECT-0004"
+          }
+        ],
+        "documents": [
+          {
+            "id": "019fb299-fe14-70bc-b9ec-8c79543d3bd6",
+            "mediaType": "application/pdf",
+            "sha256": "sqDwxvD_FPMrLQs5MiVFTYpDIe5MvG6L0Om0cmcWuVI"
+          },
+          {
+            "id": "019fb299-fe14-70bc-b9ec-93a9d3e0a4e3",
+            "mediaType": "application/pdf",
+            "sha256": "CAhuQYPTlU3CKCC2PnqahthhssnLMgn9Tneyv3LA-eE"
+          },
+          {
+            "id": "019fb299-fe14-70bc-b9ec-94c3d3231290",
+            "mediaType": "application/pdf",
+            "sha256": "mNoGSHtzRC_tW-kPviDhBvzkYuAAr9sOmtm_AgyrdBc"
+          }
+        ],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "03-sealed-to-recipient",
+      "description": "Only an x25519-sealed slot. Opens with the recipient key alone.",
+      "archive": "03-sealed-to-recipient.tkpak",
+      "open": {
+        "kind": "recipient-key",
+        "privateKey": "aMPqaAlPDuSvsmJYyZI1X637-t15hbyiLkTd85dC6Go",
+        "publicKey": "3ICARTePOK1hw9QmCGoYKliU3Bkq07gtRgQyu3jyNTw"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fe22-759f-9b4f-8b198e99b415",
+        "eventName": "Festival do Norte 2026",
+        "ticketCount": 2,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          },
+          {
+            "format": "AZTEC",
+            "value": "8412-VECT-0002"
+          }
+        ],
+        "documents": [],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "04-dual-slot-password",
+      "description": "Password and sealed slot wrapping the same file key; opened by password.",
+      "archive": "04-dual-slot.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fe27-7612-bf62-fd12f05d2d82",
+        "eventName": "Festival do Norte 2026",
+        "ticketCount": 2,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          },
+          {
+            "format": "AZTEC",
+            "value": "8412-VECT-0002"
+          }
+        ],
+        "documents": [],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "04-dual-slot-recipient",
+      "description": "The same file as 04-dual-slot-password, opened by the recipient key instead.",
+      "archive": "04-dual-slot.tkpak",
+      "open": {
+        "kind": "recipient-key",
+        "privateKey": "OH3Tf1SHDvWvSdOqevBU2n49C32W7UiiKAdme-Q1dWs",
+        "publicKey": "6V8fICPCYnNACv7evjy-uT4HwRFBJfM5srdvVVFtVzc"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fe27-7612-bf62-fd12f05d2d82",
+        "eventName": "Festival do Norte 2026",
+        "ticketCount": 2,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          },
+          {
+            "format": "AZTEC",
+            "value": "8412-VECT-0002"
+          }
+        ],
+        "documents": [],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "05-pkpass-blob",
+      "description": "An Apple Wallet pass as a document blob.",
+      "archive": "05-pkpass-blob.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fe34-7201-a45b-3baa96f84f04",
+        "eventName": "Festival do Norte 2026",
+        "ticketCount": 1,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          }
+        ],
+        "documents": [
+          {
+            "id": "019fb299-fe34-7201-a45b-2f4007e0c741",
+            "mediaType": "application/vnd.apple.pkpass",
+            "sha256": "kz3tZc58jjRIih6A9feFECWUVFT8bQtdpkjC_ZM80QM"
+          }
+        ],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "06-tampered-payload",
+      "description": "One payload byte flipped; the digest in the signed manifest catches it.",
+      "archive": "06-tampered-payload.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "error",
+        "code": "DIGEST_MISMATCH"
+      }
+    },
+    {
+      "name": "07-tampered-manifest",
+      "description": "Preview edited after signing; the signature no longer verifies.",
+      "archive": "07-tampered-manifest.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "error",
+        "code": "BAD_SIGNATURE"
+      }
+    },
+    {
+      "name": "08-future-version",
+      "description": "Version 2, correctly signed. A version 1 reader must say so before anything else.",
+      "archive": "08-future-version.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "error",
+        "code": "UNSUPPORTED_VERSION"
+      }
+    },
+    {
+      "name": "09-unicode-password",
+      "description": "Sealed with an NFC password and opened with its NFD form. Both must normalise alike.",
+      "archive": "09-unicode-password.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "entradas cómodas ñ"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fe5f-715c-bf98-2d74b0360c47",
+        "eventName": "Festival do Norte 2026",
+        "ticketCount": 1,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          }
+        ],
+        "documents": [],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "10-minimal-preview",
+      "description": "Preview holds the ticket count and nothing else.",
+      "archive": "10-minimal-preview.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "expect": {
+        "outcome": "success",
+        "fileId": "019fb299-fe67-73d9-9f35-90c109929f8e",
+        "ticketCount": 3,
+        "barcodes": [
+          {
+            "format": "QR_CODE",
+            "value": "8412-VECT-0001"
+          },
+          {
+            "format": "AZTEC",
+            "value": "8412-VECT-0002"
+          },
+          {
+            "format": "PDF_417",
+            "value": "8412-VECT-0003"
+          }
+        ],
+        "documents": [],
+        "signatureValid": true
+      }
+    },
+    {
+      "name": "11-resigned-tampered-payload",
+      "description": "Payload altered, digest updated and re-signed. Reaches decryption, where the tag fails.",
+      "archive": "11-resigned-tampered-payload.tkpak",
+      "open": {
+        "kind": "password",
+        "password": "sempre en Galiza"
+      },
+      "options": {
+        "requireValidSignature": false
+      },
+      "expect": {
+        "outcome": "error",
+        "code": "DECRYPTION_FAILED"
+      }
+    }
+  ]
+}
