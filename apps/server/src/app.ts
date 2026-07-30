@@ -55,11 +55,19 @@ import {
   createEvent,
   findEvent,
   grantAccess,
+  hasAccess,
   openEventKey,
   projectEvent,
   revokeAccess,
   type EventDeps,
 } from './events.js'
+import {
+  listQuarantined,
+  nextLamport,
+  pullOperations,
+  pushOperations,
+  registerDevice,
+} from './operations.js'
 import {
   addTickets,
   assignTicket,
@@ -920,6 +928,91 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     const session = await sessionOf(request)
     await withdrawTicket(eventDeps, { ticketId: id, actorUserId: session.user_id })
     return { withdrawn: true, recallsDeliveredTickets: false }
+  })
+
+  // ── Devices and the operation log ─────────────────────────────────────────────
+
+  const deviceBody = z.object({
+    name: z.string().min(1).max(120),
+    signingPublicKey: z.string().min(1),
+    agreementPublicKey: z.string().min(1),
+    deviceId: z.string().uuid().optional(),
+  })
+
+  app.post('/api/v1/devices', async (request, reply) => {
+    const session = await sessionOf(request)
+    const result = await registerDevice(eventDeps, {
+      userId: session.user_id,
+      ...deviceBody.parse(request.body),
+    })
+    return reply.status(201).send(result)
+  })
+
+  const operationSchema = z.object({
+    operationId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    actorUserId: z.string().uuid().nullable().optional(),
+    lamport: z.number().int().min(0),
+    wallClock: z.string().min(1),
+    scope: z.object({ kind: z.literal('event'), id: z.string().uuid() }),
+    type: z.string().min(1).max(48),
+    body: z.record(z.unknown()),
+    signature: z.string().min(1),
+  })
+
+  const syncBody = z.object({
+    operations: z.array(operationSchema).max(500).default([]),
+    cursor: z.string().optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+    eventPassword: z.string().optional(),
+  })
+
+  /**
+   * One endpoint for both directions.
+   *
+   * Push and pull in a single round trip because that is what a phone on a slow connection wants,
+   * and because the ordering matters: what the caller sends is applied before what it receives is
+   * computed, so it never gets back a view that predates its own contribution.
+   */
+  app.post('/api/v1/sync/:id', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const body = syncBody.parse(request.body ?? {})
+    const { session, eventKey } = await openEvent(request, id, body.eventPassword)
+
+    const push = await pushOperations(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      eventKey,
+      operations: body.operations,
+    })
+    const pull = await pullOperations(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      eventKey,
+      ...(body.cursor ? { cursor: body.cursor } : {}),
+      ...(body.limit ? { limit: body.limit } : {}),
+    })
+
+    return {
+      accepted: push.outcomes,
+      reconciled: push.reconciled,
+      operations: pull.operations,
+      cursor: pull.cursor,
+      hasMore: pull.hasMore,
+      // So a device that has been offline does not guess and lose every race on reconnection.
+      nextLamport: await nextLamport(eventDeps, id),
+    }
+  })
+
+  app.get('/api/v1/sync/:id/quarantine', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    if (!(await hasAccess(eventDeps, id, session.user_id))) {
+      throw forbidden()
+    }
+    // Surfaced rather than hidden: an operation held back is almost always a peer whose key has
+    // not been exchanged yet, and the user is the one who can fix that.
+    return { quarantined: await listQuarantined(eventDeps, id) }
   })
 
   // ── Interchange files and ingestion ───────────────────────────────────────────

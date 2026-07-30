@@ -459,7 +459,11 @@ function initialSchema(engine: Engine): Migration {
         .createTable('operations')
         .addColumn('operation_id', id(), (column) => column.primaryKey())
         .addColumn('event_id', id(), (column) => column.notNull().references('events.id'))
-        .addColumn('device_id', id(), (column) => column.notNull().references('devices.id'))
+        // Deliberately not a foreign key. An append-only log has to be able to retain an
+        // operation from a device it has never seen — that is exactly what quarantine is for,
+        // and it is usually a peer whose key has not been exchanged yet. A reference here would
+        // forbid the one case the synchronisation protocol requires.
+        .addColumn('device_id', id(), (column) => column.notNull())
         .addColumn('actor_user_id', id(), (column) => column.references('users.id'))
         .addColumn('lamport', 'integer', (column) => column.notNull())
         .addColumn('device_id_hash', digest(), (column) => column.notNull())
