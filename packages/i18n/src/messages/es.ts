@@ -127,4 +127,6 @@ export const es: Catalogue = {
   'error.forbidden': 'No tienes permiso para hacer esto.',
   'error.notFound': 'No se ha encontrado lo que buscabas.',
   'error.rateLimited': 'Demasiadas peticiones. Prueba otra vez en un momento.',
+  'groups.error.unknownEmail': 'No hay ninguna cuenta con ese correo en este servidor.',
+  'groups.error.cannotRemoveOwner': 'No se puede quitar a quien creó el grupo.',
 }

@@ -124,4 +124,6 @@ export const en: Catalogue = {
   'error.forbidden': 'You do not have permission to do this.',
   'error.notFound': 'That could not be found.',
   'error.rateLimited': 'Too many requests. Try again shortly.',
+  'groups.error.unknownEmail': 'No account on this server uses that email address.',
+  'groups.error.cannotRemoveOwner': 'The person who created the group cannot be removed.',
 }

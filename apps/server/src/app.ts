@@ -54,6 +54,7 @@ const INGEST_MESSAGE_KEYS: Record<IngestErrorCode, MessageKey> = {
 }
 import { readBlob, storeBlob } from './blobs.js'
 import { AppError, badRequest, forbidden, notFound, unauthorized } from './errors.js'
+import { addMember, createGroup, listGroups, listMembers, removeMember } from './groups.js'
 import { exportEvent, importArchive, inspectArchive, type TransferDeps } from './transfer.js'
 import {
   createEvent,
@@ -796,6 +797,69 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       throw notFound()
     }
     return projectEvent(eventDeps, event, eventKey, session.user_id)
+  })
+
+  const groupBody = z.object({ name: z.string().min(1).max(120) })
+  const groupParams = z.object({ id: z.string().uuid() })
+  const memberBody = z.object({ email: z.string().email() })
+
+  /**
+   * Groups, which the schema has always had and nothing could create.
+   *
+   * Sharing an event with "the family" needed a family to exist; without these endpoints every
+   * share had to name individuals one at a time, and the same four addresses had to be typed
+   * again for every concert.
+   */
+  app.post('/api/v1/groups', async (request, reply) => {
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    const body = groupBody.parse(request.body)
+    const created = await createGroup(eventDeps, {
+      ownerUserId: session.user_id,
+      ownerDataKey: vault.dataKey,
+      name: body.name,
+    })
+    return reply.status(201).send(created)
+  })
+
+  app.get('/api/v1/groups', async (request) => {
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    return {
+      groups: await listGroups(eventDeps, {
+        userId: session.user_id,
+        dataKey: vault.dataKey,
+      }),
+    }
+  })
+
+  app.get('/api/v1/groups/:id/members', async (request) => {
+    const session = await sessionOf(request)
+    vaults.require(session.id)
+    const { id } = groupParams.parse(request.params)
+    return { members: await listMembers(eventDeps, { groupId: id, actorUserId: session.user_id }) }
+  })
+
+  app.post('/api/v1/groups/:id/members', async (request, reply) => {
+    const session = await sessionOf(request)
+    vaults.require(session.id)
+    const { id } = groupParams.parse(request.params)
+    const body = memberBody.parse(request.body)
+    const added = await addMember(eventDeps, {
+      groupId: id,
+      actorUserId: session.user_id,
+      email: body.email,
+    })
+    return reply.status(201).send(added)
+  })
+
+  app.delete('/api/v1/groups/:id/members/:userId', async (request) => {
+    const session = await sessionOf(request)
+    vaults.require(session.id)
+    const { id } = groupParams.parse(request.params)
+    const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params)
+    await removeMember(eventDeps, { groupId: id, actorUserId: session.user_id, userId })
+    return { removed: true }
   })
 
   const accessBody = z.object({

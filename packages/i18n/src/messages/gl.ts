@@ -143,6 +143,8 @@ export const gl = {
   'error.forbidden': 'Non tes permiso para facer isto.',
   'error.notFound': 'Non se atopou o que buscabas.',
   'error.rateLimited': 'Demasiadas peticións. Proba outra vez en pouco.',
+  'groups.error.unknownEmail': 'Non hai ningunha conta con ese correo neste servidor.',
+  'groups.error.cannotRemoveOwner': 'Non se pode quitar a quen creou o grupo.',
 } as const
 
 export type MessageKey = keyof typeof gl
