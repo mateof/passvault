@@ -50,7 +50,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // A 401 from anywhere drops the session here rather than at each call site, so an expired
     // session shows the sign-in screen instead of a wallet that has quietly stopped loading.
     onUnauthenticated(() => setMe(undefined))
-    setReady(true)
+  }, [])
+
+  /**
+   * Asks the server who this is, once, when the page loads.
+   *
+   * This is what makes a refresh survivable. The session lives in an httpOnly cookie the browser
+   * sends on its own, so the answer is either an account or a 401 — but nothing asked, so every
+   * F5 landed on the sign-in screen with a perfectly good session sitting on the server, and the
+   * open vault behind it thrown away for nothing.
+   *
+   * `refresh` is deliberately not a dependency. It changes with the locale, and re-running this on
+   * a language change would be a second identity check for a decision about words.
+   */
+  useEffect(() => {
+    void refresh()
   }, [])
 
   const signIn = useCallback(
@@ -63,7 +77,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     // Told to the server as well as forgotten here. Dropping the token locally leaves a
-    // session alive on the server until it expires, which is not what "sign out" means.
+    // session alive on the server until it expires, which is not what "sign out" means — and
+    // now also leaves a cookie behind, which would read as still being signed in.
     await api.logout(locale).catch(() => undefined)
     setToken(undefined)
     setMe(undefined)

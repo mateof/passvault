@@ -480,3 +480,92 @@ describe('turning on a second factor', () => {
     expect(token).toEqual(expect.any(String))
   })
 })
+
+/**
+ * Surviving a refresh.
+ *
+ * The browser used to hold its token in a JavaScript variable, so every F5 signed the user out
+ * and took the open vault with it — two secrets to type again because the page reloaded. The
+ * reasoning was that local storage is readable by injected script, which is true and does not
+ * lead where it was taken: script in a single-page application can read a module variable just as
+ * easily, and can make requests as the user either way.
+ *
+ * An httpOnly cookie is the thing that actually helps, and these are its three properties: script
+ * cannot read it, the server accepts it without any header, and it does not travel to other sites.
+ */
+describe('a session that survives a reload', () => {
+  const signIn = () =>
+    server.app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: ADMIN })
+
+  const sessionCookie = (response: Awaited<ReturnType<typeof signIn>>) =>
+    response.cookies.find((cookie) => cookie.name === 'passvault_session')
+
+  it('sets a cookie when signing in', async () => {
+    expect(sessionCookie(await signIn())).toBeDefined()
+  })
+
+  it('keeps it out of reach of any script on the page', async () => {
+    expect(sessionCookie(await signIn())?.httpOnly).toBe(true)
+  })
+
+  it('does not let another site make the browser send it', async () => {
+    // Without this, moving the token out of a variable would trade one risk for another: a form
+    // on somebody else's page could act as the signed-in user.
+    expect(sessionCookie(await signIn())?.sameSite).toBe('Lax')
+  })
+
+  it('authenticates on its own, which is what a reload has', async () => {
+    const cookie = sessionCookie(await signIn())!
+
+    const me = await server.app.inject({
+      url: '/api/v1/me',
+      cookies: { passvault_session: cookie.value },
+    })
+
+    expect(me.statusCode).toBe(200)
+  })
+
+  it('leaves the vault open, so a reload does not ask for the passphrase again', async () => {
+    const signedIn = await signIn()
+    const cookie = sessionCookie(signedIn)!
+    await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/vault/unlock',
+      cookies: { passvault_session: cookie.value },
+      payload: { passphrase: ADMIN.passphrase },
+    })
+
+    // The key lives in the server process against the session, so restoring the session restores
+    // the unlocked vault. That is the whole reason this is worth doing rather than merely tidy.
+    const me = await server.app.inject({
+      url: '/api/v1/me',
+      cookies: { passvault_session: cookie.value },
+    })
+
+    expect(me.json().vaultUnlocked).toBe(true)
+  })
+
+  it('stops working once the user signs out', async () => {
+    const cookie = sessionCookie(await signIn())!
+    await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      cookies: { passvault_session: cookie.value },
+    })
+
+    const me = await server.app.inject({
+      url: '/api/v1/me',
+      cookies: { passvault_session: cookie.value },
+    })
+
+    expect(me.statusCode).toBe(401)
+  })
+
+  it('still takes a bearer header, which is what the Android app sends', async () => {
+    const token = signIn().then((response) => response.json().token)
+
+    const me = await server.app.inject({ url: '/api/v1/me', headers: bearer(await token) })
+
+    expect(me.statusCode).toBe(200)
+  })
+})

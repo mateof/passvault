@@ -12,6 +12,7 @@ import {
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import fastifyCookie from '@fastify/cookie'
 import fastifyStatic from '@fastify/static'
 import { z } from 'zod'
 import {
@@ -276,9 +277,53 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     return reply.status(500).send({ error: 'unexpected', message: t('error.unexpected') })
   })
 
+  await app.register(fastifyCookie)
+
+  /**
+   * The session, kept where a refresh does not lose it.
+   *
+   * The browser used to hold its token in a JavaScript variable, on the reasoning that local
+   * storage is readable by any injected script. The reasoning was half right and the conclusion
+   * was wrong: a script injected into a single-page application can read a variable in a module
+   * closure just as easily, and can simply make requests as the user in either case. What it
+   * bought was not safety — it was a session that ended every time somebody pressed F5, taking
+   * the open vault with it and asking for two secrets again.
+   *
+   * An httpOnly cookie is what actually helps: script cannot read it at all, so a token cannot be
+   * exfiltrated and used somewhere else later. `sameSite: lax` is what keeps that from trading an
+   * exfiltration risk for a cross-site request one — a form on another site cannot make the
+   * browser attach this to a POST.
+   *
+   * `secure` follows the public URL rather than being hard-coded: a cookie marked secure is never
+   * sent over http, so hard-coding it would silently break every installation reached at
+   * http://nas.local — which is the ordinary case on a home network.
+   */
+  const SESSION_COOKIE = 'passvault_session'
+  const secureCookies = config.publicUrl.startsWith('https://')
+
+  const setSessionCookie = (reply: FastifyReply, token: string): void => {
+    reply.setCookie(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: 'lax',
+      path: '/',
+      // Matched to the session's own hard expiry. A cookie that outlives the row it names is a
+      // browser that thinks it is signed in and a server that disagrees on every request.
+      maxAge: config.session.hardHours * 3600,
+    })
+  }
+
+  const clearSessionCookie = (reply: FastifyReply): void => {
+    reply.clearCookie(SESSION_COOKIE, { path: '/' })
+  }
+
   const sessionOf = async (request: FastifyRequest): Promise<repo.SessionRow> => {
     const header = request.headers.authorization
-    const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
+    // The header first, because that is what the Android app sends and it is explicit. The cookie
+    // is the browser's, and is never the only thing a client has to think about.
+    const token = header?.startsWith('Bearer ')
+      ? header.slice('Bearer '.length)
+      : request.cookies[SESSION_COOKIE]
     if (!token) {
       throw unauthorized('auth.error.invalidCredentials')
     }
@@ -416,11 +461,13 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     deviceId: z.string().uuid().optional(),
   })
 
-  app.post('/api/v1/auth/login', async (request) => {
+  app.post('/api/v1/auth/login', async (request, reply) => {
     const outcome = await loginWithPassword(deps, loginBody.parse(request.body))
-    return outcome.status === 'complete'
-      ? { status: outcome.status, token: outcome.token, userId: outcome.userId }
-      : { status: outcome.status, challenge: outcome.challenge, methods: outcome.methods }
+    if (outcome.status !== 'complete') {
+      return { status: outcome.status, challenge: outcome.challenge, methods: outcome.methods }
+    }
+    setSessionCookie(reply, outcome.token)
+    return { status: outcome.status, token: outcome.token, userId: outcome.userId }
   })
 
   const secondFactorBody = z.object({
@@ -430,11 +477,12 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     deviceId: z.string().uuid().optional(),
   })
 
-  app.post('/api/v1/auth/second-factor', async (request) => {
+  app.post('/api/v1/auth/second-factor', async (request, reply) => {
     const outcome = await completeSecondFactor(deps, secondFactorBody.parse(request.body))
     if (outcome.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
     }
+    setSessionCookie(reply, outcome.token)
     return { status: outcome.status, token: outcome.token, userId: outcome.userId }
   })
 
@@ -442,6 +490,9 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     const session = await sessionOf(request)
     vaults.evict(session.id)
     await repo.revokeSession(db, session.id)
+    // Both, or signing out leaves a browser holding a cookie for a session that no longer
+    // exists — which reads as being signed in until the first request fails.
+    clearSessionCookie(reply)
     return reply.status(204).send()
   })
 
@@ -723,7 +774,7 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     deviceId: z.string().uuid().optional(),
   })
 
-  app.post('/api/v1/auth/oidc/callback', async (request) => {
+  app.post('/api/v1/auth/oidc/callback', async (request, reply) => {
     const body = callbackBody.parse(request.body)
     // Single use, and unknown state is refused. This is what stops a callback being replayed or
     // forged from another site.
@@ -753,6 +804,7 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (outcome.login.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
     }
+    setSessionCookie(reply, outcome.login.token)
     return {
       status: 'complete',
       token: outcome.login.token,
@@ -818,7 +870,7 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     deviceId: z.string().uuid().optional(),
   })
 
-  app.post('/api/v1/passkeys/login', async (request) => {
+  app.post('/api/v1/passkeys/login', async (request, reply) => {
     const body = passkeyLoginBody.parse(request.body)
     const outcome = await finishPasskeyLogin(webAuthnDeps, {
       response: body.response,
@@ -827,6 +879,7 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (outcome.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
     }
+    setSessionCookie(reply, outcome.token)
     return {
       status: outcome.status,
       token: outcome.token,
