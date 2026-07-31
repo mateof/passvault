@@ -198,7 +198,70 @@ export const api = {
     request<RegistrationSettings>('/api/v1/registration/settings', json(locale)),
 
   providers: (locale: string) =>
-    request<{ providers: { id: string; name: string }[] }>('/api/v1/auth/providers', json(locale)),
+    request<{ providers: { id: string; name: string }[]; passkeys: boolean }>(
+      '/api/v1/auth/providers',
+      json(locale),
+    ),
+
+  /**
+   * Begins a delegated sign-in.
+   *
+   * `redirectUri` is required by the server and was never sent, so every provider button answered
+   * 400 — the buttons have never worked. It is this application's own callback screen, which is
+   * also what has to be registered with Google and Microsoft.
+   */
+  oidcStart: (locale: string, provider: string, redirectUri: string) =>
+    request<{ state: string; authorizationUrl: string }>(
+      `/api/v1/auth/oidc/${encodeURIComponent(provider)}/start`,
+      { ...json(locale), body: { redirectUri } },
+    ),
+
+  oidcCallback: (locale: string, state: string, code: string) =>
+    request<{ status: string; token: string; needsPassphrase: boolean; createdAccount: boolean }>(
+      '/api/v1/auth/oidc/callback',
+      { ...json(locale), body: { state, code } },
+    ),
+
+  // ── Passkeys ─────────────────────────────────────────────────────────────────
+
+  passkeyRegisterOptions: (locale: string) =>
+    request<Record<string, never>>('/api/v1/passkeys/register/options', {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  passkeyRegister: (locale: string, response: Record<string, unknown>, name?: string) =>
+    request<{ credentialId: string }>('/api/v1/passkeys/register', {
+      ...json(locale),
+      body: { response, ...(name ? { name } : {}) },
+    }),
+
+  passkeyLoginOptions: (locale: string) =>
+    request<Record<string, never>>('/api/v1/passkeys/login/options', {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  passkeyLogin: (locale: string, response: Record<string, unknown>) =>
+    request<AuthResult>('/api/v1/passkeys/login', { ...json(locale), body: { response } }),
+
+  // ── Second factor ────────────────────────────────────────────────────────────
+
+  /**
+   * Starts TOTP enrolment.
+   *
+   * The secret is returned once and stored unconfirmed: an unconfirmed secret never satisfies a
+   * second factor, so an enrolment somebody abandoned halfway cannot lock them out with a code
+   * they never successfully scanned.
+   */
+  totpEnrol: (locale: string) =>
+    request<{ secret: string; uri: string }>('/api/v1/totp/enrol', {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  totpConfirm: (locale: string, code: string) =>
+    request<{ confirmed: boolean }>('/api/v1/totp/confirm', { ...json(locale), body: { code } }),
 
   login: (locale: string, email: string, password: string) =>
     request<AuthResult>('/api/v1/auth/login', { ...json(locale), body: { email, password } }),

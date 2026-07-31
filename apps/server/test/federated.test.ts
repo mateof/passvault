@@ -91,7 +91,13 @@ describe('which sign-in methods an instance offers', () => {
   it('lists only providers it has credentials for', async () => {
     const response = await server.app.inject({ url: '/api/v1/auth/providers' })
 
-    expect(response.json().providers).toEqual(['google'])
+    expect(response.json().providers).toEqual([{ id: 'google', name: 'Google' }])
+  })
+
+  it('names them, since a client draws a button from this and not from the identifier', async () => {
+    const response = await server.app.inject({ url: '/api/v1/auth/providers' })
+
+    expect(response.json().providers[0].name).toBe('Google')
   })
 
   it('always offers passkeys, which need no external credentials', async () => {

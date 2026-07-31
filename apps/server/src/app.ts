@@ -659,10 +659,17 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   const challenges = new WebAuthnChallenges()
   const webAuthnDeps = { ...deps, challenges }
 
+  /** What a provider is called on a button. Not derived from the key, which is an identifier. */
+  const PROVIDER_NAMES: Record<OidcProviderName, string> = {
+    google: 'Google',
+    microsoft: 'Microsoft',
+  }
+
   app.get('/api/v1/auth/providers', async () => ({
     // So a client knows which buttons to show rather than offering a provider this instance has
-    // no credentials for.
-    providers: [...oidcClients.keys()],
+    // no credentials for. An identifier *and* a name: this answered with bare strings, so every
+    // client that rendered a button rendered an empty one pointing at `undefined`.
+    providers: [...oidcClients.keys()].map((id) => ({ id, name: PROVIDER_NAMES[id] })),
     passkeys: true,
   }))
 

@@ -183,7 +183,9 @@ engine.
   unless you kept the recovery code.
 - **Authentication** covers local passwords, OAuth2/OpenID Connect with Google and
   Microsoft, TOTP and email one-time codes for second factor, and WebAuthn
-  passkeys.
+  passkeys. Delegated sign-in appears only when the instance has credentials for
+  it: set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, or the Microsoft pair, and
+  register `<PUBLIC_URL>/auth/callback` with the provider.
 - **Registration** has four modes — open, email whitelist, invitation link or QR,
   and administrator-only — configurable at runtime.
 

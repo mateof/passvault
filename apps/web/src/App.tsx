@@ -14,6 +14,8 @@ import { I18nProvider, LOCALES, LOCALE_NAMES, useT, type Locale } from './i18n'
 import { SessionProvider, useSession } from './session'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
 import { Icon, type IconName } from './icons'
+import { ApiError } from './api/client'
+import { passkeysSupported, usePasskey } from './api/webauthn'
 import { EventPage, EventsPage } from './events'
 import { AccountPage } from './account'
 import { AdminPage } from './admin'
@@ -50,6 +52,7 @@ function LoginPage() {
   const [pending, setPending] = useState<{ challenge: string; methods: ('totp' | 'email')[] }>()
   const [code, setCode] = useState('')
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
+  const [failure, setFailure] = useState<string>()
 
   useEffect(() => {
     api
@@ -59,6 +62,27 @@ function LoginPage() {
       // showing: the password form works either way.
       .catch(() => setProviders([]))
   }, [locale])
+
+  /**
+   * Signing in with a passkey.
+   *
+   * No email is asked for first. The options are discoverable — the server registers resident
+   * credentials — so the authenticator knows which account it holds and the user picks it in the
+   * system sheet rather than typing an address the browser is about to ignore.
+   */
+  const signInWithPasskey = async () => {
+    setFailure(undefined)
+    try {
+      const options = await api.passkeyLoginOptions(locale)
+      const assertion = await usePasskey(options as never)
+      // Null is the user closing the sheet. Changing their mind is not an error.
+      if (!assertion) return
+      const result = await api.passkeyLogin(locale, assertion)
+      if (result.token) await signIn(result.token)
+    } catch (cause) {
+      setFailure(cause instanceof ApiError ? cause.message : t('login.passkeyFailed'))
+    }
+  }
 
   if (pending) {
     const method = pending.methods.includes('totp') ? 'totp' : 'email'
@@ -115,27 +139,45 @@ function LoginPage() {
         />
       </Form>
 
-      {providers.length > 0 ? (
-        <div className="providers">
-          <p>{t('login.orProvider')}</p>
-          {providers.map((provider) => (
-            <Button
-              key={provider.id}
-              variant="quiet"
-              onClick={async () => {
-                const start = await fetch(`/api/v1/auth/oidc/${provider.id}/start`, {
-                  method: 'POST',
-                })
-                const { authorizationUrl } = await start.json()
-                // A full navigation, not a fetch. The provider has to see the browser.
-                window.location.href = authorizationUrl
-              }}
-            >
-              {provider.name}
-            </Button>
-          ))}
-        </div>
-      ) : null}
+      {failure ? <Banner kind="error">{failure}</Banner> : null}
+
+      <div className="providers">
+        {passkeysSupported() ? (
+          <Button variant="quiet" icon="key" onClick={() => void signInWithPasskey()}>
+            {t('login.passkey')}
+          </Button>
+        ) : null}
+
+        {providers.length > 0 ? (
+          <>
+            <p className="muted">{t('login.orProvider')}</p>
+            {providers.map((provider) => (
+              <Button
+                key={provider.id}
+                variant="quiet"
+                onClick={async () => {
+                  try {
+                    // The callback screen of this application, which is also what has to be
+                    // registered with the provider. Sending none at all is what made every one
+                    // of these buttons answer 400.
+                    const { authorizationUrl } = await api.oidcStart(
+                      locale,
+                      provider.id,
+                      `${window.location.origin}/auth/callback`,
+                    )
+                    // A full navigation, not a fetch. The provider has to see the browser.
+                    window.location.href = authorizationUrl
+                  } catch (cause) {
+                    setFailure(cause instanceof ApiError ? cause.message : t('error.unexpected'))
+                  }
+                }}
+              >
+                {provider.name}
+              </Button>
+            ))}
+          </>
+        ) : null}
+      </div>
 
       <p className="muted">
         <Link to="/register">{t('login.needAccount')}</Link>
@@ -252,6 +294,43 @@ function RegisterPage() {
       <p className="muted">
         <Link to="/login">{t('register.haveAccount')}</Link>
       </p>
+    </Card>
+  )
+}
+
+/**
+ * Where a provider sends the browser back to.
+ *
+ * The code and state arrive as query parameters and are handed straight to the server, which is
+ * the side holding the verifier and the nonce. Nothing is decided here: this screen exists because
+ * OAuth needs somewhere to land, and without it the whole delegated sign-in has no way to finish.
+ */
+function OidcCallbackPage() {
+  const { t, locale } = useT()
+  const { signIn } = useSession()
+  const [params] = useSearchParams()
+  const [failure, setFailure] = useState<string>()
+
+  const state = params.get('state')
+  const code = params.get('code')
+
+  useEffect(() => {
+    if (!state || !code) {
+      setFailure(t('login.callbackMissing'))
+      return
+    }
+    api
+      .oidcCallback(locale, state, code)
+      .then((result) => signIn(result.token))
+      .catch((cause) =>
+        setFailure(cause instanceof ApiError ? cause.message : t('error.unexpected')),
+      )
+  }, [state, code, locale, signIn, t])
+
+  return (
+    <Card title={t('login.title')}>
+      {failure ? <Banner kind="error">{failure}</Banner> : <Loading />}
+      {failure ? <Link to="/login">{t('register.haveAccount')}</Link> : null}
     </Card>
   )
 }
@@ -534,6 +613,8 @@ function SignedOut() {
           <Route path="/register" element={<RegisterPage />} />
           {/* Reached from a mail an administrator sent, so it has to work signed out. */}
           <Route path="/set-password" element={<SetPasswordPage />} />
+          {/* Where Google and Microsoft send the browser back to. */}
+          <Route path="/auth/callback" element={<OidcCallbackPage />} />
           <Route path="*" element={<LoginPage />} />
         </Routes>
       </div>

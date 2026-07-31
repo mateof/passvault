@@ -36,6 +36,8 @@ export const gl = {
   'login.submit': 'Entrar',
   'login.orProvider': 'Ou entra con',
   'login.passkey': 'Entrar cunha chave de acceso',
+  'login.passkeyFailed': 'Non se puido usar a chave de acceso.',
+  'login.callbackMissing': 'Falta información na volta do provedor. Téntao de novo.',
   'login.needAccount': 'Non tes conta? Rexístrate',
   'login.secondFactor': 'Código de verificación',
   'login.secondFactorHelp': 'Introduce o código que che enviamos por correo.',
@@ -176,6 +178,17 @@ export const gl = {
   'account.addPasskey': 'Engadir unha chave de acceso',
   'account.noPasskeys': 'Non tes ningunha chave de acceso.',
   'account.language': 'Idioma',
+  'account.passkeysExplain':
+    'Unha chave de acceso vive no teu móbil ou no teu xestor de contrasinais e non se pode roubar cun engano: está atada a este enderezo, e o navegador compróbao por ti.',
+  'account.passkeysUnsupported': 'Este navegador non admite chaves de acceso.',
+  'account.secondFactor': 'Segundo factor',
+  'account.secondFactorExplain':
+    'Un código que cambia cada trinta segundos, ademais do contrasinal. Se alguén che rouba o contrasinal, sen o código non entra.',
+  'account.secondFactorStart': 'Activar o segundo factor',
+  'account.secondFactorScan':
+    'Engade esta clave á túa aplicación de códigos e escribe despois o que amose, para comprobar que quedou ben.',
+  'account.secondFactorOpen': 'Abrir na aplicación de códigos',
+  'account.secondFactorOn': 'O segundo factor está activo nesta conta.',
 
   'admin.title': 'Administración',
   'admin.notAdministrator': 'Esta pantalla é só para quen administra o servidor.',
@@ -286,6 +299,8 @@ export const es: Record<WebMessageKey, string> = {
   'login.submit': 'Entrar',
   'login.orProvider': 'O entra con',
   'login.passkey': 'Entrar con una llave de acceso',
+  'login.passkeyFailed': 'No se ha podido usar la llave de acceso.',
+  'login.callbackMissing': 'Falta información en la vuelta del proveedor. Inténtalo de nuevo.',
   'login.needAccount': '¿No tienes cuenta? Regístrate',
   'login.secondFactor': 'Código de verificación',
   'login.secondFactorHelp': 'Introduce el código que te hemos enviado por correo.',
@@ -424,6 +439,17 @@ export const es: Record<WebMessageKey, string> = {
   'account.addPasskey': 'Añadir una llave de acceso',
   'account.noPasskeys': 'No tienes ninguna llave de acceso.',
   'account.language': 'Idioma',
+  'account.passkeysExplain':
+    'Una llave de acceso vive en tu móvil o en tu gestor de contraseñas y no se puede robar con un engaño: está atada a esta dirección, y el navegador lo comprueba por ti.',
+  'account.passkeysUnsupported': 'Este navegador no admite llaves de acceso.',
+  'account.secondFactor': 'Segundo factor',
+  'account.secondFactorExplain':
+    'Un código que cambia cada treinta segundos, además de la contraseña. Si alguien te roba la contraseña, sin el código no entra.',
+  'account.secondFactorStart': 'Activar el segundo factor',
+  'account.secondFactorScan':
+    'Añade esta clave a tu aplicación de códigos y escribe después lo que muestre, para comprobar que ha quedado bien.',
+  'account.secondFactorOpen': 'Abrir en la aplicación de códigos',
+  'account.secondFactorOn': 'El segundo factor está activo en esta cuenta.',
 
   'admin.title': 'Administración',
   'admin.notAdministrator': 'Esta pantalla es solo para quien administra el servidor.',
@@ -531,6 +557,8 @@ export const en: Record<WebMessageKey, string> = {
   'login.submit': 'Sign in',
   'login.orProvider': 'Or sign in with',
   'login.passkey': 'Sign in with a passkey',
+  'login.passkeyFailed': 'That passkey could not be used.',
+  'login.callbackMissing': 'The provider came back without enough information. Try again.',
   'login.needAccount': 'No account? Register',
   'login.secondFactor': 'Verification code',
   'login.secondFactorHelp': 'Enter the code we emailed you.',
@@ -668,6 +696,17 @@ export const en: Record<WebMessageKey, string> = {
   'account.addPasskey': 'Add a passkey',
   'account.noPasskeys': 'You have no passkeys.',
   'account.language': 'Language',
+  'account.passkeysExplain':
+    'A passkey lives on your phone or in your password manager and cannot be phished: it is tied to this address, and the browser checks that for you.',
+  'account.passkeysUnsupported': 'This browser does not support passkeys.',
+  'account.secondFactor': 'Second factor',
+  'account.secondFactorExplain':
+    'A code that changes every thirty seconds, on top of your password. Somebody who steals the password still cannot get in without it.',
+  'account.secondFactorStart': 'Turn on a second factor',
+  'account.secondFactorScan':
+    'Add this key to your authenticator app, then type what it shows, to check it went in correctly.',
+  'account.secondFactorOpen': 'Open in the authenticator app',
+  'account.secondFactorOn': 'A second factor is on for this account.',
 
   'admin.title': 'Administration',
   'admin.notAdministrator': 'This screen is only for whoever administers the server.',
