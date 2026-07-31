@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   TABLES_IN_DEPENDENCY_ORDER,
   migrateToLatest,
+  migrations,
   newId,
   openDatabase,
   toInstant,
@@ -21,7 +22,10 @@ let handle: DatabaseHandle
 beforeEach(async () => {
   handle = await openDatabase('sqlite::memory:')
   const outcome = await migrateToLatest(handle)
-  expect(outcome.applied).toEqual(['0001_initial_schema'])
+  // Every migration there is, named rather than listed by hand: a literal list has to be
+  // edited each time one is added, and that edit is indistinguishable from silencing a
+  // real failure.
+  expect(outcome.applied).toEqual(Object.keys(migrations('sqlite')))
 })
 
 afterEach(async () => {

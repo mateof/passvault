@@ -37,6 +37,8 @@ export interface NewTicket {
   barcode?: { format: BarcodeFormat; value: string }
   documentBlobId?: string
   documentPage?: number
+  /** The import it was split out of, so a document can list what it produced. */
+  sourceBatchId?: string
   assignmentMode?: AssignmentMode
 }
 
@@ -101,6 +103,7 @@ export async function addTickets(
           : null,
         document_blob_id: ticket.documentBlobId ?? null,
         document_page: ticket.documentPage ?? null,
+        source_batch_id: ticket.sourceBatchId ?? null,
         // Per ticket rather than per event, so one event can mix allocated seats with
         // self-claim ones.
         assignment_mode: ticket.assignmentMode ?? (event.default_assignment_mode as AssignmentMode),

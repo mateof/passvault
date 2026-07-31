@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   backupToFile,
   migrateToLatest,
+  migrations,
   newId,
   openDatabase,
   readBackupHeader,
@@ -32,7 +33,9 @@ beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), 'passvault-backup-'))
   handle = await openDatabase('sqlite::memory:')
   const migrated = await migrateToLatest(handle)
-  expect(migrated.applied).toHaveLength(1)
+  // Every migration there is, named rather than counted: a count has to be edited each time
+  // one is added, and the edit is indistinguishable from silencing a real failure.
+  expect(migrated.applied).toEqual(Object.keys(migrations('sqlite')))
 })
 
 afterEach(async () => {

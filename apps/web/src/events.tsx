@@ -1,9 +1,31 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, type EventDetail, type EventSummary, type TicketSummary } from './api/passvault'
+import {
+  api,
+  type EventDetail,
+  type EventSummary,
+  type IngestProposal,
+  type PaymentState,
+  type PaymentVisibility,
+  type TicketSummary,
+} from './api/passvault'
 import { ApiError } from './api/client'
 import { useT } from './i18n'
-import { Banner, Button, Card, Field, Form, Loading, Select, StateBadge } from './ui'
+import { EventMark, Icon } from './icons'
+import {
+  Banner,
+  Button,
+  Card,
+  Empty,
+  Field,
+  FilePicker,
+  Form,
+  Loading,
+  PageHead,
+  Select,
+  StateBadge,
+  useObjectUrl,
+} from './ui'
 
 /**
  * Events and the tickets inside them.
@@ -14,13 +36,19 @@ import { Banner, Button, Card, Field, Form, Loading, Select, StateBadge } from '
  * can pretend otherwise.
  */
 
+/** A day, in the reader's language. The server stores an instant; nobody wants to read one. */
+function shortDate(value: string | null | undefined, locale: string): string | undefined {
+  if (!value) return undefined
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
 export function EventsPage() {
   const { t, locale } = useT()
   const [events, setEvents] = useState<EventSummary[]>()
   const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
-  const [venue, setVenue] = useState('')
-  const [startsAt, setStartsAt] = useState('')
   const [error, setError] = useState<string>()
 
   const load = useCallback(async () => {
@@ -52,51 +80,183 @@ export function EventsPage() {
 
   return (
     <>
-      <Card title={t('events.title')}>
-        {error ? <Banner kind="error">{error}</Banner> : null}
-        {events.length === 0 ? <p className="muted">{t('common.empty')}</p> : null}
-        <ul className="list">
-          {events.map((event) => (
-            <li key={event.id}>
-              <Link to={`/events/${event.id}`}>
-                <strong>{event.name || event.id.slice(0, 8)}</strong>
-                {event.venue ? <span className="muted"> · {event.venue}</span> : null}
-              </Link>
-            </li>
-          ))}
-        </ul>
-        <Button variant="quiet" onClick={() => setCreating((open) => !open)}>
-          {t('events.create')}
-        </Button>
-      </Card>
+      <PageHead
+        title={t('events.title')}
+        subtitle={t('events.subtitle', { count: events.length })}
+        action={
+          <Button icon="plus" onClick={() => setCreating((open) => !open)}>
+            {t('events.create')}
+          </Button>
+        }
+      />
 
-      {creating ? (
-        <Card title={t('events.create')}>
-          <Form
-            submitLabel={t('action.save')}
-            onSubmit={async () => {
-              await api.createEvent(locale, {
-                name,
-                venue: venue || undefined,
-                // The server wants a full instant, and a date input gives a day. Sent as
-                // midnight UTC rather than dropped, which is what a bare date means here.
-                startsAt: startsAt ? new Date(`${startsAt}T00:00:00.000Z`).toISOString() : undefined,
-              })
-              setName('')
-              setVenue('')
-              setStartsAt('')
-              setCreating(false)
-              await load()
-            }}
-          >
-            <Field label={t('events.name')} value={name} onChange={setName} required />
-            <Field label={t('events.venue')} value={venue} onChange={setVenue} />
-            <Field label={t('events.startsAt')} value={startsAt} onChange={setStartsAt} type="date" />
-          </Form>
+      {error ? <Banner kind="error">{error}</Banner> : null}
+
+      {creating ? <CreateEventCard onCreated={load} onClose={() => setCreating(false)} /> : null}
+
+      {events.length === 0 && !creating ? (
+        <Card>
+          <Empty icon="events">{t('events.none')}</Empty>
         </Card>
-      ) : null}
+      ) : (
+        <div className="grid">
+          {events.map((event) => (
+            <Link className="card-link" key={event.id} to={`/events/${event.id}`}>
+              <EventThumb event={event} />
+              <span className="card-link-body">
+                <span className="card-link-title">{event.name || t('events.locked')}</span>
+                <span className="card-link-meta">
+                  {event.venue ? (
+                    <span>
+                      <Icon name="place" size={14} />
+                      {event.venue}
+                    </span>
+                  ) : null}
+                  {event.startsAt ? (
+                    <span>
+                      <Icon name="calendar" size={14} />
+                      {shortDate(event.startsAt, locale)}
+                    </span>
+                  ) : null}
+                  {event.passwordProtected ? (
+                    <span>
+                      <Icon name="lock" size={14} />
+                      {t('events.protected')}
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+              <Icon name="chevron" size={18} />
+            </Link>
+          ))}
+        </div>
+      )}
 
       <ImportCard onImported={load} />
+    </>
+  )
+}
+
+/**
+ * The mark for one event, with its picture if it has one.
+ *
+ * A component rather than a prop because each picture is a request of its own, and the icon has
+ * to render immediately either way — a list that waits for twelve images before drawing anything
+ * is a list that looks broken on a slow connection.
+ */
+function EventThumb({ event, size = 40 }: { event: EventSummary; size?: number }) {
+  const { locale } = useT()
+  const fetcher = useMemo(
+    () => (event.hasImage ? () => api.eventImage(locale, event.id) : undefined),
+    [event.hasImage, event.id, locale],
+  )
+  const imageUrl = useObjectUrl(fetcher)
+
+  return (
+    <EventMark icon={event.icon} colour={event.colour} size={size} imageUrl={imageUrl} alt="" />
+  )
+}
+
+function CreateEventCard({
+  onCreated,
+  onClose,
+}: {
+  onCreated: () => Promise<void>
+  onClose: () => void
+}) {
+  const { t, locale } = useT()
+  const [name, setName] = useState('')
+  const [venue, setVenue] = useState('')
+  const [startsAt, setStartsAt] = useState('')
+  const [icon, setIcon] = useState('concert')
+  const [colour, setColour] = useState('violet')
+
+  return (
+    <Card title={t('events.create')} icon="plus">
+      <Form
+        submitLabel={t('action.save')}
+        submitIcon="check"
+        onSubmit={async () => {
+          await api.createEvent(locale, {
+            name,
+            venue: venue || undefined,
+            // The server wants a full instant, and a date input gives a day. Sent as
+            // midnight UTC rather than dropped, which is what a bare date means here.
+            startsAt: startsAt ? new Date(`${startsAt}T00:00:00.000Z`).toISOString() : undefined,
+            icon,
+            colour,
+          })
+          onClose()
+          await onCreated()
+        }}
+      >
+        <Field label={t('events.name')} value={name} onChange={setName} required />
+        <Field label={t('events.venue')} value={venue} onChange={setVenue} />
+        <Field label={t('events.startsAt')} value={startsAt} onChange={setStartsAt} type="date" />
+        <MarkPicker icon={icon} colour={colour} onIcon={setIcon} onColour={setColour} />
+      </Form>
+    </Card>
+  )
+}
+
+/**
+ * Choosing the mark an event is recognised by.
+ *
+ * Swatches rather than two dropdowns. The whole value of the mark is that it is recognisable at
+ * a glance in a list, and a list of colour names is exactly the thing that cannot be judged at a
+ * glance.
+ */
+export function MarkPicker({
+  icon,
+  colour,
+  onIcon,
+  onColour,
+}: {
+  icon: string
+  colour: string
+  onIcon: (value: string) => void
+  onColour: (value: string) => void
+}) {
+  const { t } = useT()
+  const icons = ['concert', 'football', 'theatre', 'cinema', 'travel', 'museum', 'party', 'other']
+  const colours = ['violet', 'blue', 'teal', 'green', 'amber', 'orange', 'red', 'pink']
+
+  return (
+    <>
+      <div className="field">
+        <span className="field-label">{t('events.icon')}</span>
+        <div className="picker">
+          {icons.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className={`picker-option${option === icon ? ' picker-option-chosen' : ''}`}
+              onClick={() => onIcon(option)}
+              aria-label={t(`events.icon.${option}` as never)}
+              title={t(`events.icon.${option}` as never)}
+            >
+              <EventMark icon={option} colour={colour} size={38} />
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <span className="field-label">{t('events.colour')}</span>
+        <div className="picker">
+          {colours.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className={`picker-option${option === colour ? ' picker-option-chosen' : ''}`}
+              onClick={() => onColour(option)}
+              aria-label={option}
+              title={option}
+            >
+              <EventMark icon={icon} colour={option} size={30} />
+            </button>
+          ))}
+        </div>
+      </div>
     </>
   )
 }
@@ -108,14 +268,16 @@ function ImportCard({ onImported }: { onImported: () => Promise<void> }) {
   const [result, setResult] = useState<{ count: number; event: string }>()
 
   return (
-    <Card title={t('transfer.import')}>
-      <input
-        type="file"
+    <Card title={t('transfer.import')} icon="download">
+      <FilePicker
+        label={t('transfer.importChoose')}
         accept=".tkpak,application/vnd.passvault.tkpak,application/octet-stream"
-        onChange={(event) => setFile(event.target.files?.[0])}
+        file={file}
+        onChange={setFile}
       />
       <Form
         submitLabel={t('transfer.import')}
+        submitIcon="download"
         disabled={!file}
         onSubmit={async () => {
           if (!file) return
@@ -151,10 +313,7 @@ export function EventPage() {
 
   const load = useCallback(async () => {
     try {
-      const [detail, listed] = await Promise.all([
-        api.event(locale, id),
-        api.tickets(locale, id),
-      ])
+      const [detail, listed] = await Promise.all([api.event(locale, id), api.tickets(locale, id)])
       setEvent(detail)
       setTickets(listed.tickets ?? [])
       setNeedsPassword(false)
@@ -175,10 +334,11 @@ export function EventPage() {
 
   if (needsPassword) {
     return (
-      <Card title={t('events.openTitle')}>
+      <Card title={t('events.openTitle')} icon="lock">
         <p className="muted">{t('events.openExplain')}</p>
         <Form
           submitLabel={t('events.open')}
+          submitIcon="unlock"
           onSubmit={async () => {
             await api.openEvent(locale, id, password)
             await load()
@@ -199,17 +359,50 @@ export function EventPage() {
   if (error) return <Banner kind="error">{error}</Banner>
   if (!event) return <Loading />
 
+  const meta = [
+    event.venue ? { icon: 'place' as const, text: event.venue } : undefined,
+    event.startsAt
+      ? { icon: 'calendar' as const, text: shortDate(event.startsAt, locale) }
+      : undefined,
+    { icon: 'ticket' as const, text: t('events.tickets', { count: tickets.length }) },
+  ].filter(Boolean) as { icon: 'place' | 'calendar' | 'ticket'; text: string }[]
+
   return (
     <>
-      <Card title={event.name}>
-        {event.venue ? <p className="muted">{event.venue}</p> : null}
-        {event.startsAt ? <p className="muted">{event.startsAt}</p> : null}
-        <p>{t('events.tickets', { count: tickets.length })}</p>
-        <Link to="/">{t('action.back')}</Link>
+      <p className="muted">
+        <Link to="/">
+          <Icon name="chevron" size={14} style={{ transform: 'rotate(180deg)' }} />{' '}
+          {t('action.back')}
+        </Link>
+      </p>
+
+      <Card>
+        <div className="card-link" style={{ border: 'none', padding: 0, boxShadow: 'none' }}>
+          <EventThumb event={event} size={56} />
+          <div className="card-link-body">
+            <h1 className="page-title">{event.name}</h1>
+            <div className="card-link-meta">
+              {meta.map((entry) => (
+                <span key={entry.icon}>
+                  <Icon name={entry.icon} size={14} />
+                  {entry.text}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Said plainly rather than left to be inferred from the absence of a padlock. */}
+        {event.readableByServer === false ? (
+          <Banner kind="info">{t('events.notReadableByServer')}</Banner>
+        ) : null}
       </Card>
 
-      <Card title={t('tickets.title')}>
-        {tickets.length === 0 ? <p className="muted">{t('common.empty')}</p> : null}
+      <EventAppearanceCard event={event} onChanged={load} />
+
+      <DocumentsCard eventId={id} tickets={tickets} onChanged={load} />
+
+      <Card title={t('tickets.title')} icon="ticket">
+        {tickets.length === 0 ? <Empty icon="ticket">{t('tickets.none')}</Empty> : null}
         <ul className="list">
           {tickets.map((ticket) => (
             <TicketRow key={ticket.id} ticket={ticket} onChanged={load} />
@@ -225,18 +418,189 @@ export function EventPage() {
   )
 }
 
-function TicketRow({ ticket, onChanged }: { ticket: TicketSummary; onChanged: () => Promise<void> }) {
+/**
+ * The documents tickets were split out of, listed as things in their own right.
+ *
+ * A ten-page PDF becomes ten tickets, and the file itself is not one of them — but it is what
+ * the user was sent, it holds the pages ingestion left out (the map, the terms, the instructions)
+ * and it is what they will want when a turnstile disagrees with the app. Each document says which
+ * tickets came from it, so a wallet with two imports does not present twenty anonymous passes.
+ */
+function DocumentsCard({
+  eventId,
+  tickets,
+  onChanged,
+}: {
+  eventId: string
+  tickets: TicketSummary[]
+  onChanged: () => Promise<void>
+}) {
+  const { t, locale } = useT()
+  const [documents, setDocuments] =
+    useState<
+      {
+        id: string
+        mediaType: string
+        pageCount?: number | null
+        byteCount?: number | null
+        ticketIds: string[]
+      }[]
+    >()
+
+  useEffect(() => {
+    api
+      .documents(locale, eventId)
+      .then((result) => setDocuments(result.documents ?? []))
+      .catch(() => setDocuments([]))
+  }, [eventId, locale, onChanged])
+
+  if (!documents || documents.length === 0) return null
+
+  const labelOf = (ticketId: string): string =>
+    tickets.find((ticket) => ticket.id === ticketId)?.label ?? ticketId.slice(0, 8)
+
+  return (
+    <Card title={t('documents.title')} icon="file">
+      <p className="muted">{t('documents.explain')}</p>
+      <ul className="list">
+        {documents.map((document) => (
+          <li key={document.id} className="admin-row">
+            <div className="admin-user-who">
+              <strong>
+                <Icon name="file" size={16} />{' '}
+                {t(`documents.type.${mediaKind(document.mediaType)}` as never)}
+              </strong>
+              <span className="muted">
+                {[
+                  document.pageCount
+                    ? t('documents.pages', { count: document.pageCount })
+                    : undefined,
+                  document.byteCount ? readableSize(document.byteCount) : undefined,
+                  t('documents.fromHere', { count: document.ticketIds.length }),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+              {document.ticketIds.length > 0 ? (
+                <span className="muted">{document.ticketIds.map(labelOf).join(', ')}</span>
+              ) : null}
+            </div>
+            <Button
+              variant="quiet"
+              icon="download"
+              onClick={async () => {
+                // Fetched rather than linked: the bytes are decrypted per session behind a
+                // bearer token, so a plain link would open an unauthenticated tab.
+                const blob = await api.document(locale, eventId, document.id)
+                const url = URL.createObjectURL(blob)
+                window.open(url, '_blank', 'noopener')
+                // Left alive briefly: revoking immediately races the tab that is opening it.
+                setTimeout(() => URL.revokeObjectURL(url), 60_000)
+              }}
+            >
+              {t('documents.open')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
+const mediaKind = (mediaType: string): string =>
+  mediaType.includes('pdf') ? 'pdf' : mediaType.includes('image') ? 'image' : 'pass'
+
+const readableSize = (bytes: number): string =>
+  bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} kB`
+
+/** Changing how an event looks. Only its creator can, and only they are shown the form. */
+function EventAppearanceCard({
+  event,
+  onChanged,
+}: {
+  event: EventDetail
+  onChanged: () => Promise<void>
+}) {
   const { t, locale } = useT()
   const [open, setOpen] = useState(false)
-  const [holder, setHolder] = useState('')
+  const [icon, setIcon] = useState(event.icon ?? 'other')
+  const [colour, setColour] = useState(event.colour ?? 'violet')
+  const [image, setImage] = useState<File>()
+
+  if (event.isCreator === false) return null
+
+  if (!open) {
+    return (
+      <p className="muted">
+        <button className="link" onClick={() => setOpen(true)}>
+          {t('events.appearance')}
+        </button>
+      </p>
+    )
+  }
+
+  return (
+    <Card title={t('events.appearance')} icon="image">
+      <Form
+        submitLabel={t('action.save')}
+        submitIcon="check"
+        onSubmit={async () => {
+          await api.updateEvent(locale, event.id, { icon, colour })
+          if (image) {
+            await api.uploadEventImage(locale, event.id, image)
+          }
+          setImage(undefined)
+          setOpen(false)
+          await onChanged()
+        }}
+      >
+        <MarkPicker icon={icon} colour={colour} onIcon={setIcon} onColour={setColour} />
+        <FilePicker
+          label={t('events.imageChoose')}
+          accept="image/png,image/jpeg,image/webp"
+          file={image}
+          onChange={setImage}
+        />
+        <p className="field-help">{t('events.imageHelp')}</p>
+      </Form>
+      {event.hasImage ? (
+        <div className="button-row">
+          <Button
+            variant="quiet"
+            icon="close"
+            onClick={async () => {
+              await api.deleteEventImage(locale, event.id)
+              await onChanged()
+            }}
+          >
+            {t('events.imageRemove')}
+          </Button>
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
+function TicketRow({
+  ticket,
+  onChanged,
+}: {
+  ticket: TicketSummary
+  onChanged: () => Promise<void>
+}) {
+  const { t, locale } = useT()
+  const [open, setOpen] = useState(false)
+  const [holder, setHolder] = useState(ticket.holderLabel ?? '')
   const [confirmWithdraw, setConfirmWithdraw] = useState(false)
 
   return (
     <li className="ticket">
       <button className="ticket-head" onClick={() => setOpen((value) => !value)}>
+        <Icon name="ticket" size={18} />
         <span>{ticket.label ?? ticket.id.slice(0, 8)}</span>
         {ticket.seat ? <span className="muted">{ticket.seat}</span> : null}
         <StateBadge state={ticket.assignmentState} />
+        <Icon name="chevron" size={18} className={`icon chevron${open ? ' chevron-open' : ''}`} />
       </button>
 
       {ticket.assignmentState === 'PROVISIONAL' ? (
@@ -247,12 +611,14 @@ function TicketRow({ ticket, onChanged }: { ticket: TicketSummary; onChanged: ()
 
       {open ? (
         <div className="ticket-body">
-          {ticket.barcodeValue ? (
+          {ticket.barcode ? (
             <p className="barcode">
-              {ticket.barcodeValue}
-              {ticket.barcodeFormat ? <span className="muted"> ({ticket.barcodeFormat})</span> : null}
+              {ticket.barcode.value}
+              <span className="muted"> ({ticket.barcode.format})</span>
             </p>
-          ) : null}
+          ) : (
+            <p className="muted">{t('tickets.noBarcode')}</p>
+          )}
 
           <Form
             submitLabel={t('tickets.assign')}
@@ -269,35 +635,39 @@ function TicketRow({ ticket, onChanged }: { ticket: TicketSummary; onChanged: ()
           {confirmWithdraw ? (
             <>
               <Banner kind="warning">{t('tickets.withdrawWarning')}</Banner>
+              <div className="button-row">
+                <Button
+                  variant="danger"
+                  icon="check"
+                  onClick={async () => {
+                    await api.withdraw(locale, ticket.id)
+                    setConfirmWithdraw(false)
+                    await onChanged()
+                  }}
+                >
+                  {t('action.confirm')}
+                </Button>
+                <Button variant="quiet" onClick={() => setConfirmWithdraw(false)}>
+                  {t('action.cancel')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="button-row">
+              <Button variant="quiet" onClick={() => setConfirmWithdraw(true)}>
+                {t('tickets.withdraw')}
+              </Button>
               <Button
-                variant="danger"
+                variant="quiet"
                 onClick={async () => {
-                  await api.withdraw(locale, ticket.id)
-                  setConfirmWithdraw(false)
+                  await api.reconcile(locale, ticket.id).catch(() => undefined)
                   await onChanged()
                 }}
               >
-                {t('action.confirm')}
+                {t('tickets.reconcile')}
               </Button>
-              <Button variant="quiet" onClick={() => setConfirmWithdraw(false)}>
-                {t('action.cancel')}
-              </Button>
-            </>
-          ) : (
-            <Button variant="quiet" onClick={() => setConfirmWithdraw(true)}>
-              {t('tickets.withdraw')}
-            </Button>
+            </div>
           )}
-
-          <Button
-            variant="quiet"
-            onClick={async () => {
-              await api.reconcile(locale, ticket.id).catch(() => undefined)
-              await onChanged()
-            }}
-          >
-            {t('tickets.reconcile')}
-          </Button>
         </div>
       ) : null}
     </li>
@@ -312,44 +682,47 @@ function PaymentForm({
   onChanged: () => Promise<void>
 }) {
   const { t, locale } = useT()
-  const [state, setState] = useState(ticket.paymentState ?? 'PENDING')
-  const [amount, setAmount] = useState(String((ticket.amountCents ?? 0) / 100))
-  const [visibility, setVisibility] = useState('ALL')
+  // The states the server actually accepts. This offered a "PENDING" the schema has never had,
+  // so recording a payment failed validation every time it was tried.
+  const [state, setState] = useState<PaymentState>(ticket.payment?.state ?? 'UNPAID')
+  const [amount, setAmount] = useState(String((ticket.payment?.amountCents ?? 0) / 100))
+  const [visibility, setVisibility] = useState<PaymentVisibility>(
+    ticket.payment?.visibility ?? 'ALL',
+  )
 
   return (
     <Form
-      submitLabel={t('payment.title')}
+      submitLabel={t('payment.save')}
+      submitIcon="money"
       onSubmit={async () => {
         await api.setPayment(locale, ticket.id, {
           state,
           // Integer cents, the same as everywhere else. Money as a float is how a total ends
           // up a penny out and nobody can say which row did it.
           amountCents: Math.round(Number(amount) * 100),
-          currency: ticket.currency ?? 'EUR',
+          currency: ticket.payment?.currency ?? 'EUR',
           visibility,
         })
         await onChanged()
       }}
     >
-      <Select
+      <Select<PaymentState>
         label={t('payment.state')}
         value={state}
-        options={[
-          { value: 'PENDING', label: t('payment.PENDING') },
-          { value: 'PAID', label: t('payment.PAID') },
-          { value: 'WAIVED', label: t('payment.WAIVED') },
-        ]}
+        options={(['UNPAID', 'PARTIAL', 'PAID', 'WAIVED'] as const).map((value) => ({
+          value,
+          label: t(`payment.${value}` as never),
+        }))}
         onChange={setState}
       />
       <Field label={t('payment.amount')} value={amount} onChange={setAmount} type="number" />
-      <Select
+      <Select<PaymentVisibility>
         label={t('payment.visibility')}
         value={visibility}
-        options={[
-          { value: 'ALL', label: t('payment.visibility.ALL') },
-          { value: 'HOLDER_ONLY', label: t('payment.visibility.HOLDER_ONLY') },
-          { value: 'CREATOR_ONLY', label: t('payment.visibility.CREATOR_ONLY') },
-        ]}
+        options={(['ALL', 'HOLDER_ONLY', 'CREATOR_ONLY'] as const).map((value) => ({
+          value,
+          label: t(`payment.visibility.${value}` as never),
+        }))}
         onChange={setVisibility}
       />
     </Form>
@@ -364,9 +737,10 @@ function AddTicketCard({ eventId, onAdded }: { eventId: string; onAdded: () => P
   const [format, setFormat] = useState('QR_CODE')
 
   return (
-    <Card title={t('tickets.add')}>
+    <Card title={t('tickets.add')} icon="plus">
       <Form
         submitLabel={t('action.save')}
+        submitIcon="check"
         onSubmit={async () => {
           await api.addTickets(locale, eventId, [
             {
@@ -401,24 +775,31 @@ function AddTicketCard({ eventId, onAdded }: { eventId: string; onAdded: () => P
 function IngestCard({ eventId, onIngested }: { eventId: string; onIngested: () => Promise<void> }) {
   const { t, locale } = useT()
   const [file, setFile] = useState<File>()
-  const [proposal, setProposal] = useState<{ ingestId: string; tickets: unknown[] }>()
+  const [proposal, setProposal] = useState<IngestProposal>()
   const [excluded, setExcluded] = useState<Set<number>>(new Set())
 
   return (
-    <Card title={t('ingest.title')}>
+    <Card title={t('ingest.title')} icon="upload">
       <p className="muted">{t('ingest.explain')}</p>
-      <input
-        type="file"
+      <FilePicker
+        label={t('ingest.choose')}
         accept="application/pdf,image/*,.pkpass"
-        onChange={(event) => setFile(event.target.files?.[0])}
+        file={file}
+        onChange={setFile}
       />
       {!proposal ? (
         <Form
           submitLabel={t('ingest.title')}
+          submitIcon="upload"
           disabled={!file}
           onSubmit={async () => {
             if (!file) return
-            setProposal(await api.ingest(locale, eventId, file))
+            const proposed = await api.ingest(locale, eventId, file)
+            setProposal(proposed)
+            // The server already decided which pages look like tickets — a page of
+            // instructions arrives with `include: false`. Starting with everything ticked
+            // would throw that judgement away and import the map as a ticket.
+            setExcluded(new Set(proposed.entries.filter((e) => !e.include).map((e) => e.index)))
           }}
         >
           <span />
@@ -426,44 +807,53 @@ function IngestCard({ eventId, onIngested }: { eventId: string; onIngested: () =
       ) : (
         <>
           <ul className="list">
-            {proposal.tickets.map((raw, index) => {
-              const ticket = raw as { suggestedLabel?: string; barcode?: { value: string } }
-              const included = !excluded.has(index)
+            {proposal.entries.map((entry) => {
+              const included = !excluded.has(entry.index)
               return (
-                <li key={index}>
-                  <label>
+                <li key={entry.index}>
+                  <label className="field field-check">
                     <input
                       type="checkbox"
                       checked={included}
                       onChange={() =>
                         setExcluded((current) => {
                           const next = new Set(current)
-                          if (included) next.add(index)
-                          else next.delete(index)
+                          if (included) next.add(entry.index)
+                          else next.delete(entry.index)
                           return next
                         })
                       }
                     />
-                    {ticket.suggestedLabel ?? `#${index + 1}`}
-                    {ticket.barcode ? (
-                      <span className="muted"> · {ticket.barcode.value}</span>
-                    ) : (
-                      <span className="muted"> · {t('ingest.noBarcode')}</span>
-                    )}
+                    <span>
+                      {entry.suggestedLabel || `#${entry.index + 1}`}
+                      {entry.pageNumber ? (
+                        <span className="muted">
+                          {' '}
+                          · {t('ingest.page', { page: entry.pageNumber })}
+                        </span>
+                      ) : null}
+                      {entry.barcode ? (
+                        <span className="muted"> · {entry.barcode.value}</span>
+                      ) : (
+                        <span className="muted"> · {t('ingest.noBarcode')}</span>
+                      )}
+                    </span>
                   </label>
                 </li>
               )
             })}
           </ul>
           <Form
-            submitLabel={t('ingest.confirm', { count: proposal.tickets.length - excluded.size })}
+            submitLabel={t('ingest.confirm', { count: proposal.entries.length - excluded.size })}
+            submitIcon="check"
             onSubmit={async () => {
-              const include = proposal.tickets
-                .map((_, index) => index)
+              const include = proposal.entries
+                .map((entry) => entry.index)
                 .filter((index) => !excluded.has(index))
               await api.confirmIngest(locale, eventId, proposal.ingestId, include)
               setProposal(undefined)
               setExcluded(new Set())
+              setFile(undefined)
               await onIngested()
             }}
           >
@@ -480,11 +870,12 @@ function ExportCard({ eventId }: { eventId: string }) {
   const [password, setPassword] = useState('')
 
   return (
-    <Card title={t('transfer.export')}>
+    <Card title={t('transfer.export')} icon="upload">
       {/* Said before the button, not after the download. */}
       <Banner kind="warning">{t('transfer.exportWarning')}</Banner>
       <Form
         submitLabel={t('transfer.export')}
+        submitIcon="download"
         onSubmit={async () => {
           const blob = await api.exportEvent(locale, eventId, { password })
           const url = URL.createObjectURL(blob)
@@ -521,7 +912,7 @@ function QuarantineCard({ eventId }: { eventId: string }) {
   if (!rows || rows.length === 0) return null
 
   return (
-    <Card title={t('quarantine.title')}>
+    <Card title={t('quarantine.title')} icon="shield">
       <p className="muted">{t('quarantine.explain')}</p>
       <ul className="list">
         {rows.map((row) => (

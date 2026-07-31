@@ -99,22 +99,85 @@ export interface EventSummary {
   id: string
   name: string
   venue?: string | null
+  notes?: string | null
   startsAt?: string | null
-  ticketCount?: number
+  timeZone?: string | null
+  defaultAssignmentMode?: string
   passwordProtected?: boolean
+  isCreator?: boolean
+  /** The mark it is recognised by, in the clear so a list can be drawn before any key is open. */
+  icon?: string | null
+  colour?: string | null
+  hasImage?: boolean
+  /** False once an event password is set, which is the whole point of setting one. */
+  readableByServer?: boolean
 }
 
+export interface EventDocument {
+  id: string
+  batchId: string
+  mediaType: string
+  pageCount?: number | null
+  byteCount?: number | null
+  createdAt: string
+  /** The tickets this import produced. */
+  ticketIds: string[]
+}
+
+/**
+ * What ingestion proposes, before anything is saved.
+ *
+ * The list is `entries`, which is what the server sends. This file called it `tickets`, so the
+ * review list rendered as empty every time and there was nothing to confirm — a proposal is the
+ * one screen in the product whose entire purpose is to be looked at before it is accepted.
+ */
+export interface IngestProposal {
+  ingestId: string
+  pageCount: number
+  requiresReview: boolean
+  warnings: { code: string; pageNumber?: number }[]
+  entries: {
+    index: number
+    suggestedLabel: string
+    barcode: { format: string; value: string } | null
+    pageNumber?: number | null
+    include: boolean
+    warnings: { code: string; pageNumber?: number }[]
+  }[]
+}
+
+export type PaymentState = 'UNPAID' | 'PARTIAL' | 'PAID' | 'WAIVED'
+export type PaymentVisibility = 'ALL' | 'HOLDER_ONLY' | 'CREATOR_ONLY'
+
+/**
+ * A ticket as the server projects it.
+ *
+ * Written to match `projectTickets` exactly. An earlier version of this file invented flat
+ * `barcodeValue` and `paymentState` fields that the server has never sent, so the interface
+ * silently showed no barcodes and no payments at all — the fields were simply always undefined.
+ *
+ * `barcode` is null rather than absent when the viewer is not entitled to it: an assigned ticket
+ * belonging to somebody else is a ticket you can see and a code you cannot.
+ */
 export interface TicketSummary {
   id: string
   label?: string | null
+  section?: string | null
+  row?: string | null
   seat?: string | null
+  barcode?: { format: string; value: string } | null
+  assignmentMode: string
   assignmentState: string
+  holderUserId?: string | null
   holderLabel?: string | null
-  paymentState?: string | null
-  amountCents?: number | null
-  currency?: string | null
-  barcodeFormat?: string | null
-  barcodeValue?: string | null
+  status: string
+  payment?: {
+    state: PaymentState
+    amountCents?: number | null
+    currency?: string | null
+    visibility: PaymentVisibility
+    settledAt?: string | null
+  }
 }
 
 /**
@@ -158,7 +221,8 @@ export const api = {
       { ...json(locale), body },
     ),
 
-  logout: (locale: string) => request<void>('/api/v1/auth/logout', { ...json(locale), method: 'POST' }),
+  logout: (locale: string) =>
+    request<void>('/api/v1/auth/logout', { ...json(locale), method: 'POST' }),
 
   me: (locale: string) => request<Me>('/api/v1/me', json(locale)),
 
@@ -171,7 +235,10 @@ export const api = {
   setPassphrase: (locale: string, passphrase: string, currentPassphrase?: string) =>
     request<{ created: boolean; recoveryCode?: string; recoveryCodeWarning?: string }>(
       '/api/v1/vault/passphrase',
-      { ...json(locale), body: { passphrase, ...(currentPassphrase ? { currentPassphrase } : {}) } },
+      {
+        ...json(locale),
+        body: { passphrase, ...(currentPassphrase ? { currentPassphrase } : {}) },
+      },
     ),
 
   /**
@@ -214,7 +281,12 @@ export const api = {
    * A batch rather than one at a time because that is what importing a sheet of forty produces,
    * and one request per ticket would be forty round trips and forty chances to half-finish.
    */
-  addTickets: (locale: string, eventId: string, tickets: Record<string, unknown>[], password?: string) =>
+  addTickets: (
+    locale: string,
+    eventId: string,
+    tickets: Record<string, unknown>[],
+    password?: string,
+  ) =>
     request<{ tickets: TicketSummary[] }>(`/api/v1/events/${encodeURIComponent(eventId)}/tickets`, {
       ...json(locale),
       body: { tickets, ...(password ? { password } : {}) },
@@ -260,20 +332,21 @@ export const api = {
   inspectImport: (locale: string, file: File) =>
     request<{ preview?: { eventName?: string; ticketCount?: number } }>('/api/v1/import/inspect', {
       ...json(locale),
-      file: { field: 'file', value: file, filename: file.name },
+      binary: { file },
     }),
 
+  /** The password travels in a header, which is where the server has always read it from. */
   importFile: (locale: string, file: File, password: string) =>
     request<{ eventId: string; ticketCount: number }>('/api/v1/import', {
       ...json(locale),
-      file: { field: 'file', value: file, filename: file.name, extra: { password } },
+      binary: { file, headers: { 'x-passvault-password': password } },
     }),
 
   ingest: (locale: string, eventId: string, file: File) =>
-    request<{ ingestId: string; tickets: unknown[] }>(
-      `/api/v1/events/${encodeURIComponent(eventId)}/ingest`,
-      { ...json(locale), file: { field: 'file', value: file, filename: file.name } },
-    ),
+    request<IngestProposal>(`/api/v1/events/${encodeURIComponent(eventId)}/ingest`, {
+      ...json(locale),
+      binary: { file },
+    }),
 
   confirmIngest: (locale: string, eventId: string, ingestId: string, include: number[]) =>
     request<{ ticketCount: number }>(
@@ -298,6 +371,52 @@ export const api = {
       ...json(locale),
       method: 'DELETE',
     }),
+
+  // ── How an event looks, and what it was imported from ────────────────────────
+
+  updateEvent: (locale: string, id: string, body: { icon?: string; colour?: string }) =>
+    request<EventDetail>(`/api/v1/events/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'PATCH',
+      body,
+    }),
+
+  uploadEventImage: (locale: string, id: string, file: File) =>
+    request<{ imageId: string }>(`/api/v1/events/${encodeURIComponent(id)}/image`, {
+      ...json(locale),
+      binary: { file },
+    }),
+
+  deleteEventImage: (locale: string, id: string) =>
+    request<void>(`/api/v1/events/${encodeURIComponent(id)}/image`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
+  /**
+   * The picture, as bytes.
+   *
+   * Fetched rather than pointed at with an `<img src>`: it is decrypted per session behind a
+   * bearer token this application keeps in memory, so a plain URL in a tag would arrive
+   * unauthenticated and render as a broken image.
+   */
+  eventImage: (locale: string, id: string) =>
+    request<Blob>(`/api/v1/events/${encodeURIComponent(id)}/image`, {
+      ...json(locale),
+      blob: true,
+    }),
+
+  documents: (locale: string, eventId: string) =>
+    request<{ documents: EventDocument[] }>(
+      `/api/v1/events/${encodeURIComponent(eventId)}/documents`,
+      json(locale),
+    ),
+
+  document: (locale: string, eventId: string, documentId: string) =>
+    request<Blob>(
+      `/api/v1/events/${encodeURIComponent(eventId)}/documents/${encodeURIComponent(documentId)}`,
+      { ...json(locale), blob: true },
+    ),
 
   /** Completes an account an administrator created, from the link in the invitation mail. */
   completeSetup: (locale: string, body: Record<string, unknown>) =>
@@ -332,13 +451,17 @@ export const api = {
   adminCreateUser: (
     locale: string,
     body: { email: string; locale?: string; initialPassword?: string; isAdmin?: boolean },
-  ) => request<{ userId: string; setupUrl?: string }>('/api/v1/admin/users', { ...json(locale), body }),
+  ) =>
+    request<{ userId: string; setupUrl?: string }>('/api/v1/admin/users', {
+      ...json(locale),
+      body,
+    }),
 
   adminSetupLink: (locale: string, userId: string) =>
-    request<{ setupUrl: string }>(
-      `/api/v1/admin/users/${encodeURIComponent(userId)}/setup-link`,
-      { ...json(locale), method: 'POST' },
-    ),
+    request<{ setupUrl: string }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/setup-link`, {
+      ...json(locale),
+      method: 'POST',
+    }),
 
   /**
    * Creates an invitation and returns the code.

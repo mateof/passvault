@@ -70,7 +70,38 @@ export interface CreateEventInput {
   defaultAssignmentMode?: AssignmentMode
   /** Omit for an event the server can read; set it to take the event out of the operator's reach. */
   password?: string
+  icon?: string
+  colour?: string
 }
+
+/**
+ * The icons and colours an event may carry.
+ *
+ * A closed set, checked here rather than trusted from the client, because these end up in a
+ * class name. An open string would be a small injection surface for no benefit — the value of a
+ * mark is that a concert is always the same shape, which a free-text field destroys anyway.
+ */
+export const EVENT_ICONS = [
+  'concert',
+  'football',
+  'theatre',
+  'cinema',
+  'travel',
+  'museum',
+  'party',
+  'other',
+] as const
+
+export const EVENT_COLOURS = [
+  'violet',
+  'blue',
+  'teal',
+  'green',
+  'amber',
+  'orange',
+  'red',
+  'pink',
+] as const
 
 export interface CreatedEvent {
   eventId: string
@@ -125,6 +156,11 @@ export async function createEvent(deps: EventDeps, input: CreateEventInput): Pro
       time_zone: input.timeZone ?? null,
       default_assignment_mode: input.defaultAssignmentMode ?? 'OPEN',
       password_protected: input.password ? 1 : 0,
+      // In the clear, and only from the closed set: a category and a colour, so a wallet can
+      // draw its list before any event key is open.
+      icon: allowed(EVENT_ICONS, input.icon),
+      colour: allowed(EVENT_COLOURS, input.colour),
+      image_blob_id: null,
       sealed_key_envelope: Buffer.from(sealEnvelope(envelope, deps.crypto.masterKey)),
       authority_device_id: null,
       status: 'ACTIVE',
@@ -155,6 +191,10 @@ function serverEventKey(deps: EventDeps, eventId: string): Uint8Array {
 
 const field = (eventId: string, column: string) => ({ table: 'events', column, rowId: eventId })
 
+/** Keeps a value only if it is one this version knows, so nothing arbitrary reaches a class name. */
+const allowed = (set: readonly string[], value: string | undefined): string | null =>
+  value && set.includes(value) ? value : null
+
 export interface EventRow {
   id: string
   creator_user_id: string
@@ -167,6 +207,9 @@ export interface EventRow {
   name_cipher: Uint8Array
   venue_cipher: Uint8Array | null
   notes_cipher: Uint8Array | null
+  icon: string | null
+  colour: string | null
+  image_blob_id: string | null
 }
 
 export async function findEvent(deps: EventDeps, eventId: string): Promise<EventRow | undefined> {
@@ -214,7 +257,12 @@ export async function listEventsForUser(
   const granted = await deps.db.db
     .selectFrom('events')
     .innerJoin('event_access', 'event_access.event_id', 'events.id')
-    .select(['events.id', 'events.created_at', 'events.creator_user_id', 'events.password_protected'])
+    .select([
+      'events.id',
+      'events.created_at',
+      'events.creator_user_id',
+      'events.password_protected',
+    ])
     .where('event_access.subject_kind', '=', 'USER')
     .where('event_access.subject_id', '=', userId)
     .where('event_access.revoked_at', 'is', null)
@@ -224,7 +272,12 @@ export async function listEventsForUser(
     .selectFrom('events')
     .innerJoin('event_access', 'event_access.event_id', 'events.id')
     .innerJoin('group_members', 'group_members.group_id', 'event_access.subject_id')
-    .select(['events.id', 'events.created_at', 'events.creator_user_id', 'events.password_protected'])
+    .select([
+      'events.id',
+      'events.created_at',
+      'events.creator_user_id',
+      'events.password_protected',
+    ])
     .where('event_access.subject_kind', '=', 'GROUP')
     .where('event_access.revoked_at', 'is', null)
     .where('group_members.user_id', '=', userId)
@@ -237,15 +290,17 @@ export async function listEventsForUser(
     byId.set(row.id, row)
   }
 
-  return [...byId.values()]
-    // Fixed-width instants, so a string comparison is a chronological one on every engine.
-    .sort((left, right) => (left.created_at < right.created_at ? 1 : -1))
-    .map((row) => ({
-      id: row.id,
-      createdAt: row.created_at,
-      creatorUserId: row.creator_user_id,
-      passwordProtected: row.password_protected === 1,
-    }))
+  return (
+    [...byId.values()]
+      // Fixed-width instants, so a string comparison is a chronological one on every engine.
+      .sort((left, right) => (left.created_at < right.created_at ? 1 : -1))
+      .map((row) => ({
+        id: row.id,
+        createdAt: row.created_at,
+        creatorUserId: row.creator_user_id,
+        passwordProtected: row.password_protected === 1,
+      }))
+  )
 }
 
 export async function hasAccess(
@@ -423,6 +478,11 @@ export interface EventProjection {
   startsAt: string | null
   timeZone: string | null
   defaultAssignmentMode: string
+  /** The mark it is recognised by. Plaintext, so a list can be drawn before any key is open. */
+  icon: string | null
+  colour: string | null
+  /** Whether it has a picture, not the picture: twelve events must not mean twelve images. */
+  hasImage: boolean
   passwordProtected: boolean
   isCreator: boolean
   /** True when the server can decrypt this event on its own. Shown to the user, not hidden. */
@@ -451,10 +511,148 @@ export function projectEvent(
     startsAt: event.starts_at,
     timeZone: event.time_zone,
     defaultAssignmentMode: event.default_assignment_mode,
+    icon: event.icon,
+    colour: event.colour,
+    // Whether there is one, not the picture itself: it is fetched separately, and a list of
+    // twelve events must not carry twelve images inside one JSON response.
+    hasImage: event.image_blob_id !== null,
     passwordProtected: event.password_protected === 1,
     isCreator: event.creator_user_id === viewerUserId,
     readableByServer: event.password_protected === 0,
   }
+}
+
+/**
+ * Changes the mark an event is recognised by.
+ *
+ * Creator only. Not because a colour is dangerous, but because an event shared with a group is
+ * one thing everybody sees: a member repainting it changes what it looks like for the twelve
+ * people it was shared with, and none of them asked.
+ */
+export async function setEventAppearance(
+  deps: EventDeps,
+  input: {
+    eventId: string
+    actorUserId: string
+    icon?: string
+    colour?: string
+    imageBlobId?: string | null
+  },
+): Promise<void> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event) {
+    throw notFound()
+  }
+  if (event.creator_user_id !== input.actorUserId) {
+    throw forbidden()
+  }
+
+  const changes: Record<string, string | null> = {}
+  if (input.icon !== undefined) {
+    changes.icon = allowed(EVENT_ICONS, input.icon)
+  }
+  if (input.colour !== undefined) {
+    changes.colour = allowed(EVENT_COLOURS, input.colour)
+  }
+  if (input.imageBlobId !== undefined) {
+    changes.image_blob_id = input.imageBlobId
+  }
+  if (Object.keys(changes).length === 0) {
+    return
+  }
+
+  await deps.db.db
+    .updateTable('events')
+    .set({ ...changes, updated_at: toInstant() })
+    .where('id', '=', input.eventId)
+    .execute()
+}
+
+/**
+ * Gives an event a cover from the document that was just imported, if it has none.
+ *
+ * Only when it has none, and only for the first import. Overwriting a picture the organiser
+ * chose because they later imported another PDF would be the software deciding it knows better,
+ * and a poster is exactly the sort of thing people choose deliberately.
+ *
+ * Failure is swallowed on purpose: the cover is a nicety and the import is the point. A PDF that
+ * cannot be rendered — an installation without the optional canvas packages, a damaged page —
+ * must not turn a successful import into an error.
+ */
+export async function suggestEventCover(
+  deps: EventDeps,
+  input: { eventId: string; imageBlobId: string },
+): Promise<boolean> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event || event.image_blob_id !== null) {
+    return false
+  }
+  await deps.db.db
+    .updateTable('events')
+    .set({ image_blob_id: input.imageBlobId, updated_at: toInstant() })
+    .where('id', '=', input.eventId)
+    .where('image_blob_id', 'is', null)
+    .execute()
+  return true
+}
+
+export interface EventDocument {
+  id: string
+  batchId: string
+  mediaType: string
+  pageCount: number | null
+  byteCount: number | null
+  createdAt: string
+  /** The tickets this import produced, so a document is not a file with no relation to anything. */
+  ticketIds: string[]
+}
+
+/**
+ * The documents this event's tickets were split out of.
+ *
+ * The file the user was actually sent, kept whole and listed in its own right. It holds the pages
+ * ingestion left out — the map, the terms, the instructions — which are exactly the pages the
+ * rule that makes the split right is guaranteed to drop. And when a turnstile disagrees with the
+ * app, the original is what settles it.
+ */
+export async function listEventDocuments(
+  deps: EventDeps,
+  eventId: string,
+): Promise<EventDocument[]> {
+  const batches = await deps.db.db
+    .selectFrom('ingest_batches')
+    .innerJoin('blobs', 'blobs.id', 'ingest_batches.source_blob_id')
+    .select([
+      'ingest_batches.id as batch_id',
+      'ingest_batches.source_blob_id as blob_id',
+      'ingest_batches.page_count',
+      'ingest_batches.created_at',
+      'blobs.media_type',
+      'blobs.byte_length',
+    ])
+    .where('ingest_batches.event_id', '=', eventId)
+    .where('ingest_batches.state', '=', 'CONFIRMED')
+    .orderBy('ingest_batches.created_at', 'asc')
+    .execute()
+
+  const tickets = await deps.db.db
+    .selectFrom('tickets')
+    .select(['id', 'source_batch_id'])
+    .where('event_id', '=', eventId)
+    .where('status', '=', 'ACTIVE')
+    .execute()
+
+  return batches.map((batch) => ({
+    id: String(batch.blob_id),
+    batchId: batch.batch_id,
+    mediaType: batch.media_type,
+    pageCount: batch.page_count,
+    byteCount: batch.byte_length,
+    createdAt: batch.created_at,
+    ticketIds: tickets
+      .filter((ticket) => ticket.source_batch_id === batch.batch_id)
+      .map((ticket) => ticket.id),
+  }))
 }
 
 export async function requireEventPasswordSet(deps: EventDeps, eventId: string): Promise<void> {

@@ -72,15 +72,20 @@ import { AppError, badRequest, forbidden, notFound, unauthorized } from './error
 import { addMember, createGroup, listGroups, listMembers, removeMember } from './groups.js'
 import { exportEvent, importArchive, inspectArchive, type TransferDeps } from './transfer.js'
 import {
+  EVENT_COLOURS,
+  EVENT_ICONS,
   createEvent,
   findEvent,
   grantAccess,
   hasAccess,
+  listEventDocuments,
+  listEventsForUser,
   openEventKey,
   projectEvent,
   revokeAccess,
+  setEventAppearance,
+  suggestEventCover,
   type EventDeps,
-  listEventsForUser,
 } from './events.js'
 import {
   adoptEventFromLog,
@@ -861,6 +866,15 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     return { session, eventKey }
   }
 
+  /**
+   * The ceiling for a picture of an event.
+   *
+   * Generous for a poster and far below the ingestion limit, because this one is decrypted and
+   * sent on every screen that lists events — a twenty-megabyte cover would make the wallet
+   * unusable long before it made the disk full.
+   */
+  const MAXIMUM_IMAGE_BYTES = 4 * 1024 * 1024
+
   const createEventBody = z.object({
     name: z.string().min(1).max(200),
     venue: z.string().max(200).optional(),
@@ -869,6 +883,8 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     timeZone: z.string().max(64).optional(),
     defaultAssignmentMode: z.enum(['OPEN', 'ASSIGNED', 'SELF_CLAIM']).optional(),
     password: z.string().min(4).optional(),
+    icon: z.enum(EVENT_ICONS).optional(),
+    colour: z.enum(EVENT_COLOURS).optional(),
   })
 
   app.post('/api/v1/events', async (request, reply) => {
@@ -939,6 +955,111 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       throw notFound()
     }
     return projectEvent(eventDeps, event, eventKey, session.user_id)
+  })
+
+  const appearanceBody = z.object({
+    icon: z.enum(EVENT_ICONS).optional(),
+    colour: z.enum(EVENT_COLOURS).optional(),
+  })
+
+  app.patch('/api/v1/events/:id', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    await setEventAppearance(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      ...appearanceBody.parse(request.body ?? {}),
+    })
+    const { eventKey } = await openEvent(request, id)
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    return projectEvent(eventDeps, event, eventKey, session.user_id)
+  })
+
+  /**
+   * A picture of the event, uploaded as raw bytes.
+   *
+   * Encrypted under the event key like every other document, because a poster carries a name, a
+   * date and often a seat. That is also why it is fetched through the API rather than served as
+   * a static file: there is no readable copy anywhere to serve.
+   */
+  app.post('/api/v1/events/:id/image', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    const bytes = asBytes(request.body)
+    if (bytes.byteLength > MAXIMUM_IMAGE_BYTES) {
+      throw badRequest('ingest.error.fileTooLarge', {
+        maxMegabytes: Math.floor(MAXIMUM_IMAGE_BYTES / 1024 / 1024),
+      })
+    }
+    const mediaType = detectMediaType(bytes)
+    if (mediaType !== 'image/png' && mediaType !== 'image/jpeg') {
+      throw badRequest('ingest.error.unsupportedFile')
+    }
+    const stored = await storeBlob(transferDeps, { eventId: id, eventKey, mediaType, bytes })
+    await setEventAppearance(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      imageBlobId: stored.id,
+    })
+    return reply.status(201).send({ imageId: stored.id })
+  })
+
+  app.delete('/api/v1/events/:id/image', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    // The blob itself is left on disk rather than unlinked. It is encrypted, it may be the
+    // source document of a ticket, and a delete that walks references is how a ticket loses
+    // its page because somebody changed a picture.
+    await setEventAppearance(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      imageBlobId: null,
+    })
+    return reply.status(204).send()
+  })
+
+  app.get('/api/v1/events/:id/image', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { eventKey } = await openEvent(request, id)
+    const event = await findEvent(eventDeps, id)
+    if (!event?.image_blob_id) {
+      throw notFound()
+    }
+    const blob = await readBlob(transferDeps, { blobId: event.image_blob_id, eventKey })
+    return (
+      reply
+        .header('content-type', blob.mediaType)
+        // Private: it is decrypted per session, and a shared cache holding it would be a copy
+        // outside the event key entirely.
+        .header('cache-control', 'private, max-age=300')
+        .send(Buffer.from(blob.bytes))
+    )
+  })
+
+  app.get('/api/v1/events/:id/documents', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    await openEvent(request, id)
+    return { documents: await listEventDocuments(eventDeps, id) }
+  })
+
+  app.get('/api/v1/events/:id/documents/:documentId', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { documentId } = z.object({ documentId: z.string().uuid() }).parse(request.params)
+    const { eventKey } = await openEvent(request, id)
+    // Checked against this event's own documents rather than fetched by id alone, or the
+    // identifier of any blob on the installation would be enough to read it.
+    const documents = await listEventDocuments(eventDeps, id)
+    if (!documents.some((document) => document.id === documentId)) {
+      throw notFound()
+    }
+    const blob = await readBlob(transferDeps, { blobId: documentId, eventKey })
+    return reply
+      .header('content-type', blob.mediaType)
+      .header('content-disposition', `inline; filename="${documentId}"`)
+      .send(Buffer.from(blob.bytes))
   })
 
   const groupBody = z.object({ name: z.string().min(1).max(120) })
@@ -1507,6 +1628,9 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
             documentBlobId: stored.id,
             ...(entry.pageNumber === undefined ? {} : { documentPage: entry.pageNumber }),
             ...(body.assignmentMode ? { assignmentMode: body.assignmentMode } : {}),
+            // Which import this came out of, so the document can list what it produced rather
+            // than being a file with no relation to any of the tickets beside it.
+            sourceBatchId: ingestId,
           },
         ],
       })
@@ -1521,10 +1645,61 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       .where('id', '=', ingestId)
       .execute()
 
-    return reply
-      .status(201)
-      .send({ ticketIds: created, skipped: proposal.tickets.length - chosen.length })
+    const cover = await coverFrom(source, id, eventKey)
+
+    return reply.status(201).send({
+      ticketIds: created,
+      skipped: proposal.tickets.length - chosen.length,
+      coverAdded: cover,
+    })
   })
+
+  /**
+   * The first page of what was just imported, kept as the event's cover.
+   *
+   * Only when the event has none: overwriting a poster the organiser chose because they later
+   * imported a second PDF would be the software deciding it knows better. Rendered small, since
+   * this is drawn in a list beside eleven others.
+   *
+   * Every failure is swallowed. The cover is a nicety and the import is the point — an
+   * installation without the optional canvas packages, or a page pdf.js cannot draw, must not
+   * turn a successful import into an error.
+   */
+  const coverFrom = async (
+    source: { mediaType: DocumentMediaType; bytes: Uint8Array },
+    eventId: string,
+    eventKey: Uint8Array,
+  ): Promise<boolean> => {
+    try {
+      const image =
+        source.mediaType === 'application/pdf'
+          ? await renderFirstPage(source.bytes)
+          : source.mediaType === 'image/png' || source.mediaType === 'image/jpeg'
+            ? source.bytes
+            : undefined
+      if (!image) {
+        return false
+      }
+      const stored = await storeBlob(transferDeps, {
+        eventId,
+        eventKey,
+        mediaType: source.mediaType === 'application/pdf' ? 'image/png' : source.mediaType,
+        bytes: image,
+      })
+      return await suggestEventCover(eventDeps, { eventId, imageBlobId: stored.id })
+    } catch {
+      return false
+    }
+  }
+
+  const renderFirstPage = async (pdf: Uint8Array): Promise<Uint8Array | undefined> => {
+    const document = await (await rasterizerOf()).open(pdf)
+    try {
+      return document.pageCount > 0 ? await document.renderPage(1, 480) : undefined
+    } finally {
+      await document.close()
+    }
+  }
 
   return {
     app,

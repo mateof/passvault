@@ -263,6 +263,9 @@ Table events {
   sealed_key_envelope varbinary [not null, note: 'Event data key, wrapped by the event password slot and by the creator slot, then sealed under the master key.']
   authority_device_id varchar(36) [null, note: 'Null while this server is the authority for claims. Set when the event originated on a device that keeps that role.']
   status varchar(16) [not null, default: 'ACTIVE']
+  icon varchar(32) [null, note: 'Plaintext: a category from a closed set, so a list can be drawn before any key is open.']
+  colour varchar(16) [null]
+  image_blob_id varchar(36) [null, note: 'A picture of the event, encrypted under the event key like every other blob.']
   created_at varchar(24) [not null]
   updated_at varchar(24) [not null]
 
@@ -314,6 +317,7 @@ Table tickets {
   barcode_cipher varbinary [null, note: 'The asset. Encrypted with the event data key, so an event password the recipient lacks leaves this unusable.']
   document_blob_id varchar(36) [null]
   document_page int [null]
+  source_batch_id varchar(36) [null, note: 'The import this ticket was split out of, so a document can list what came from it.']
   assignment_mode varchar(16) [not null, note: 'Per ticket, not per event: one event can mix assigned seats with self-claim ones.']
   assignment_state varchar(16) [not null, default: 'FREE']
   holder_user_id varchar(36) [null]

@@ -164,6 +164,11 @@ export interface EventsTable {
   sealed_key_envelope: Bytes
   authority_device_id: string | null
   status: 'ACTIVE' | 'ARCHIVED'
+  /** A name from a small closed set, in the clear: it is a category, not user data. */
+  icon: string | null
+  colour: string | null
+  /** A picture of the event's own, encrypted under the event key like every other blob. */
+  image_blob_id: string | null
   created_at: Instant
   updated_at: Instant
 }
@@ -201,6 +206,8 @@ export interface TicketsTable {
   barcode_cipher: Bytes | null
   document_blob_id: string | null
   document_page: number | null
+  /** The import this ticket was split out of, when it came from one. */
+  source_batch_id: string | null
   assignment_mode: 'OPEN' | 'ASSIGNED' | 'SELF_CLAIM'
   assignment_state: 'FREE' | 'PROVISIONAL' | 'CLAIMED' | 'ASSIGNED' | 'TRANSFERRED'
   holder_user_id: string | null

@@ -41,6 +41,11 @@ event can mix them:
 whether that is visible to everybody, only to the person concerned, or only to
 themselves.
 
+**The original file, kept.** Splitting a PDF into passes drops every page with no
+barcode on it — which is exactly where the map, the terms and the instructions
+live. So the document is stored whole and listed beside the tickets it produced,
+and its first page becomes the event's cover unless you choose a picture yourself.
+
 **Offline operation.** Creating events, importing tickets and managing your
 collection never touch the network. Two devices on the same Wi-Fi can find each
 other and transfer passes directly. Failing that, tickets export to a single

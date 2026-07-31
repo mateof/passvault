@@ -1,5 +1,4 @@
 import { createRequire } from 'node:module'
-import { pathToFileURL } from 'node:url'
 import { IngestError } from './errors.js'
 import { INGEST_LIMITS } from './limits.js'
 
@@ -48,13 +47,13 @@ export async function createPdfJsRasterizer(): Promise<PageRasterizer> {
   try {
     pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
     const require = createRequire(import.meta.url)
-    // Real ticket PDFs use the standard fonts, and pdf.js needs the font data to render a
-    // page that references one. Resolved to a local file URL so nothing is fetched: this
-    // has to work on a plane.
+    // Real ticket PDFs use the standard fonts, and pdf.js needs the font data to render a page
+    // that references one. A filesystem path, not a `file://` URL: under Node the legacy build
+    // reads this with `fs`, and Node's `fetch` refuses file URLs outright — so the URL form
+    // failed for every standard font and rendered their text as empty boxes. Nothing is
+    // fetched either way, which is the property that matters: this has to work on a plane.
     const marker = require.resolve('pdfjs-dist/package.json')
-    standardFontDataUrl = pathToFileURL(
-      `${marker.slice(0, marker.length - 'package.json'.length)}standard_fonts/`,
-    ).href
+    standardFontDataUrl = `${marker.slice(0, marker.length - 'package.json'.length)}standard_fonts/`
   } catch (cause) {
     throw new IngestError(
       'RASTERIZER_UNAVAILABLE',

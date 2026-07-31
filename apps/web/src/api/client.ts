@@ -41,8 +41,14 @@ export class ApiError extends Error {
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
-  /** Sent as multipart instead of JSON. Used by import and ingestion. */
-  file?: { field: string; value: Blob; filename: string; extra?: Record<string, string> }
+  /**
+   * Sent as raw bytes with the file's own content type, which is what the server parses.
+   *
+   * Not multipart. `@fastify/multipart` is a dependency there but was never registered, so every
+   * upload this interface made came back as an unsupported media type — the file simply never
+   * arrived. The server has always taken the bytes directly.
+   */
+  binary?: { file: Blob; headers?: Record<string, string> }
   /** Expect bytes rather than JSON, which is what an export returns. */
   blob?: boolean
   locale?: string
@@ -60,13 +66,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   let body: BodyInit | undefined
-  if (options.file) {
-    const form = new FormData()
-    form.append(options.file.field, options.file.value, options.file.filename)
-    for (const [key, value] of Object.entries(options.file.extra ?? {})) {
-      form.append(key, value)
-    }
-    body = form
+  if (options.binary) {
+    // `application/octet-stream` when the browser could not tell: the server sniffs the bytes
+    // themselves to decide what a document is, so an honest fallback beats a guess.
+    headers['content-type'] = options.binary.file.type || 'application/octet-stream'
+    Object.assign(headers, options.binary.headers ?? {})
+    body = options.binary.file
   } else if (options.body !== undefined) {
     headers['content-type'] = 'application/json'
     body = JSON.stringify(options.body)

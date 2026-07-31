@@ -1,13 +1,14 @@
-import { useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from './api/client'
 import { useT } from './i18n'
+import { Icon, type IconName } from './icons'
 
 /**
  * The small set of pieces every screen is built from.
  *
  * Kept deliberately plain. The interesting decisions in this application are about what is
  * said and when, not about the widgets, and a component library would put a layer between the
- * two for no gain here.
+ * two for no gain here — the whole set is one file and every screen uses all of it.
  */
 
 export function Field(props: {
@@ -45,6 +46,49 @@ export function Field(props: {
   )
 }
 
+export function Checkbox(props: {
+  label: string
+  checked: boolean
+  onChange: (value: boolean) => void
+}) {
+  return (
+    <label className="field field-check">
+      <input
+        type="checkbox"
+        checked={props.checked}
+        onChange={(event) => props.onChange(event.target.checked)}
+      />
+      <span>{props.label}</span>
+    </label>
+  )
+}
+
+/**
+ * Choosing a file.
+ *
+ * A styled label wrapping a hidden input, because the native control cannot be styled and looks
+ * like a piece of another application. The chosen name is shown: a picker that reports nothing is
+ * how somebody uploads the wrong file twice.
+ */
+export function FilePicker(props: {
+  label: string
+  accept: string
+  file?: File | undefined
+  onChange: (file: File | undefined) => void
+}) {
+  return (
+    <label className="file-drop">
+      <Icon name="upload" />
+      <span>{props.file ? props.file.name : props.label}</span>
+      <input
+        type="file"
+        accept={props.accept}
+        onChange={(event) => props.onChange(event.target.files?.[0])}
+      />
+    </label>
+  )
+}
+
 export function Select<T extends string>(props: {
   label: string
   value: T
@@ -75,6 +119,7 @@ export function Button(props: {
   type?: 'button' | 'submit'
   variant?: 'primary' | 'quiet' | 'danger'
   disabled?: boolean
+  icon?: IconName
 }) {
   return (
     <button
@@ -83,17 +128,55 @@ export function Button(props: {
       onClick={props.onClick}
       disabled={props.disabled}
     >
+      {props.icon ? <Icon name={props.icon} size={18} /> : null}
       {props.children}
     </button>
   )
 }
 
-export function Card(props: { children: ReactNode; title?: string }) {
+export function Card(props: { children: ReactNode; title?: string; icon?: IconName }) {
   return (
     <section className="card">
-      {props.title ? <h2 className="card-title">{props.title}</h2> : null}
+      {props.title ? (
+        <div className="card-head">
+          {props.icon ? (
+            <span className="card-icon">
+              <Icon name={props.icon} size={18} />
+            </span>
+          ) : null}
+          <h2 className="card-title">{props.title}</h2>
+        </div>
+      ) : null}
       {props.children}
     </section>
+  )
+}
+
+/** The heading of a screen, with whatever action belongs to the screen as a whole. */
+export function PageHead(props: { title: string; subtitle?: string; action?: ReactNode }) {
+  return (
+    <header className="page-head">
+      <div>
+        <h1 className="page-title">{props.title}</h1>
+        {props.subtitle ? <p className="page-subtitle">{props.subtitle}</p> : null}
+      </div>
+      {props.action}
+    </header>
+  )
+}
+
+/**
+ * Nothing here yet, said as a state rather than as an absence.
+ *
+ * An empty list that renders as empty space reads as something still loading. This says which
+ * of the two it is.
+ */
+export function Empty(props: { icon?: IconName; children: ReactNode }) {
+  return (
+    <div className="empty">
+      <Icon name={props.icon ?? 'events'} size={32} />
+      <p>{props.children}</p>
+    </div>
   )
 }
 
@@ -103,10 +186,19 @@ export function Card(props: { children: ReactNode; title?: string }) {
  * `warning` is not decoration here: it is what the export and withdraw screens use to say a
  * thing that cannot be undone, and it has to read differently from an error the user can fix.
  */
-export function Banner(props: { kind: 'error' | 'warning' | 'info' | 'success'; children: ReactNode }) {
+export function Banner(props: {
+  kind: 'error' | 'warning' | 'info' | 'success'
+  children: ReactNode
+}) {
+  const icon: IconName =
+    props.kind === 'success' ? 'check' : props.kind === 'info' ? 'shield' : 'warning'
   return (
-    <p className={`banner banner-${props.kind}`} role={props.kind === 'error' ? 'alert' : undefined}>
-      {props.children}
+    <p
+      className={`banner banner-${props.kind}`}
+      role={props.kind === 'error' ? 'alert' : undefined}
+    >
+      <Icon name={icon} size={18} />
+      <span>{props.children}</span>
     </p>
   )
 }
@@ -126,6 +218,7 @@ export function Form(props: {
   children: ReactNode
   onSubmit: () => Promise<void>
   submitLabel: string
+  submitIcon?: IconName
   disabled?: boolean
 }) {
   const { t } = useT()
@@ -155,11 +248,51 @@ export function Form(props: {
     <form className="form" onSubmit={submit}>
       {props.children}
       {error ? <Banner kind="error">{error}</Banner> : null}
-      <Button type="submit" disabled={busy || props.disabled}>
-        {busy ? t('common.loading') : props.submitLabel}
-      </Button>
+      <div className="button-row">
+        <Button
+          type="submit"
+          disabled={busy || props.disabled}
+          {...(props.submitIcon ? { icon: props.submitIcon } : {})}
+        >
+          {busy ? t('common.loading') : props.submitLabel}
+        </Button>
+      </div>
     </form>
   )
+}
+
+/**
+ * A blob from the API, as a URL a tag can point at.
+ *
+ * Needed because everything here is decrypted per session behind a bearer token held in memory:
+ * an `<img src="/api/...">` arrives with no Authorization header and renders as a broken image.
+ * So the bytes are fetched, wrapped in an object URL, and the URL is revoked when the component
+ * goes away — without that last part, browsing a wallet leaks a copy of every poster it drew.
+ */
+export function useObjectUrl(fetcher: (() => Promise<Blob>) | undefined): string | undefined {
+  const [url, setUrl] = useState<string>()
+
+  useEffect(() => {
+    if (!fetcher) {
+      setUrl(undefined)
+      return
+    }
+    let revoked = false
+    let created: string | undefined
+    fetcher()
+      .then((blob) => {
+        if (revoked) return
+        created = URL.createObjectURL(blob)
+        setUrl(created)
+      })
+      .catch(() => setUrl(undefined))
+    return () => {
+      revoked = true
+      if (created) URL.revokeObjectURL(created)
+    }
+  }, [fetcher])
+
+  return url
 }
 
 /** The ticket states, with the colour and shape the Android app settled on. */

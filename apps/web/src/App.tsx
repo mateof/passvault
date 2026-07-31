@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   BrowserRouter,
   Link,
+  NavLink,
   Navigate,
   Route,
   Routes,
@@ -12,6 +13,7 @@ import { api, MINIMUM_PASSPHRASE_LENGTH, MINIMUM_PASSWORD_LENGTH } from './api/p
 import { I18nProvider, LOCALES, LOCALE_NAMES, useT, type Locale } from './i18n'
 import { SessionProvider, useSession } from './session'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
+import { Icon, type IconName } from './icons'
 import { EventPage, EventsPage } from './events'
 import { AccountPage } from './account'
 import { AdminPage } from './admin'
@@ -415,48 +417,126 @@ function VaultGate() {
   )
 }
 
+/**
+ * One entry in the side rail.
+ *
+ * `NavLink` rather than `Link` so the current screen is marked without this component knowing
+ * anything about the route table — which is what stops the highlight drifting out of step with
+ * where the user actually is.
+ */
+function NavItem({
+  to,
+  icon,
+  label,
+  end,
+}: {
+  to: string
+  icon: IconName
+  label: string
+  end?: boolean
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) => `nav-link${isActive ? ' nav-link-active' : ''}`}
+    >
+      <Icon name={icon} />
+      <span>{label}</span>
+    </NavLink>
+  )
+}
+
+/**
+ * The shell around every signed-in screen.
+ *
+ * A side rail on a desktop and a bar along the bottom on a phone — the same list, moved to
+ * where the hand is. Locking the vault lives in it rather than on the account screen because it
+ * is the one action a user wants within reach at any moment: it is what they reach for when
+ * somebody else picks up the laptop.
+ */
 function Shell() {
   const { t, locale } = useT()
   const { me, signOut, refresh } = useSession()
 
   return (
-    <div className="shell">
-      <header className="top">
+    <div className="app">
+      <aside className="sidebar">
         <Link className="brand" to="/">
+          <span className="brand-mark">
+            <Icon name="ticket" size={18} />
+          </span>
           {t('appName')}
         </Link>
-        <nav>
-          <Link to="/">{t('nav.events')}</Link>
-          <Link to="/account">{t('nav.account')}</Link>
-          {me?.isAdmin ? <Link to="/admin">{t('nav.admin')}</Link> : null}
+
+        <nav className="nav">
+          <NavItem to="/" icon="events" label={t('nav.events')} end />
+          <NavItem to="/account" icon="account" label={t('nav.account')} />
+          {me?.isAdmin ? <NavItem to="/admin" icon="admin" label={t('nav.admin')} /> : null}
+        </nav>
+
+        <div className="nav-spacer" />
+
+        <div className="sidebar-footer">
+          <p className="sidebar-account">
+            <Icon name="account" size={16} />
+            {me?.userId.slice(0, 8)}
+          </p>
           <button
-            className="link"
+            className="nav-link"
             onClick={async () => {
               await api.lockVault(locale).catch(() => undefined)
               await refresh()
             }}
           >
-            {t('vault.lock')}
+            <Icon name="lock" />
+            <span>{t('vault.lock')}</span>
           </button>
-          <button className="link" onClick={signOut}>
-            {t('nav.signOut')}
+          <button className="nav-link" onClick={signOut}>
+            <Icon name="signOut" />
+            <span>{t('nav.signOut')}</span>
           </button>
-        </nav>
-      </header>
+        </div>
+      </aside>
 
-      <main>
-        {me?.vaultUnlocked ? (
-          <Routes>
-            <Route path="/" element={<EventsPage />} />
-            <Route path="/events/:id" element={<EventPage />} />
-            <Route path="/account" element={<AccountPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        ) : (
-          <VaultGate />
-        )}
+      <main className="content">
+        <div className="content-inner">
+          {me?.vaultUnlocked ? (
+            <Routes>
+              <Route path="/" element={<EventsPage />} />
+              <Route path="/events/:id" element={<EventPage />} />
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          ) : (
+            <VaultGate />
+          )}
+        </div>
       </main>
+    </div>
+  )
+}
+
+/** The signed-out screens, centred on a field of their own so they do not look like a page. */
+function SignedOut() {
+  const { t } = useT()
+  return (
+    <div className="gate">
+      <div className="gate-inner">
+        <p className="gate-brand">
+          <span className="brand-mark">
+            <Icon name="ticket" size={18} />
+          </span>
+          {t('appName')}
+        </p>
+        <Routes>
+          <Route path="/register" element={<RegisterPage />} />
+          {/* Reached from a mail an administrator sent, so it has to work signed out. */}
+          <Route path="/set-password" element={<SetPasswordPage />} />
+          <Route path="*" element={<LoginPage />} />
+        </Routes>
+      </div>
     </div>
   )
 }
@@ -464,21 +544,7 @@ function Shell() {
 function Gate() {
   const { ready, signedIn } = useSession()
   if (!ready) return <Loading />
-  if (!signedIn) {
-    return (
-      <div className="shell">
-        <main>
-          <Routes>
-            <Route path="/register" element={<RegisterPage />} />
-            {/* Reached from a mail an administrator sent, so it has to work signed out. */}
-            <Route path="/set-password" element={<SetPasswordPage />} />
-            <Route path="*" element={<LoginPage />} />
-          </Routes>
-        </main>
-      </div>
-    )
-  }
-  return <Shell />
+  return signedIn ? <Shell /> : <SignedOut />
 }
 
 export default function App() {

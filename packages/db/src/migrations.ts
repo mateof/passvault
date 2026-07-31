@@ -20,6 +20,82 @@ import { columnTypes, type Engine } from './engine.js'
 export function migrations(engine: Engine): Record<string, Migration> {
   return {
     '0001_initial_schema': initialSchema(engine),
+    '0002_event_appearance': eventAppearance(engine),
+    '0003_ticket_source_batch': ticketSourceBatch(engine),
+  }
+}
+
+/**
+ * Which import a ticket came out of.
+ *
+ * A ten-page PDF becomes ten tickets and the file itself is not one of them, so without this
+ * there is no way back from a ticket to the document it was split from — and no way to show
+ * a wallet with two imports as two groups rather than twenty anonymous passes.
+ *
+ * Nullable, because tickets created by hand, by a transfer or by a phone's log have no import
+ * to point at, and inventing one for them would be a lie in a column.
+ */
+function ticketSourceBatch(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('source_batch_id', sql.raw(t.varchar(36)), (column) =>
+          column.references('ingest_batches.id'),
+        )
+        .execute()
+      await db.schema
+        .createIndex('idx_tickets_source_batch')
+        .on('tickets')
+        .column('source_batch_id')
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      await db.schema.dropIndex('idx_tickets_source_batch').ifExists().execute()
+      await db.schema.alterTable('tickets').dropColumn('source_batch_id').execute()
+    },
+  }
+}
+
+/**
+ * How an event looks: an icon and a colour, or a picture of its own.
+ *
+ * Plaintext, and that is a decision rather than an oversight. "Concert, in violet" is a category
+ * and a colour; the ciphertext beside it is the name, the venue and the barcodes. Encrypting the
+ * icon would put a key in front of the one thing a wallet needs before it can draw anything —
+ * every event in the list would be a grey rectangle until its key was open, which is the state
+ * this exists to fix.
+ *
+ * The picture is different, and is stored as a blob: encrypted under the event key like every
+ * other document, because a poster can carry a name, a seat and a date.
+ */
+function eventAppearance(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .alterTable('events')
+        .addColumn('icon', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .alterTable('events')
+        .addColumn('colour', sql.raw(t.varchar(16)))
+        .execute()
+      await db.schema
+        .alterTable('events')
+        .addColumn('image_blob_id', sql.raw(t.varchar(36)), (column) =>
+          column.references('blobs.id'),
+        )
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      for (const column of ['image_blob_id', 'colour', 'icon']) {
+        await db.schema.alterTable('events').dropColumn(column).execute()
+      }
+    },
   }
 }
 
