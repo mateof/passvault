@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { rmSync } from 'node:fs'
 import {
   hashPassword,
   needsRehash,
@@ -10,7 +11,7 @@ import {
 } from '@passvault/crypto'
 import { newId, toInstant, type DatabaseHandle } from '@passvault/db'
 import { isLocale, type Locale } from '@passvault/i18n'
-import type { ServerConfig } from './config.js'
+import { adminSetupLinkFile, type ServerConfig } from './config.js'
 import type { CryptoContext } from './crypto-context.js'
 import { badRequest, conflict, forbidden, tooManyRequests, unauthorized } from './errors.js'
 import { sendLocalised, type Mailer } from './mailer.js'
@@ -330,6 +331,13 @@ export async function completeSetup(
     throw badRequest('registration.error.setupTokenInvalid')
   }
 
+  if (await repo.findUserKeys(deps.db, user.id)) {
+    // The account already has key material, so setup has been through once. Inserting a second
+    // envelope violates the primary key, and what the user saw for that was a bare "something
+    // went wrong" — the same wording as a crash, on a screen where the honest answer is that
+    // this link has already been used.
+    throw badRequest('registration.error.setupTokenInvalid')
+  }
   if (input.passphrase.length < MINIMUM_PASSPHRASE_LENGTH) {
     throw badRequest('vault.error.passphraseTooShort', { minimum: MINIMUM_PASSPHRASE_LENGTH })
   }
@@ -342,6 +350,9 @@ export async function completeSetup(
   await repo.saveUserKeys(deps.db, user.id, vault.sealedEnvelope, true)
   await repo.activateUser(deps.db, user.id)
   await repo.consumePasswordSetupToken(deps.db, setup.id)
+  // The hint file exists only so somebody can find the link without the log. Once the link has
+  // been redeemed it is a stale secret on disk, so it goes.
+  rmSync(adminSetupLinkFile(deps.config), { force: true })
   await repo.recordAudit(deps.db, {
     actorUserId: user.id,
     action: 'account.setup.completed',

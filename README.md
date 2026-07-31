@@ -108,10 +108,16 @@ REGISTRATION_WHITELIST=ana@example.org, brais@example.org
 ```
 
 With no `ADMIN_PASSWORD`, the account is created without one and a single-use link
-to choose it is emailed and written to the startup log. That is the recommended
-form: the password then exists in neither a file nor a log. `ADMIN_EMAIL` is
-idempotent and never destructive — it creates or promotes, and never demotes,
-suspends or resets anything.
+to choose it is emailed, written to the startup log, and left in
+`<DATA_DIR>/ADMIN-SETUP-LINK.txt`. That is the recommended form: the password then
+exists in neither a file nor a log. The file is there because a container log is
+not always reachable — on a NAS it is a panel in another application, while the
+data directory is a folder the operator already has open. It is deleted the moment
+the link is redeemed, and **a restart issues a fresh one** for as long as the
+account has not been set up, so an expired link is not a locked-out installation.
+
+`ADMIN_EMAIL` is idempotent and never destructive — it creates or promotes, and
+never demotes, suspends or resets anything.
 
 These values **seed** the database on first boot; from then on the administration
 screens own them, so closing registration from the browser is not undone by a

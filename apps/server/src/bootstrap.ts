@@ -1,10 +1,13 @@
+import { writeFileSync } from 'node:fs'
 import {
   MINIMUM_PASSPHRASE_LENGTH,
   adminCreateAccount,
+  sendPasswordSetupLink,
   setupUrl,
   type AccountsDeps,
 } from './accounts.js'
 import { addWhitelistEntry } from './administration.js'
+import { adminSetupLinkFile } from './config.js'
 import * as repo from './repository.js'
 
 /**
@@ -127,16 +130,16 @@ async function ensureAdministrator(
     deps.crypto.emailIndex(bootstrap.adminEmail),
   )
   if (existing) {
-    if (existing.is_admin === 1) {
-      return existing.id
+    if (existing.is_admin !== 1) {
+      await repo.setUserAdmin(deps.db, existing.id, true)
+      await repo.recordAudit(deps.db, {
+        action: 'user.promoted',
+        subjectKind: 'user',
+        subjectId: existing.id,
+      })
+      report.notes.push(`${bootstrap.adminEmail} promoted to administrator by ADMIN_EMAIL`)
     }
-    await repo.setUserAdmin(deps.db, existing.id, true)
-    await repo.recordAudit(deps.db, {
-      action: 'user.promoted',
-      subjectKind: 'user',
-      subjectId: existing.id,
-    })
-    report.notes.push(`${bootstrap.adminEmail} promoted to administrator by ADMIN_EMAIL`)
+    await offerSetupAgain(deps, report, existing)
     return existing.id
   }
 
@@ -170,19 +173,87 @@ async function ensureAdministrator(
         'the account screen and remove it from the deployment file.',
     )
   } else if (created.setupToken) {
-    report.adminSetupUrl = setupUrl(deps, created.setupToken)
-    report.notes.push(
-      `administrator ${bootstrap.adminEmail} created from ADMIN_EMAIL with no password. Open ` +
-        `this link within 72 hours to set one: ${report.adminSetupUrl}`,
-    )
-    if (!deps.config.mail.smtpUrl) {
-      report.warnings.push(
-        'No SMTP_URL is configured, so the setup link above was not emailed. It is in this log ' +
-          'and nowhere else.',
-      )
-    }
+    announceSetupLink(deps, report, setupUrl(deps, created.setupToken), 'created')
   }
   return created.userId
+}
+
+/**
+ * Issues another setup link for an administrator who never finished setting up.
+ *
+ * Every restart, and that is the point. The first link expires after 72 hours, and without
+ * this the operator of a container whose mail never worked has an administrator account that
+ * exists, cannot be signed into, and cannot be recovered short of deleting the database —
+ * which was true of the first version of this file and is the failure it was written to
+ * prevent. Restarting the container is the one recovery step every self-hoster already knows.
+ *
+ * Nothing happens once the account has either a password or key material: at that point
+ * somebody has been through setup and reissuing a link would be handing out a way in.
+ */
+async function offerSetupAgain(
+  deps: AccountsDeps,
+  report: BootstrapReport,
+  user: { id: string; password_hash: string | null },
+): Promise<void> {
+  if (user.password_hash !== null) {
+    return
+  }
+  if (await repo.findUserKeys(deps.db, user.id)) {
+    return
+  }
+  const email = deps.config.bootstrap.adminEmail
+  if (!email) {
+    return
+  }
+  const token = await sendPasswordSetupLink(deps, {
+    userId: user.id,
+    email,
+    locale: deps.config.bootstrap.adminLocale ?? deps.config.defaultLocale,
+  })
+  announceSetupLink(deps, report, setupUrl(deps, token), 'never finished setting up')
+}
+
+/**
+ * Says where the link is, in every place the operator might be looking.
+ *
+ * The log, because that is where a startup message belongs, and a file in the data directory,
+ * because a container log is not always reachable — see `adminSetupLinkFile`. Failing to write
+ * the file is reported and not fatal: a read-only mount is a reason to fix the mount, not a
+ * reason to refuse to start a server that is otherwise working.
+ */
+function announceSetupLink(
+  deps: AccountsDeps,
+  report: BootstrapReport,
+  url: string,
+  why: 'created' | 'never finished setting up',
+): void {
+  const email = deps.config.bootstrap.adminEmail
+  report.adminSetupUrl = url
+  report.notes.push(
+    `administrator ${email} ${why === 'created' ? 'created from ADMIN_EMAIL with no password' : 'has never finished setting up'}. ` +
+      `Open this link within 72 hours to set a password: ${url}`,
+  )
+
+  const path = adminSetupLinkFile(deps.config)
+  try {
+    writeFileSync(
+      path,
+      `${url}\n\nOpen this once, within 72 hours of the timestamp on this file, to set the\n` +
+        `password for ${email}. This file is deleted as soon as the link is used. If it has\n` +
+        'expired, restart the container and a new one is written here.\n',
+      { encoding: 'utf8', mode: 0o600 },
+    )
+    report.notes.push(`the same link is in ${path}, in case this log is not where you can see it`)
+  } catch (cause) {
+    report.warnings.push(`could not write the setup link to ${path}: ${String(cause)}`)
+  }
+
+  if (!deps.config.mail.smtpUrl) {
+    report.warnings.push(
+      'No SMTP_URL is configured, so that link was not emailed. It is in this log and in the ' +
+        'file above, and nowhere else.',
+    )
+  }
 }
 
 async function seedWhitelist(

@@ -161,6 +161,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   }
 }
 
+/**
+ * Where the administrator's one-time setup link is left when there is no mail server.
+ *
+ * A file in the data directory, because the log is not always reachable. On a Synology the
+ * container log is a panel in another application that may or may not be showing anything,
+ * while the data directory is a folder in File Station that the operator already has open —
+ * and if this cannot be read, the installation has an administrator nobody can sign in as.
+ *
+ * The token is single-use, expires in 72 hours, and the file is deleted the moment it is
+ * redeemed. It sits beside the database, which already holds far more.
+ */
+export const adminSetupLinkFile = (config: { dataDir: string }): string =>
+  join(config.dataDir, 'ADMIN-SETUP-LINK.txt')
+
 function readBootstrap(env: NodeJS.ProcessEnv): BootstrapConfig {
   const adminLocale = env.ADMIN_LOCALE
   if (adminLocale !== undefined && !isLocale(adminLocale)) {

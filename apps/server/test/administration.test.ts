@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -30,6 +30,10 @@ const BOOT_ADMIN = {
 }
 
 let server: TestServer | undefined
+
+/** The mailer is the only place a token appears, which is deliberate: it is never stored. */
+const tokenFromLastMail = (running: TestServer): string =>
+  /set-password\?token=([\w-]+)/.exec(running.mailer.sent.at(-1)?.body ?? '')?.[1] ?? ''
 
 /** Disposed here rather than in each test, and nulled so a nested hook can dispose it early. */
 afterEach(async () => {
@@ -86,6 +90,72 @@ describe('an administrator named in the deployment file', () => {
     expect(server.mailer.sent.at(-1)?.body).toContain('/set-password?token=')
   })
 
+  it('leaves that link in the data directory too, for when the container log is not reachable', async () => {
+    server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email })
+
+    const hint = readFileSync(join(server.config.dataDir, 'ADMIN-SETUP-LINK.txt'), 'utf8')
+
+    expect(hint).toContain('/set-password?token=')
+  })
+
+  it('can set a password from that link, which is the whole point of it', async () => {
+    server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email })
+    const token = tokenFromLastMail(server)
+
+    const response = await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/registration/complete-setup',
+      payload: {
+        token,
+        email: BOOT_ADMIN.email,
+        password: BOOT_ADMIN.password,
+        passphrase: BOOT_ADMIN.passphrase,
+      },
+    })
+
+    expect(response.statusCode).toBe(200)
+    await expect(login(server, BOOT_ADMIN)).resolves.toEqual(expect.any(String))
+  })
+
+  it('says the link has been used rather than failing as though the server broke', async () => {
+    server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email })
+    const token = tokenFromLastMail(server)
+    const payload = {
+      token,
+      email: BOOT_ADMIN.email,
+      password: BOOT_ADMIN.password,
+      passphrase: BOOT_ADMIN.passphrase,
+    }
+    await server.app.inject({ method: 'POST', url: '/api/v1/registration/complete-setup', payload })
+
+    const again = await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/registration/complete-setup',
+      payload,
+    })
+
+    expect(again.statusCode).toBe(400)
+    expect(again.json().error).toBe('registration.error.setupTokenInvalid')
+  })
+
+  it('drops the file on disk once the link has been redeemed', async () => {
+    server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email })
+    const hint = join(server.config.dataDir, 'ADMIN-SETUP-LINK.txt')
+
+    await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/registration/complete-setup',
+      payload: {
+        token: tokenFromLastMail(server),
+        email: BOOT_ADMIN.email,
+        password: BOOT_ADMIN.password,
+        passphrase: BOOT_ADMIN.passphrase,
+      },
+    })
+
+    expect(existsSync(hint)).toBe(false)
+  })
+
   it('refuses a password too short to be worth having, and falls back to the link', async () => {
     server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email, ADMIN_PASSWORD: 'admin' })
 
@@ -132,6 +202,86 @@ describe('an administrator named in the deployment file', () => {
       server = undefined
       rmSync(dataDir, { recursive: true, force: true })
     }
+  })
+
+  /**
+   * The recovery path, and the reason it exists.
+   *
+   * A setup link lasts 72 hours. Without this, an installation whose mail never worked and
+   * whose operator missed the log had an administrator that existed, could not be signed in
+   * as, and could not be recovered short of deleting the database. Restarting the container
+   * is the one repair every self-hoster already knows how to perform, so that is what issues
+   * a new link.
+   */
+  describe('that never finished setting up', () => {
+    let dataDir: string
+    let shared: Record<string, string>
+
+    beforeEach(() => {
+      dataDir = mkdtempSync(join(tmpdir(), 'passvault-resetup-'))
+      shared = {
+        DATABASE_URL: `sqlite:${join(dataDir, 'passvault.sqlite')}`,
+        MASTER_KEY: toBase64Url(randomKey()),
+        BLIND_INDEX_KEY: toBase64Url(randomKey()),
+        ADMIN_EMAIL: BOOT_ADMIN.email,
+      }
+    })
+
+    afterEach(async () => {
+      await server?.dispose()
+      server = undefined
+      rmSync(dataDir, { recursive: true, force: true })
+    })
+
+    it('gets another link on the next restart', async () => {
+      const first = await startTestServer(shared)
+      const before = tokenFromLastMail(first)
+      await first.dispose()
+
+      server = await startTestServer(shared)
+      const after = tokenFromLastMail(server)
+
+      expect(after).not.toBe('')
+      expect(after).not.toBe(before)
+    })
+
+    it('and that second link works', async () => {
+      const first = await startTestServer(shared)
+      await first.dispose()
+      server = await startTestServer(shared)
+
+      const response = await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/registration/complete-setup',
+        payload: {
+          token: tokenFromLastMail(server),
+          email: BOOT_ADMIN.email,
+          password: BOOT_ADMIN.password,
+          passphrase: BOOT_ADMIN.passphrase,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('stops once somebody has been through setup, so restarting is not a way in', async () => {
+      const first = await startTestServer(shared)
+      await first.app.inject({
+        method: 'POST',
+        url: '/api/v1/registration/complete-setup',
+        payload: {
+          token: tokenFromLastMail(first),
+          email: BOOT_ADMIN.email,
+          password: BOOT_ADMIN.password,
+          passphrase: BOOT_ADMIN.passphrase,
+        },
+      })
+      await first.dispose()
+
+      server = await startTestServer(shared)
+
+      expect(server.mailer.sent).toHaveLength(0)
+    })
   })
 })
 
