@@ -215,10 +215,12 @@ async function createAccount(
 export async function adminCreateAccount(
   deps: AccountsDeps,
   input: {
-    actorUserId: string
+    /** Null when the deployment file created it at boot and there is no administrator to name. */
+    actorUserId: string | null
     email: string
     locale?: string
     initialPassword?: string
+    isAdmin?: boolean
     setupTokenTtlHours?: number
   },
 ): Promise<{ userId: string; setupToken?: string }> {
@@ -237,9 +239,10 @@ export async function adminCreateAccount(
       ? await hashPassword(input.initialPassword, deps.argon2Params)
       : null,
     locale,
-    isAdmin: false,
+    isAdmin: input.isAdmin ?? false,
     // INVITED until the user has been through setup: the account exists but has no key
-    // material, so it cannot hold anything yet.
+    // material, so it cannot hold anything yet. Setting a vault passphrase is what moves it
+    // to ACTIVE, whichever of the two routes the user takes to get there.
     status: 'INVITED',
   })
 
@@ -260,24 +263,53 @@ export async function adminCreateAccount(
     return { userId }
   }
 
-  const setupToken = toBase64Url(new Uint8Array(randomBytes(32)))
-  await repo.insertPasswordSetupToken(deps.db, {
+  const setupToken = await sendPasswordSetupLink(deps, {
     userId,
-    tokenHash: repo.hashToken(setupToken),
-    ttlHours: input.setupTokenTtlHours ?? 72,
-  })
-  await sendLocalised(deps.mailer, {
-    to: deps.crypto.normaliseEmail(input.email),
+    email: input.email,
     locale,
-    subjectKey: 'registration.setupPassword.subject',
-    bodyKey: 'registration.setupPassword.body',
-    values: {
-      link: `${deps.config.publicUrl}/set-password?token=${setupToken}`,
-      expiresAt: new Date(Date.now() + (input.setupTokenTtlHours ?? 72) * 3_600_000),
-    },
+    ttlHours: input.setupTokenTtlHours ?? 72,
   })
   return { userId, setupToken }
 }
+
+/**
+ * Mints a one-time link that lets somebody set their own password, and mails it.
+ *
+ * Shared by account creation, by the administration screen's "send the link again", and by the
+ * bootstrap administrator an installation defines in its deployment file. One implementation
+ * because the token's lifetime and the wording of the mail are the same fact in all three, and
+ * because a second copy is how one of them ends up minting a token that never expires.
+ *
+ * The token is returned as well as sent: an installation with no SMTP server has no other way
+ * to reach the user, and the caller decides whether to log it or show it.
+ */
+export async function sendPasswordSetupLink(
+  deps: AccountsDeps,
+  input: { userId: string; email: string; locale: Locale; ttlHours?: number },
+): Promise<string> {
+  const ttlHours = input.ttlHours ?? 72
+  const setupToken = toBase64Url(new Uint8Array(randomBytes(32)))
+  await repo.insertPasswordSetupToken(deps.db, {
+    userId: input.userId,
+    tokenHash: repo.hashToken(setupToken),
+    ttlHours,
+  })
+  await sendLocalised(deps.mailer, {
+    to: deps.crypto.normaliseEmail(input.email),
+    locale: input.locale,
+    subjectKey: 'registration.setupPassword.subject',
+    bodyKey: 'registration.setupPassword.body',
+    values: {
+      link: setupUrl(deps, setupToken),
+      expiresAt: new Date(Date.now() + ttlHours * 3_600_000),
+    },
+  })
+  return setupToken
+}
+
+/** The address of the set-a-password screen, in one place so the mail and the API agree. */
+export const setupUrl = (deps: AccountsDeps, token: string): string =>
+  `${deps.config.publicUrl}/set-password?token=${token}`
 
 /** Completes an administrator-created account: the user sets their password and passphrase. */
 export async function completeSetup(
@@ -753,6 +785,10 @@ export async function setVaultPassphrase(
   if (!existing) {
     const vault = await createVault(deps.crypto.masterKey, input.passphrase, deps.argon2Params)
     await repo.saveUserKeys(deps.db, input.userId, vault.sealedEnvelope, true)
+    // An account an administrator created sits at INVITED until it has key material. This is
+    // the moment it acquires some, whether the user arrived through a setup link or signed in
+    // with a password the administrator set and chose their passphrase afterwards.
+    await repo.activateUser(deps.db, input.userId)
     deps.vaults.unlock(input.sessionId, input.userId, vault.dataKey)
     await repo.recordAudit(deps.db, {
       actorUserId: input.userId,

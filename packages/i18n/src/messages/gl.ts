@@ -145,6 +145,14 @@ export const gl = {
   'error.rateLimited': 'Demasiadas peticións. Proba outra vez en pouco.',
   'groups.error.unknownEmail': 'Non hai ningunha conta con ese correo neste servidor.',
   'groups.error.cannotRemoveOwner': 'Non se pode quitar a quen creou o grupo.',
+
+  // ─── Administración ───
+  'admin.error.lastAdmin':
+    'Este é o único administrador que queda. Nomea outro antes de quitarlle o cargo ou suspendelo, ou ninguén poderá administrar esta instalación.',
+  'admin.error.selfSuspend': 'Non podes suspender a túa propia conta.',
+  'admin.error.stillInvited':
+    'Esta conta aínda non completou a configuración. Actívase soa cando a persoa escolla a súa frase do baúl.',
+  'admin.error.alreadyWhitelisted': 'Este enderezo xa está na lista de correos autorizados.',
 } as const
 
 export type MessageKey = keyof typeof gl

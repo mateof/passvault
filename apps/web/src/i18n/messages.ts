@@ -37,7 +37,15 @@ export const gl = {
   'login.passkey': 'Entrar cunha chave de acceso',
   'login.needAccount': 'Non tes conta? Rexístrate',
   'login.secondFactor': 'Código de verificación',
-  'login.secondFactorHelp': 'Introduce o código que che enviamos.',
+  'login.secondFactorHelp': 'Introduce o código que che enviamos por correo.',
+  'login.secondFactorApp': 'Introduce o código da túa aplicación de autenticación.',
+
+  'setPassword.title': 'Configura a túa conta',
+  'setPassword.help':
+    'Creouse unha conta para ti. Escolle o teu contrasinal: quen a creou non o vai coñecer.',
+  'setPassword.submit': 'Configurar a conta',
+  'setPassword.noToken':
+    'Falta o código desta ligazón. Abre a ligazón completa que che enviaron por correo.',
 
   'register.title': 'Crear conta',
   'register.submit': 'Crear conta',
@@ -130,10 +138,75 @@ export const gl = {
   'account.language': 'Idioma',
 
   'admin.title': 'Administración',
+  'admin.notAdministrator': 'Esta pantalla é só para quen administra o servidor.',
+  'admin.registration': 'Quen se pode rexistrar',
   'admin.registrationMode': 'Modo de rexistro',
-  'admin.invite': 'Invitar por correo',
-  'admin.whitelist': 'Engadir á lista permitida',
+  'admin.mode.OPEN': 'Aberto',
+  'admin.mode.WHITELIST': 'Só correos autorizados',
+  'admin.mode.INVITATION': 'Só por invitación',
+  'admin.mode.CLOSED': 'Pechado',
+  'admin.mode.OPEN.help': 'Calquera que chegue ao servidor pode crear unha conta.',
+  'admin.mode.WHITELIST.help':
+    'Só se poden rexistrar os enderezos que engadas abaixo. Útil cando sabes de antemán quen vai entrar.',
+  'admin.mode.INVITATION.help':
+    'Fai falta un código de invitación. Créalos abaixo: cada un ten caducidade e número de usos.',
+  'admin.mode.CLOSED.help':
+    'Ninguén se pode rexistrar por si mesmo. Ti podes seguir creando contas desde aquí.',
+  'admin.allowPasswordLogin': 'Permitir entrar con contrasinal',
+  'admin.requireSecondFactor': 'Esixir segundo factor',
+  'admin.requireSecondFactorHelp':
+    'Quen non teña unha app de códigos recibe un código por correo. Sen SMTP_URL configurado non se pode enviar, así que esas contas quedarían sen poder entrar.',
+  'admin.enforcedByEnvironment':
+    'REGISTRATION_ENFORCE está activo: o ficheiro de despregue volverá escribir isto no próximo reinicio.',
+  'admin.saved': 'Gardado.',
+
+  'admin.users': 'Contas',
+  'admin.role.admin': 'Administra',
+  'admin.role.member': 'Membro',
+  'admin.status.ACTIVE': 'Activa',
+  'admin.status.INVITED': 'Pendente de configurar',
+  'admin.status.SUSPENDED': 'Suspendida',
+  'admin.noVault': 'sen baúl',
+  'admin.noPassword': 'sen contrasinal',
+  'admin.promote': 'Facer administrador',
+  'admin.demote': 'Quitar administración',
+  'admin.suspend': 'Suspender',
+  'admin.reinstate': 'Reactivar',
+  'admin.sendSetupLink': 'Enviar ligazón de configuración',
+  'admin.setupLink': 'Ligazón de configuración:',
+  'admin.createUser': 'Crear unha conta',
+  'admin.createUserHelp':
+    'Créase sen contrasinal e envíase unha ligazón para que a persoa escolla o seu. Ti nunca chegas a coñecelo, e a frase do baúl escóllea ela: se a escolleses ti, poderías ler os seus datos.',
+  'admin.alsoAdministrator': 'Que tamén administre o servidor',
+  'admin.closedStillWorks':
+    'O rexistro está pechado, pero as contas creadas desde aquí seguen funcionando.',
+
+  'admin.invitations': 'Invitacións',
+  'admin.invitationsInactive':
+    'O servidor non está en modo invitación, así que estes códigos non se piden ao rexistrarse.',
+  'admin.invite': 'Crear invitación',
+  'admin.inviteLink': 'Ligazón de invitación:',
+  'admin.emailOptional': 'Correo electrónico (opcional)',
+  'admin.inviteEmailHelp':
+    'Se pos un enderezo, a invitación só vale para el. Se o deixas baleiro vale para calquera que teña o código.',
+  'admin.maxUses': 'Usos permitidos',
+  'admin.ttlHours': 'Caduca en (horas)',
+  'admin.boundToAddress': 'Para un enderezo concreto',
+  'admin.anyAddress': 'Para calquera enderezo',
+  'admin.usesOf': 'usada {uses} de {max}',
+  'admin.expiresOn': 'caduca o {date}',
+  'admin.spent': 'xa non vale',
+  'admin.revoke': 'Anular',
+
+  'admin.whitelist': 'Correos autorizados',
+  'admin.whitelistAdd': 'Engadir',
+  'admin.whitelistHelp':
+    'Só se garda unha forma cifrada do enderezo e un índice para buscalo. Serve para autorizar, non para escribirlle.',
+  'admin.whitelistInactive':
+    'O servidor non está en modo «só correos autorizados», así que esta lista non se comproba agora mesmo.',
+  'admin.remove': 'Quitar',
   'admin.email': 'Correo electrónico',
+  'admin.copy': 'Copiar',
 
   'quarantine.title': 'Operacións en corentena',
   'quarantine.explain':
@@ -174,7 +247,15 @@ export const es: Record<WebMessageKey, string> = {
   'login.passkey': 'Entrar con una llave de acceso',
   'login.needAccount': '¿No tienes cuenta? Regístrate',
   'login.secondFactor': 'Código de verificación',
-  'login.secondFactorHelp': 'Introduce el código que te hemos enviado.',
+  'login.secondFactorHelp': 'Introduce el código que te hemos enviado por correo.',
+  'login.secondFactorApp': 'Introduce el código de tu aplicación de autenticación.',
+
+  'setPassword.title': 'Configura tu cuenta',
+  'setPassword.help':
+    'Se ha creado una cuenta para ti. Elige tu contraseña: quien la creó no va a conocerla.',
+  'setPassword.submit': 'Configurar la cuenta',
+  'setPassword.noToken':
+    'Falta el código de este enlace. Abre el enlace completo que te enviaron por correo.',
 
   'register.title': 'Crear cuenta',
   'register.submit': 'Crear cuenta',
@@ -265,10 +346,75 @@ export const es: Record<WebMessageKey, string> = {
   'account.language': 'Idioma',
 
   'admin.title': 'Administración',
+  'admin.notAdministrator': 'Esta pantalla es solo para quien administra el servidor.',
+  'admin.registration': 'Quién se puede registrar',
   'admin.registrationMode': 'Modo de registro',
-  'admin.invite': 'Invitar por correo',
-  'admin.whitelist': 'Añadir a la lista permitida',
+  'admin.mode.OPEN': 'Abierto',
+  'admin.mode.WHITELIST': 'Solo correos autorizados',
+  'admin.mode.INVITATION': 'Solo por invitación',
+  'admin.mode.CLOSED': 'Cerrado',
+  'admin.mode.OPEN.help': 'Cualquiera que llegue al servidor puede crear una cuenta.',
+  'admin.mode.WHITELIST.help':
+    'Solo se pueden registrar las direcciones que añadas abajo. Útil cuando sabes de antemano quién va a entrar.',
+  'admin.mode.INVITATION.help':
+    'Hace falta un código de invitación. Créalos abajo: cada uno tiene caducidad y número de usos.',
+  'admin.mode.CLOSED.help':
+    'Nadie se puede registrar por su cuenta. Tú puedes seguir creando cuentas desde aquí.',
+  'admin.allowPasswordLogin': 'Permitir entrar con contraseña',
+  'admin.requireSecondFactor': 'Exigir segundo factor',
+  'admin.requireSecondFactorHelp':
+    'Quien no tenga una app de códigos recibe uno por correo. Sin SMTP_URL configurado no se puede enviar, así que esas cuentas se quedarían sin poder entrar.',
+  'admin.enforcedByEnvironment':
+    'REGISTRATION_ENFORCE está activo: el fichero de despliegue volverá a escribir esto en el próximo reinicio.',
+  'admin.saved': 'Guardado.',
+
+  'admin.users': 'Cuentas',
+  'admin.role.admin': 'Administra',
+  'admin.role.member': 'Miembro',
+  'admin.status.ACTIVE': 'Activa',
+  'admin.status.INVITED': 'Pendiente de configurar',
+  'admin.status.SUSPENDED': 'Suspendida',
+  'admin.noVault': 'sin baúl',
+  'admin.noPassword': 'sin contraseña',
+  'admin.promote': 'Hacer administrador',
+  'admin.demote': 'Quitar administración',
+  'admin.suspend': 'Suspender',
+  'admin.reinstate': 'Reactivar',
+  'admin.sendSetupLink': 'Enviar enlace de configuración',
+  'admin.setupLink': 'Enlace de configuración:',
+  'admin.createUser': 'Crear una cuenta',
+  'admin.createUserHelp':
+    'Se crea sin contraseña y se envía un enlace para que la persona elija la suya. Tú nunca llegas a conocerla, y la frase del baúl la elige ella: si la eligieras tú, podrías leer sus datos.',
+  'admin.alsoAdministrator': 'Que también administre el servidor',
+  'admin.closedStillWorks':
+    'El registro está cerrado, pero las cuentas creadas desde aquí siguen funcionando.',
+
+  'admin.invitations': 'Invitaciones',
+  'admin.invitationsInactive':
+    'El servidor no está en modo invitación, así que estos códigos no se piden al registrarse.',
+  'admin.invite': 'Crear invitación',
+  'admin.inviteLink': 'Enlace de invitación:',
+  'admin.emailOptional': 'Correo electrónico (opcional)',
+  'admin.inviteEmailHelp':
+    'Si pones una dirección, la invitación solo vale para ella. Si lo dejas vacío vale para cualquiera que tenga el código.',
+  'admin.maxUses': 'Usos permitidos',
+  'admin.ttlHours': 'Caduca en (horas)',
+  'admin.boundToAddress': 'Para una dirección concreta',
+  'admin.anyAddress': 'Para cualquier dirección',
+  'admin.usesOf': 'usada {uses} de {max}',
+  'admin.expiresOn': 'caduca el {date}',
+  'admin.spent': 'ya no vale',
+  'admin.revoke': 'Anular',
+
+  'admin.whitelist': 'Correos autorizados',
+  'admin.whitelistAdd': 'Añadir',
+  'admin.whitelistHelp':
+    'Solo se guarda una forma cifrada de la dirección y un índice para buscarla. Sirve para autorizar, no para escribirle.',
+  'admin.whitelistInactive':
+    'El servidor no está en modo «solo correos autorizados», así que esta lista no se comprueba ahora mismo.',
+  'admin.remove': 'Quitar',
   'admin.email': 'Correo electrónico',
+  'admin.copy': 'Copiar',
 
   'quarantine.title': 'Operaciones en cuarentena',
   'quarantine.explain':
@@ -306,7 +452,15 @@ export const en: Record<WebMessageKey, string> = {
   'login.passkey': 'Sign in with a passkey',
   'login.needAccount': 'No account? Register',
   'login.secondFactor': 'Verification code',
-  'login.secondFactorHelp': 'Enter the code we sent you.',
+  'login.secondFactorHelp': 'Enter the code we emailed you.',
+  'login.secondFactorApp': 'Enter the code from your authenticator app.',
+
+  'setPassword.title': 'Set up your account',
+  'setPassword.help':
+    'An account has been created for you. Choose your own password: whoever created it will not know it.',
+  'setPassword.submit': 'Set up the account',
+  'setPassword.noToken':
+    'This link is missing its code. Open the full link that was emailed to you.',
 
   'register.title': 'Create an account',
   'register.submit': 'Create account',
@@ -397,10 +551,75 @@ export const en: Record<WebMessageKey, string> = {
   'account.language': 'Language',
 
   'admin.title': 'Administration',
+  'admin.notAdministrator': 'This screen is only for whoever administers the server.',
+  'admin.registration': 'Who can register',
   'admin.registrationMode': 'Registration mode',
-  'admin.invite': 'Invite by email',
-  'admin.whitelist': 'Add to the allow list',
+  'admin.mode.OPEN': 'Open',
+  'admin.mode.WHITELIST': 'Allowed addresses only',
+  'admin.mode.INVITATION': 'By invitation only',
+  'admin.mode.CLOSED': 'Closed',
+  'admin.mode.OPEN.help': 'Anybody who reaches the server can create an account.',
+  'admin.mode.WHITELIST.help':
+    'Only the addresses you add below can register. Useful when you already know who is joining.',
+  'admin.mode.INVITATION.help':
+    'An invitation code is required. Create them below: each has an expiry and a number of uses.',
+  'admin.mode.CLOSED.help':
+    'Nobody can register on their own. You can still create accounts from here.',
+  'admin.allowPasswordLogin': 'Allow signing in with a password',
+  'admin.requireSecondFactor': 'Require a second factor',
+  'admin.requireSecondFactorHelp':
+    'Anybody without an authenticator app gets a code by email. Without SMTP_URL configured it cannot be sent, so those accounts would be locked out.',
+  'admin.enforcedByEnvironment':
+    'REGISTRATION_ENFORCE is on: the deployment file will write these settings again on the next restart.',
+  'admin.saved': 'Saved.',
+
+  'admin.users': 'Accounts',
+  'admin.role.admin': 'Administrator',
+  'admin.role.member': 'Member',
+  'admin.status.ACTIVE': 'Active',
+  'admin.status.INVITED': 'Setup pending',
+  'admin.status.SUSPENDED': 'Suspended',
+  'admin.noVault': 'no vault',
+  'admin.noPassword': 'no password',
+  'admin.promote': 'Make administrator',
+  'admin.demote': 'Remove administrator',
+  'admin.suspend': 'Suspend',
+  'admin.reinstate': 'Reinstate',
+  'admin.sendSetupLink': 'Send a setup link',
+  'admin.setupLink': 'Setup link:',
+  'admin.createUser': 'Create an account',
+  'admin.createUserHelp':
+    'It is created without a password and a link is sent so the person chooses their own. You never learn it, and they choose the vault passphrase themselves: if you chose it, you could read their data.',
+  'admin.alsoAdministrator': 'Also administers the server',
+  'admin.closedStillWorks':
+    'Registration is closed, but accounts created from here still work.',
+
+  'admin.invitations': 'Invitations',
+  'admin.invitationsInactive':
+    'The server is not in invitation mode, so these codes are not asked for when registering.',
+  'admin.invite': 'Create an invitation',
+  'admin.inviteLink': 'Invitation link:',
+  'admin.emailOptional': 'Email address (optional)',
+  'admin.inviteEmailHelp':
+    'With an address, the invitation only works for that address. Left empty it works for anybody holding the code.',
+  'admin.maxUses': 'Uses allowed',
+  'admin.ttlHours': 'Expires in (hours)',
+  'admin.boundToAddress': 'For one specific address',
+  'admin.anyAddress': 'For any address',
+  'admin.usesOf': 'used {uses} of {max}',
+  'admin.expiresOn': 'expires {date}',
+  'admin.spent': 'no longer valid',
+  'admin.revoke': 'Revoke',
+
+  'admin.whitelist': 'Allowed addresses',
+  'admin.whitelistAdd': 'Add',
+  'admin.whitelistHelp':
+    'Only an encrypted form of the address and an index to find it are stored. It is there to authorise, not to write to.',
+  'admin.whitelistInactive':
+    'The server is not in “allowed addresses only” mode, so this list is not being checked right now.',
+  'admin.remove': 'Remove',
   'admin.email': 'Email address',
+  'admin.copy': 'Copy',
 
   'quarantine.title': 'Quarantined operations',
   'quarantine.explain':

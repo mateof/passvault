@@ -129,4 +129,12 @@ export const es: Catalogue = {
   'error.rateLimited': 'Demasiadas peticiones. Prueba otra vez en un momento.',
   'groups.error.unknownEmail': 'No hay ninguna cuenta con ese correo en este servidor.',
   'groups.error.cannotRemoveOwner': 'No se puede quitar a quien creó el grupo.',
+
+  // ─── Administración ───
+  'admin.error.lastAdmin':
+    'Este es el único administrador que queda. Nombra a otro antes de quitarle el cargo o suspenderlo, o nadie podrá administrar esta instalación.',
+  'admin.error.selfSuspend': 'No puedes suspender tu propia cuenta.',
+  'admin.error.stillInvited':
+    'Esta cuenta todavía no ha completado la configuración. Se activa sola cuando la persona elija su frase del baúl.',
+  'admin.error.alreadyWhitelisted': 'Esta dirección ya está en la lista de correos autorizados.',
 }

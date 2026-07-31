@@ -15,10 +15,20 @@ export interface Me {
   status: string
   /** Almost every other endpoint depends on this, so it travels with the session. */
   vaultUnlocked: boolean
+  /**
+   * Whether there is a vault at all, which is not the same question as whether it is open.
+   *
+   * An account an administrator created, or one that arrived through a provider, has no key
+   * material until its owner chooses a passphrase. Asking that user to unlock would be asking
+   * for a secret that does not exist.
+   */
+  vaultConfigured: boolean
 }
 
+export type RegistrationMode = 'OPEN' | 'WHITELIST' | 'INVITATION' | 'CLOSED'
+
 export interface RegistrationSettings {
-  mode: string
+  mode: RegistrationMode
   allowPasswordLogin: boolean
   requireSecondFactor: boolean
   /**
@@ -28,13 +38,52 @@ export interface RegistrationSettings {
    * in, or nobody can ever configure it.
    */
   acceptingFirstAdmin: boolean
+  /** Set when the deployment file rewrites these settings on every restart. */
+  enforcedByEnvironment?: boolean
 }
 
+/**
+ * What `/auth/login` and `/auth/second-factor` answer.
+ *
+ * `status` is the discriminator the server actually sends. An earlier version of this file
+ * invented field names of its own, which meant a second factor silently did nothing — the
+ * shapes are written out here so the two sides cannot drift again without the compiler
+ * noticing.
+ */
 export interface AuthResult {
+  status: 'complete' | 'second-factor'
   token?: string
-  /** Present when a second factor is still owed; the token has not been issued yet. */
-  secondFactorToken?: string
-  requiresSecondFactor?: boolean
+  /** The handle for the half-finished login, to be sent back with the code. */
+  challenge?: string
+  methods?: ('totp' | 'email')[]
+}
+
+export interface AdminUser {
+  userId: string
+  email?: string
+  isAdmin: boolean
+  status: string
+  locale: string
+  hasPassword: boolean
+  hasVault: boolean
+  createdAt: string
+}
+
+export interface AdminInvitation {
+  id: string
+  boundToAddress: boolean
+  uses: number
+  maxUses: number
+  expiresAt: string
+  revokedAt: string | null
+  createdAt: string
+  live: boolean
+}
+
+export interface AdminWhitelistEntry {
+  id: string
+  email?: string
+  createdAt: string
 }
 
 export interface EventSummary {
@@ -82,8 +131,11 @@ export const api = {
   login: (locale: string, email: string, password: string) =>
     request<AuthResult>('/api/v1/auth/login', { ...json(locale), body: { email, password } }),
 
-  secondFactor: (locale: string, token: string, code: string) =>
-    request<AuthResult>('/api/v1/auth/second-factor', { ...json(locale), body: { token, code } }),
+  secondFactor: (locale: string, challenge: string, code: string, method: 'totp' | 'email') =>
+    request<AuthResult>('/api/v1/auth/second-factor', {
+      ...json(locale),
+      body: { challenge, code, method },
+    }),
 
   /**
    * Creates the account. Returns no session: the caller signs in afterwards.
@@ -107,11 +159,11 @@ export const api = {
   lockVault: (locale: string) =>
     request<void>('/api/v1/vault/lock', { ...json(locale), method: 'POST' }),
 
-  setPassphrase: (locale: string, passphrase: string) =>
-    request<{ recoveryCode?: string }>('/api/v1/vault/passphrase', {
-      ...json(locale),
-      body: { passphrase },
-    }),
+  setPassphrase: (locale: string, passphrase: string, currentPassphrase?: string) =>
+    request<{ created: boolean; recoveryCode?: string; recoveryCodeWarning?: string }>(
+      '/api/v1/vault/passphrase',
+      { ...json(locale), body: { passphrase, ...(currentPassphrase ? { currentPassphrase } : {}) } },
+    ),
 
   /**
    * The events this user can reach.
@@ -238,12 +290,77 @@ export const api = {
       method: 'DELETE',
     }),
 
-  registrationSettingsUpdate: (locale: string, body: Record<string, unknown>) =>
-    request<void>('/api/v1/admin/registration', { ...json(locale), method: 'PUT', body }),
+  /** Completes an account an administrator created, from the link in the invitation mail. */
+  completeSetup: (locale: string, body: Record<string, unknown>) =>
+    request<{ userId: string; recoveryCode?: string; recoveryCodeWarning?: string }>(
+      '/api/v1/registration/complete-setup',
+      { ...json(locale), body },
+    ),
 
-  invite: (locale: string, email: string) =>
-    request<{ token?: string }>('/api/v1/admin/invitations', { ...json(locale), body: { email } }),
+  // ── Administration ───────────────────────────────────────────────────────────
+
+  registrationSettingsUpdate: (locale: string, body: Record<string, unknown>) =>
+    request<RegistrationSettings>('/api/v1/admin/registration', {
+      ...json(locale),
+      method: 'PUT',
+      body,
+    }),
+
+  adminUsers: (locale: string) =>
+    request<{ users: AdminUser[] }>('/api/v1/admin/users', json(locale)),
+
+  adminChangeUser: (
+    locale: string,
+    userId: string,
+    body: { isAdmin?: boolean; status?: 'ACTIVE' | 'SUSPENDED' },
+  ) =>
+    request<AdminUser>(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
+      ...json(locale),
+      method: 'PATCH',
+      body,
+    }),
+
+  adminCreateUser: (
+    locale: string,
+    body: { email: string; locale?: string; initialPassword?: string; isAdmin?: boolean },
+  ) => request<{ userId: string; setupUrl?: string }>('/api/v1/admin/users', { ...json(locale), body }),
+
+  adminSetupLink: (locale: string, userId: string) =>
+    request<{ setupUrl: string }>(
+      `/api/v1/admin/users/${encodeURIComponent(userId)}/setup-link`,
+      { ...json(locale), method: 'POST' },
+    ),
+
+  /**
+   * Creates an invitation and returns the code.
+   *
+   * The code comes back exactly once: only its Argon2id hash is stored, so a screen that
+   * forgets it cannot ask for it again.
+   */
+  invite: (locale: string, body: { email?: string; maxUses?: number; ttlHours?: number }) =>
+    request<{ invitationId: string; code: string; url: string }>('/api/v1/admin/invitations', {
+      ...json(locale),
+      body,
+    }),
+
+  adminInvitations: (locale: string) =>
+    request<{ invitations: AdminInvitation[] }>('/api/v1/admin/invitations', json(locale)),
+
+  revokeInvitation: (locale: string, id: string) =>
+    request<void>(`/api/v1/admin/invitations/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
+  adminWhitelist: (locale: string) =>
+    request<{ entries: AdminWhitelistEntry[] }>('/api/v1/admin/whitelist', json(locale)),
 
   whitelist: (locale: string, email: string) =>
-    request<void>('/api/v1/admin/whitelist', { ...json(locale), body: { email } }),
+    request<AdminWhitelistEntry>('/api/v1/admin/whitelist', { ...json(locale), body: { email } }),
+
+  removeFromWhitelist: (locale: string, id: string) =>
+    request<void>(`/api/v1/admin/whitelist/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
 }

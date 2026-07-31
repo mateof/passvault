@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom'
 import { api } from './api/passvault'
 import { I18nProvider, LOCALES, LOCALE_NAMES, useT, type Locale } from './i18n'
 import { SessionProvider, useSession } from './session'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
 import { EventPage, EventsPage } from './events'
-import { AccountPage, AdminPage } from './account'
+import { AccountPage } from './account'
+import { AdminPage } from './admin'
 
 /**
  * The shell, and the two gates in front of it.
@@ -33,7 +42,10 @@ function LoginPage() {
   const { signIn } = useSession()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [pending, setPending] = useState<string>()
+  // The challenge the server hands back when it wants a second factor, with the methods it
+  // will accept. Both travel back in the next request, which is what the server's shape
+  // requires — an earlier version sent neither and the code field silently did nothing.
+  const [pending, setPending] = useState<{ challenge: string; methods: ('totp' | 'email')[] }>()
   const [code, setCode] = useState('')
   const [providers, setProviders] = useState<{ id: string; name: string }[]>([])
 
@@ -47,17 +59,24 @@ function LoginPage() {
   }, [locale])
 
   if (pending) {
+    const method = pending.methods.includes('totp') ? 'totp' : 'email'
     return (
       <Card title={t('login.secondFactor')}>
         <Form
           submitLabel={t('login.submit')}
           onSubmit={async () => {
-            const result = await api.secondFactor(locale, pending, code)
+            const result = await api.secondFactor(locale, pending.challenge, code, method)
             if (result.token) await signIn(result.token)
           }}
         >
-          <p>{t('login.secondFactorHelp')}</p>
-          <Field label={t('login.secondFactor')} value={code} onChange={setCode} required />
+          <p>{method === 'totp' ? t('login.secondFactorApp') : t('login.secondFactorHelp')}</p>
+          <Field
+            label={t('login.secondFactor')}
+            value={code}
+            onChange={setCode}
+            autoComplete="one-time-code"
+            required
+          />
         </Form>
       </Card>
     )
@@ -71,8 +90,8 @@ function LoginPage() {
           const result = await api.login(locale, email, password)
           if (result.token) {
             await signIn(result.token)
-          } else if (result.secondFactorToken) {
-            setPending(result.secondFactorToken)
+          } else if (result.challenge) {
+            setPending({ challenge: result.challenge, methods: result.methods ?? ['email'] })
           }
         }}
       >
@@ -127,10 +146,13 @@ function LoginPage() {
 function RegisterPage() {
   const { t, locale } = useT()
   const navigate = useNavigate()
+  // An invitation arrives as a link, so the code is already in the address bar. Making somebody
+  // copy it out of their own URL is the sort of small friction that turns into a support message.
+  const [params] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passphrase, setPassphrase] = useState('')
-  const [invitationCode, setInvitationCode] = useState('')
+  const [invitationCode, setInvitationCode] = useState(params.get('invitation') ?? '')
   const [mode, setMode] = useState<string>()
   // A closed server still accepts its first administrator, or nobody could ever configure it.
   // Reading only `mode` locked the very first user out of a fresh install, which is exactly
@@ -230,16 +252,137 @@ function RegisterPage() {
 }
 
 /**
+ * Setting a password from the link an administrator sent.
+ *
+ * Reached signed out, from an email, and it asks for both secrets at once because both are
+ * being chosen for the first time. The address is asked for as well as the token: the token
+ * alone must not be enough to take over an account whose address the holder does not know,
+ * and the server checks that they match.
+ */
+function SetPasswordPage() {
+  const { t, locale } = useT()
+  const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [passphrase, setPassphrase] = useState('')
+  const [recovery, setRecovery] = useState<{ code: string; warning?: string }>()
+  const token = params.get('token') ?? ''
+
+  if (recovery) {
+    return (
+      <Card title={t('vault.recoveryCode')}>
+        <Banner kind="warning">{recovery.warning ?? t('vault.setWarning')}</Banner>
+        <p className="barcode">{recovery.code}</p>
+        <Button onClick={() => navigate('/login')}>{t('login.submit')}</Button>
+      </Card>
+    )
+  }
+
+  if (!token) {
+    return (
+      <Card title={t('setPassword.title')}>
+        <Banner kind="error">{t('setPassword.noToken')}</Banner>
+        <Link to="/login">{t('register.haveAccount')}</Link>
+      </Card>
+    )
+  }
+
+  return (
+    <Card title={t('setPassword.title')}>
+      <p className="muted">{t('setPassword.help')}</p>
+      <p className="muted">{t('vault.explain')}</p>
+      <Form
+        submitLabel={t('setPassword.submit')}
+        onSubmit={async () => {
+          const result = await api.completeSetup(locale, { token, email, password, passphrase })
+          if (result.recoveryCode) {
+            setRecovery({ code: result.recoveryCode, warning: result.recoveryCodeWarning })
+          } else {
+            navigate('/login')
+          }
+        }}
+      >
+        <Field label={t('login.email')} value={email} onChange={setEmail} type="email" required />
+        <Field
+          label={t('login.password')}
+          value={password}
+          onChange={setPassword}
+          type="password"
+          autoComplete="new-password"
+          required
+        />
+        <Field
+          label={t('vault.passphrase')}
+          value={passphrase}
+          onChange={setPassphrase}
+          type="password"
+          autoComplete="new-password"
+          help={t('vault.setWarning')}
+          required
+        />
+      </Form>
+    </Card>
+  )
+}
+
+/**
  * The second gate.
  *
  * The explanation is on the screen rather than in a help page because two secrets is the part
  * of this design a user is most likely to find baffling, and the moment they are asked for the
  * second one is the moment the explanation is worth reading.
+ *
+ * Two states, not one. An account created by an administrator, by a provider or by a passkey
+ * has no vault at all until its owner chooses a passphrase, and asking such a user to "unlock"
+ * is asking for a secret that has never existed — which is precisely what the first
+ * administrator of a container-deployed installation would have met.
  */
 function VaultGate() {
   const { t, locale } = useT()
-  const { refresh } = useSession()
+  const { me, refresh } = useSession()
   const [passphrase, setPassphrase] = useState('')
+  const [recovery, setRecovery] = useState<{ code: string; warning?: string }>()
+
+  if (recovery) {
+    return (
+      <Card title={t('vault.recoveryCode')}>
+        <Banner kind="warning">{recovery.warning ?? t('vault.setWarning')}</Banner>
+        <p className="barcode">{recovery.code}</p>
+        <Button onClick={() => void refresh()}>{t('action.confirm')}</Button>
+      </Card>
+    )
+  }
+
+  if (me?.vaultConfigured === false) {
+    return (
+      <Card title={t('vault.setTitle')}>
+        <p className="muted">{t('vault.explain')}</p>
+        <Banner kind="warning">{t('vault.setWarning')}</Banner>
+        <Form
+          submitLabel={t('action.save')}
+          onSubmit={async () => {
+            const result = await api.setPassphrase(locale, passphrase)
+            setPassphrase('')
+            if (result.recoveryCode) {
+              setRecovery({ code: result.recoveryCode, warning: result.recoveryCodeWarning })
+            } else {
+              await refresh()
+            }
+          }}
+        >
+          <Field
+            label={t('vault.passphrase')}
+            value={passphrase}
+            onChange={setPassphrase}
+            type="password"
+            autoComplete="new-password"
+            required
+          />
+        </Form>
+      </Card>
+    )
+  }
 
   return (
     <Card title={t('vault.title')}>
@@ -319,6 +462,8 @@ function Gate() {
         <main>
           <Routes>
             <Route path="/register" element={<RegisterPage />} />
+            {/* Reached from a mail an administrator sent, so it has to work signed out. */}
+            <Route path="/set-password" element={<SetPasswordPage />} />
             <Route path="*" element={<LoginPage />} />
           </Routes>
         </main>

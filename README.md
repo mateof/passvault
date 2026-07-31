@@ -87,12 +87,46 @@ No external database, no message broker, no cache.
 With Docker:
 
 ```bash
+cp .env.example .env    # optional; an empty .env works
 docker compose up
 ```
 
-See [docs/deployment.md](docs/deployment.md) for production configuration, and
-[docs/configuration.md](docs/configuration.md) for the full list of environment
-variables.
+[.env.example](.env.example) documents every environment variable and what
+happens when it is left empty.
+
+## Administering an installation
+
+A fresh instance is closed and has no accounts. The first account to register
+becomes the administrator anyway — otherwise nobody could ever configure it — but
+that only works if somebody is watching, which on a server behind a tunnel is
+exactly the wrong assumption. So the deployment file can say it instead:
+
+```bash
+ADMIN_EMAIL=admin@example.org       # created at boot, or promoted if it exists
+REGISTRATION_MODE=INVITATION        # OPEN, WHITELIST, INVITATION or CLOSED
+REGISTRATION_WHITELIST=ana@example.org, brais@example.org
+```
+
+With no `ADMIN_PASSWORD`, the account is created without one and a single-use link
+to choose it is emailed and written to the startup log. That is the recommended
+form: the password then exists in neither a file nor a log. `ADMIN_EMAIL` is
+idempotent and never destructive — it creates or promotes, and never demotes,
+suspends or resets anything.
+
+These values **seed** the database on first boot; from then on the administration
+screens own them, so closing registration from the browser is not undone by a
+restart. `REGISTRATION_ENFORCE=true` inverts that for an operator who would rather
+the file be the single source of truth.
+
+The administration screens themselves cover the registration mode, the accounts
+(promote, demote, suspend, reinstate, send a setup link), the invitations and the
+allow list. Two things they refuse: removing the last administrator, and
+suspending yourself. Recovering from either would mean editing the database by
+hand.
+
+No route lets an administrator choose somebody's vault passphrase, including their
+own account's at creation time. A passphrase the administrator knows is a vault
+the administrator can read, which would undo the entire key design.
 
 ## Choosing a database
 

@@ -22,6 +22,15 @@ import {
   unlockSessionVault,
   type AccountsDeps,
 } from './accounts.js'
+import {
+  addWhitelistEntry,
+  changeUser,
+  listInvitations,
+  listUsers,
+  listWhitelist,
+  resendSetupLink,
+} from './administration.js'
+import { applyBootstrap } from './bootstrap.js'
 import { loadConfig, type ServerConfig } from './config.js'
 import { CryptoContext } from './crypto-context.js'
 import {
@@ -156,6 +165,16 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     vaults,
     pending,
     ...(options.argon2Params ? { argon2Params: options.argon2Params } : {}),
+  }
+
+  // What the deployment file asked for — an administrator, a registration mode, an allow list —
+  // applied before the first request rather than left for somebody to do through a browser.
+  const bootstrapped = await applyBootstrap(deps)
+  for (const note of bootstrapped.notes) {
+    app.log.info(note)
+  }
+  for (const warning of bootstrapped.warnings) {
+    app.log.warn(warning)
   }
 
   if (config.generatedSecrets.length > 0) {
@@ -398,6 +417,11 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       // Whether the vault is open is part of the session state a client needs, since almost
       // every other endpoint depends on it.
       vaultUnlocked: vault !== undefined,
+      // And whether there is a vault at all, which is a different question with a different
+      // screen behind it. An account created by an administrator, by a provider or by a passkey
+      // has none until its owner chooses a passphrase, and asking such a user to "unlock" is
+      // asking for a secret that does not exist yet.
+      vaultConfigured: (await repo.findUserKeys(db, user.id)) !== undefined,
     }
   })
 
@@ -447,26 +471,65 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     const body = settingsBody.parse(request.body)
     await repo.writeRegistrationSettings(db, { ...body, updatedBy: session.user_id })
     const settings = await repo.readRegistrationSettings(db)
-    return { mode: settings.mode, allowPasswordLogin: settings.allow_password_login === 1 }
+    return {
+      mode: settings.mode,
+      allowPasswordLogin: settings.allow_password_login === 1,
+      requireSecondFactor: settings.require_second_factor === 1,
+      // Whether the environment will overwrite this on the next restart is part of the answer:
+      // an administrator who changes a setting that a deployment file re-applies at boot needs
+      // to know that now, not after the container is next recreated.
+      enforcedByEnvironment: config.bootstrap.enforce,
+    }
+  })
+
+  app.get('/api/v1/admin/users', async (request) => {
+    await adminOf(request)
+    return { users: await listUsers(deps) }
+  })
+
+  const userChangeBody = z.object({
+    isAdmin: z.boolean().optional(),
+    status: z.enum(['ACTIVE', 'SUSPENDED']).optional(),
+  })
+
+  app.patch('/api/v1/admin/users/:id', async (request) => {
+    const session = await adminOf(request)
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+    const body = userChangeBody.parse(request.body)
+    return changeUser(deps, { actorUserId: session.user_id, userId: id, ...body })
+  })
+
+  app.post('/api/v1/admin/users/:id/setup-link', async (request) => {
+    const session = await adminOf(request)
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+    return resendSetupLink(deps, { actorUserId: session.user_id, userId: id })
   })
 
   const whitelistBody = z.object({ email: z.string().email() })
 
+  app.get('/api/v1/admin/whitelist', async (request) => {
+    await adminOf(request)
+    return { entries: await listWhitelist(deps) }
+  })
+
   app.post('/api/v1/admin/whitelist', async (request, reply) => {
     const session = await adminOf(request)
     const { email } = whitelistBody.parse(request.body)
-    await repo.addToWhitelist(db, {
-      emailKey: crypto.emailIndex(email),
-      // Under the master-derived key of the administrator who added it, since there is no user
-      // row to key it to yet — the point of the whitelist is that the account does not exist.
-      emailCipher: crypto.encryptField(
-        crypto.serverKey(session.user_id, 'email'),
-        crypto.normaliseEmail(email),
-        { table: 'email_whitelist', column: 'email_cipher', rowId: session.user_id },
-      ),
-      addedBy: session.user_id,
+    const entry = await addWhitelistEntry(deps, { email, addedBy: session.user_id })
+    return reply.status(201).send(entry)
+  })
+
+  app.delete('/api/v1/admin/whitelist/:id', async (request, reply) => {
+    const session = await adminOf(request)
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+    await repo.removeFromWhitelist(db, id)
+    await repo.recordAudit(db, {
+      actorUserId: session.user_id,
+      action: 'whitelist.removed',
+      subjectKind: 'whitelist',
+      subjectId: id,
     })
-    return reply.status(201).send({ added: true })
+    return reply.status(204).send()
   })
 
   const invitationBody = z.object({
@@ -499,10 +562,29 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     })
   })
 
+  app.get('/api/v1/admin/invitations', async (request) => {
+    await adminOf(request)
+    return { invitations: await listInvitations(deps) }
+  })
+
+  app.delete('/api/v1/admin/invitations/:id', async (request, reply) => {
+    const session = await adminOf(request)
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+    await repo.revokeInvitation(db, id)
+    await repo.recordAudit(db, {
+      actorUserId: session.user_id,
+      action: 'invitation.revoked',
+      subjectKind: 'invitation',
+      subjectId: id,
+    })
+    return reply.status(204).send()
+  })
+
   const adminUserBody = z.object({
     email: z.string().email(),
     locale: z.string().optional(),
     initialPassword: z.string().min(10).optional(),
+    isAdmin: z.boolean().optional(),
   })
 
   app.post('/api/v1/admin/users', async (request, reply) => {

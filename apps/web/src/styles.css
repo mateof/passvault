@@ -286,3 +286,57 @@ button.link {
 .loading {
   color: var(--ink-muted);
 }
+
+/* ── Administration ──────────────────────────────────────────────────────────
+   A row per account, invitation or address: who or what on the left, what can be
+   done about it on the right, wrapping onto its own line on a narrow screen rather
+   than squeezing the buttons until their labels are unreadable. */
+
+.field-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 0.6rem 0.75rem;
+}
+
+.admin-user-who {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 12rem;
+}
+
+.admin-user-who .muted {
+  font-size: 0.85rem;
+}
+
+.admin-user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.admin-user-actions .button {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+/* A code or a link that exists exactly once. Breaking anywhere matters more than looking
+   tidy: it is about to be selected and copied, and a truncated invitation link is useless. */
+.one-time {
+  display: block;
+  margin: 0.35rem 0;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}

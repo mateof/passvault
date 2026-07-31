@@ -126,4 +126,12 @@ export const en: Catalogue = {
   'error.rateLimited': 'Too many requests. Try again shortly.',
   'groups.error.unknownEmail': 'No account on this server uses that email address.',
   'groups.error.cannotRemoveOwner': 'The person who created the group cannot be removed.',
+
+  // ─── Administration ───
+  'admin.error.lastAdmin':
+    'This is the last administrator left. Appoint another one before demoting or suspending them, or nobody will be able to administer this installation.',
+  'admin.error.selfSuspend': 'You cannot suspend your own account.',
+  'admin.error.stillInvited':
+    'This account has not finished setting itself up. It becomes active on its own once the person chooses their vault passphrase.',
+  'admin.error.alreadyWhitelisted': 'That address is already on the allow list.',
 }

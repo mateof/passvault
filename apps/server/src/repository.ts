@@ -64,6 +64,32 @@ export async function findUserById(
   return handle.db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
 }
 
+/**
+ * Every account, for the administration screen.
+ *
+ * Whether a user has key material is part of the answer and comes from a join rather than a
+ * second query per row: an account created by an administrator or through a provider has no
+ * vault until the user sets a passphrase, and "signed in but holding nothing" is the state an
+ * administrator most often has to explain.
+ */
+export async function listUsers(handle: DatabaseHandle) {
+  return handle.db
+    .selectFrom('users')
+    .leftJoin('user_keys', 'user_keys.user_id', 'users.id')
+    .select([
+      'users.id',
+      'users.email_cipher',
+      'users.status',
+      'users.locale',
+      'users.is_admin',
+      'users.password_hash',
+      'users.created_at',
+      'user_keys.passphrase_set_at',
+    ])
+    .orderBy('users.created_at', 'asc')
+    .execute()
+}
+
 export async function countUsers(handle: DatabaseHandle): Promise<number> {
   const row = await handle.db
     .selectFrom('users')
@@ -84,11 +110,52 @@ export async function updatePasswordHash(
     .execute()
 }
 
+export async function countAdmins(handle: DatabaseHandle): Promise<number> {
+  const row = await handle.db
+    .selectFrom('users')
+    .select((eb) => eb.fn.countAll<number>().as('total'))
+    .where('is_admin', '=', 1)
+    .where('status', '!=', 'SUSPENDED')
+    .executeTakeFirstOrThrow()
+  return Number(row.total)
+}
+
+export async function setUserAdmin(
+  handle: DatabaseHandle,
+  userId: string,
+  isAdmin: boolean,
+): Promise<void> {
+  await handle.db
+    .updateTable('users')
+    .set({ is_admin: isAdmin ? 1 : 0, updated_at: toInstant() })
+    .where('id', '=', userId)
+    .execute()
+}
+
+export async function setUserStatus(
+  handle: DatabaseHandle,
+  userId: string,
+  status: 'ACTIVE' | 'INVITED' | 'SUSPENDED',
+): Promise<void> {
+  await handle.db
+    .updateTable('users')
+    .set({ status, updated_at: toInstant() })
+    .where('id', '=', userId)
+    .execute()
+}
+
+/**
+ * Moves an account out of INVITED once it has been through setup.
+ *
+ * Only from INVITED, which is not a detail: without that clause the same call would silently
+ * un-suspend an account the moment its owner set a vault passphrase.
+ */
 export async function activateUser(handle: DatabaseHandle, userId: string): Promise<void> {
   await handle.db
     .updateTable('users')
     .set({ status: 'ACTIVE', updated_at: toInstant() })
     .where('id', '=', userId)
+    .where('status', '=', 'INVITED')
     .execute()
 }
 
@@ -219,14 +286,27 @@ export async function revokeSessionsOfUser(handle: DatabaseHandle, userId: strin
     .execute()
 }
 
-export async function readRegistrationSettings(
+/**
+ * The settings row if it has ever been written, without creating it.
+ *
+ * The distinction matters exactly once: at boot, "no row" means nobody has configured this
+ * installation and the deployment file may seed it. Once a row exists, the environment stops
+ * being authoritative — see `BootstrapConfig`.
+ */
+export async function findRegistrationSettings(
   handle: DatabaseHandle,
-): Promise<RegistrationSettingsRow> {
-  const existing = await handle.db
+): Promise<RegistrationSettingsRow | undefined> {
+  return handle.db
     .selectFrom('registration_settings')
     .selectAll()
     .where('id', '=', 1)
     .executeTakeFirst()
+}
+
+export async function readRegistrationSettings(
+  handle: DatabaseHandle,
+): Promise<RegistrationSettingsRow> {
+  const existing = await findRegistrationSettings(handle)
   if (existing) {
     return existing
   }
@@ -250,7 +330,8 @@ export async function writeRegistrationSettings(
     mode?: RegistrationSettingsRow['mode']
     allowPasswordLogin?: boolean
     requireSecondFactor?: boolean
-    updatedBy: string
+    /** Null when the deployment file wrote it at boot and there is no administrator to blame. */
+    updatedBy: string | null
   },
 ): Promise<void> {
   await readRegistrationSettings(handle)
@@ -282,18 +363,33 @@ export async function isWhitelisted(handle: DatabaseHandle, emailKey: string): P
 
 export async function addToWhitelist(
   handle: DatabaseHandle,
-  options: { emailKey: string; emailCipher: Uint8Array; addedBy: string },
+  options: {
+    /** Chosen by the caller, because the ciphertext is sealed against this identifier. */
+    id: string
+    emailKey: string
+    emailCipher: Uint8Array
+    /** Null when the deployment file seeded the entry before any account existed. */
+    addedBy: string | null
+  },
 ): Promise<void> {
   await handle.db
     .insertInto('email_whitelist')
     .values({
-      id: newId(),
+      id: options.id,
       email_key: options.emailKey,
       email_cipher: Buffer.from(options.emailCipher),
       added_by: options.addedBy,
       created_at: toInstant(),
     })
     .execute()
+}
+
+export async function listWhitelist(handle: DatabaseHandle) {
+  return handle.db.selectFrom('email_whitelist').selectAll().orderBy('created_at', 'asc').execute()
+}
+
+export async function removeFromWhitelist(handle: DatabaseHandle, id: string): Promise<void> {
+  await handle.db.deleteFrom('email_whitelist').where('id', '=', id).execute()
 }
 
 export async function insertInvitation(
@@ -330,6 +426,26 @@ export async function listLiveInvitations(handle: DatabaseHandle) {
     .selectAll()
     .where('revoked_at', 'is', null)
     .where('expires_at', '>', toInstant())
+    .execute()
+}
+
+/**
+ * Every invitation, spent and expired ones included.
+ *
+ * Deliberately not filtered the way `listLiveInvitations` is: an administrator looking at this
+ * screen is usually asking "did the link I sent get used", and a list that hides everything
+ * already used cannot answer that.
+ */
+export async function listInvitations(handle: DatabaseHandle) {
+  return handle.db.selectFrom('invitations').selectAll().orderBy('created_at', 'desc').execute()
+}
+
+export async function revokeInvitation(handle: DatabaseHandle, id: string): Promise<void> {
+  await handle.db
+    .updateTable('invitations')
+    .set({ revoked_at: toInstant() })
+    .where('id', '=', id)
+    .where('revoked_at', 'is', null)
     .execute()
 }
 

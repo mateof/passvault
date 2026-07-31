@@ -15,6 +15,12 @@
 # MASTER_KEY and BLIND_INDEX_KEY are generated on first boot and written into DATA_DIR if
 # unset. That is right for a laptop and wrong for a server: on a real deployment set them
 # yourself, because losing the volume then means losing the key that decrypts everything.
+#
+# ADMIN_EMAIL and REGISTRATION_MODE let a fresh container arrive with an administrator and a
+# registration policy already in place, so nothing has to be configured through a browser at
+# exactly the right moment. Copy .env.example to .env and fill in what you need. Those values
+# seed the database on first boot; from then on the administration screens own them, unless
+# REGISTRATION_ENFORCE says otherwise.
 
 name: passvault
 
@@ -37,6 +43,18 @@ services:
       BLIND_INDEX_KEY: ${BLIND_INDEX_KEY:-}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
+
+      # Who administers this installation, and who may join it. All optional: left empty the
+      # server behaves exactly as before — closed, with the first account to register becoming
+      # the administrator. See .env.example for what each one does.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_LOCALE: ${ADMIN_LOCALE:-}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-}
+      REGISTRATION_WHITELIST: ${REGISTRATION_WHITELIST:-}
+      ALLOW_PASSWORD_LOGIN: ${ALLOW_PASSWORD_LOGIN:-}
+      REQUIRE_SECOND_FACTOR: ${REQUIRE_SECOND_FACTOR:-}
+      REGISTRATION_ENFORCE: ${REGISTRATION_ENFORCE:-}
     volumes:
       - data:/data
     restart: unless-stopped

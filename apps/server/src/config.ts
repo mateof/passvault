@@ -3,6 +3,40 @@ import { dirname, join, resolve } from 'node:path'
 import { KEY_BYTES, fromBase64Url, randomKey, toBase64Url } from '@passvault/crypto'
 import { DEFAULT_LOCALE, isLocale, type Locale } from '@passvault/i18n'
 
+export type RegistrationMode = 'OPEN' | 'WHITELIST' | 'INVITATION' | 'CLOSED'
+
+const REGISTRATION_MODES: readonly RegistrationMode[] = [
+  'OPEN',
+  'WHITELIST',
+  'INVITATION',
+  'CLOSED',
+]
+
+/**
+ * What the deployment file says about who administers this installation and who may join it.
+ *
+ * All of it is optional, and none of it is authoritative after the first boot: these values
+ * seed the database and the administration screens own them afterwards. The alternative —
+ * the environment winning on every restart — was rejected because it makes the screens a lie,
+ * and an operator who closes registration from the browser expects it to stay closed. The
+ * escape hatch is `REGISTRATION_ENFORCE`, for somebody who would rather the compose file be
+ * the single source of truth and the screens read-only in practice.
+ */
+export interface BootstrapConfig {
+  /** The account that owns the installation. Created if absent, promoted if it already exists. */
+  adminEmail?: string
+  /** Optional. Without it the account is created with a one-time link instead of a password. */
+  adminPassword?: string
+  adminLocale?: Locale
+  registrationMode?: RegistrationMode
+  /** Seeded into the allow list, so `WHITELIST` mode works on first boot with no clicking. */
+  registrationWhitelist: string[]
+  allowPasswordLogin?: boolean
+  requireSecondFactor?: boolean
+  /** Reapplies the registration settings on every boot rather than only seeding them once. */
+  enforce: boolean
+}
+
 export interface ServerConfig {
   host: string
   port: number
@@ -22,6 +56,7 @@ export interface ServerConfig {
     microsoft?: { clientId: string; clientSecret: string; tenant: string }
   }
   mail: { from: string; smtpUrl?: string }
+  bootstrap: BootstrapConfig
   /** True when secrets were generated on this boot, so the caller can say so loudly. */
   generatedSecrets: string[]
 }
@@ -47,7 +82,7 @@ interface StoredSecrets {
  * directory takes both, so the "a stolen database alone yields nothing" property in
  * docs/threat-model.md does not hold for a zero-configuration installation. It holds as
  * soon as `MASTER_KEY` comes from the environment and the file is deleted, which is what
- * the startup log tells the operator to do and what docs/deployment.md documents.
+ * the startup log tells the operator to do and what `.env.example` documents.
  *
  * The alternative — refusing to start without a key — was rejected: it moves the failure
  * to first run, where a self-hosting user is least equipped to deal with it, and the usual
@@ -121,8 +156,63 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       from: env.MAIL_FROM ?? 'passvault@localhost',
       ...(env.SMTP_URL ? { smtpUrl: env.SMTP_URL } : {}),
     },
+    bootstrap: readBootstrap(env),
     generatedSecrets,
   }
+}
+
+function readBootstrap(env: NodeJS.ProcessEnv): BootstrapConfig {
+  const adminLocale = env.ADMIN_LOCALE
+  if (adminLocale !== undefined && !isLocale(adminLocale)) {
+    throw new Error(`ADMIN_LOCALE '${adminLocale}' is not one of gl, es, en`)
+  }
+  const mode = env.REGISTRATION_MODE?.trim().toUpperCase()
+  if (mode !== undefined && mode !== '' && !isRegistrationMode(mode)) {
+    throw new Error(`REGISTRATION_MODE '${mode}' is not one of ${REGISTRATION_MODES.join(', ')}`)
+  }
+
+  return {
+    ...(env.ADMIN_EMAIL?.trim() ? { adminEmail: env.ADMIN_EMAIL.trim() } : {}),
+    ...(env.ADMIN_PASSWORD ? { adminPassword: env.ADMIN_PASSWORD } : {}),
+    ...(adminLocale ? { adminLocale } : {}),
+    ...(mode && isRegistrationMode(mode) ? { registrationMode: mode } : {}),
+    // Commas, semicolons, spaces and newlines all separate, because a compose file, a `.env`
+    // and a Synology text box each encourage a different one.
+    registrationWhitelist: (env.REGISTRATION_WHITELIST ?? '')
+      .split(/[,;\s]+/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+    ...booleanOrAbsent(env.ALLOW_PASSWORD_LOGIN, 'ALLOW_PASSWORD_LOGIN', 'allowPasswordLogin'),
+    ...booleanOrAbsent(env.REQUIRE_SECOND_FACTOR, 'REQUIRE_SECOND_FACTOR', 'requireSecondFactor'),
+    enforce: parseBoolean(env.REGISTRATION_ENFORCE, 'REGISTRATION_ENFORCE') ?? false,
+  }
+}
+
+function isRegistrationMode(value: string): value is RegistrationMode {
+  return (REGISTRATION_MODES as readonly string[]).includes(value)
+}
+
+function booleanOrAbsent(
+  value: string | undefined,
+  name: string,
+  key: string,
+): Record<string, boolean> {
+  const parsed = parseBoolean(value, name)
+  return parsed === undefined ? {} : { [key]: parsed }
+}
+
+function parseBoolean(value: string | undefined, name: string): boolean | undefined {
+  if (value === undefined || value.trim() === '') {
+    return undefined
+  }
+  const normalised = value.trim().toLowerCase()
+  if (['true', '1', 'yes', 'y', 'on'].includes(normalised)) {
+    return true
+  }
+  if (['false', '0', 'no', 'n', 'off'].includes(normalised)) {
+    return false
+  }
+  throw new Error(`${name} must be true or false, got '${value}'`)
 }
 
 function keyFrom(value: string | undefined, name: string): Uint8Array | undefined {

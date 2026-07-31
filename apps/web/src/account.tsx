@@ -5,12 +5,14 @@ import { useSession } from './session'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
 
 /**
- * The account, and the server's own settings for whoever administers it.
+ * The account.
  *
  * Passkeys are listed and removable but not enrolled here: enrolling one needs the WebAuthn
  * ceremony, and a button that opens a browser prompt and then fails because the origin does
  * not match is worse than a button that is not there. It is noted as missing rather than
  * half-built.
+ *
+ * Running the server is a different job with a different audience, and lives in `admin.tsx`.
  */
 
 export function AccountPage() {
@@ -90,72 +92,3 @@ export function AccountPage() {
   )
 }
 
-export function AdminPage() {
-  const { t, locale } = useT()
-  const { me } = useSession()
-  const [mode, setMode] = useState('CLOSED')
-  const [email, setEmail] = useState('')
-  const [invited, setInvited] = useState<string>()
-
-  useEffect(() => {
-    api
-      .registrationSettings(locale)
-      .then((settings) => setMode(settings.mode))
-      .catch(() => undefined)
-  }, [locale])
-
-  if (!me?.isAdmin) return <Banner kind="info">{t('common.empty')}</Banner>
-
-  return (
-    <>
-      <Card title={t('admin.title')}>
-        <Form
-          submitLabel={t('action.save')}
-          onSubmit={async () => {
-            await api.registrationSettingsUpdate(locale, { mode })
-          }}
-        >
-          <Select
-            label={t('admin.registrationMode')}
-            value={mode}
-            options={['OPEN', 'INVITATION', 'WHITELIST', 'CLOSED'].map((value) => ({
-              value,
-              label: value,
-            }))}
-            onChange={setMode}
-          />
-        </Form>
-      </Card>
-
-      <Card title={t('admin.invite')}>
-        <Form
-          submitLabel={t('admin.invite')}
-          onSubmit={async () => {
-            const result = await api.invite(locale, email)
-            setInvited(result.token ?? '')
-            setEmail('')
-          }}
-        >
-          <Field label={t('admin.email')} value={email} onChange={setEmail} type="email" required />
-        </Form>
-        {invited !== undefined ? (
-          <Banner kind="success">
-            {invited ? <code>{invited}</code> : t('action.confirm')}
-          </Banner>
-        ) : null}
-      </Card>
-
-      <Card title={t('admin.whitelist')}>
-        <Form
-          submitLabel={t('admin.whitelist')}
-          onSubmit={async () => {
-            await api.whitelist(locale, email)
-            setEmail('')
-          }}
-        >
-          <Field label={t('admin.email')} value={email} onChange={setEmail} type="email" required />
-        </Form>
-      </Card>
-    </>
-  )
-}
