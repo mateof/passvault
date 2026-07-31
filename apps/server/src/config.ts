@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { KEY_BYTES, fromBase64Url, randomKey, toBase64Url } from '@passvault/crypto'
 import { DEFAULT_LOCALE, isLocale, type Locale } from '@passvault/i18n'
 
@@ -50,7 +51,16 @@ export interface ServerConfig {
   blindIndexKey: Uint8Array
   session: { idleMinutes: number; hardHours: number }
   otp: { length: number; ttlMinutes: number; maxAttempts: number }
-  webAuthn: { relyingPartyId: string; relyingPartyName: string; origin: string }
+  webAuthn: {
+    relyingPartyId: string
+    relyingPartyName: string
+    /** The browser's origin. Kept alone as well as in `origins` because it is what a client is told. */
+    origin: string
+    /** Everything a ceremony may legitimately come from, the Android package included. */
+    origins: string[]
+  }
+  /** Read for the Android signing fingerprints, and served verbatim at /.well-known. */
+  assetLinksFile: string
   oidc: {
     google?: { clientId: string; clientSecret: string }
     microsoft?: { clientId: string; clientSecret: string; tenant: string }
@@ -107,6 +117,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (locale !== undefined && !isLocale(locale)) {
     throw new Error(`DEFAULT_LOCALE '${locale}' is not one of gl, es, en`)
   }
+  const assetLinksFile = resolve(
+    env.ASSETLINKS_FILE ??
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'well-known', 'assetlinks.json'),
+  )
 
   return {
     host: env.HOST ?? '0.0.0.0',
@@ -132,7 +146,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       relyingPartyId: env.WEBAUTHN_RP_ID ?? new URL(publicUrl).hostname,
       relyingPartyName: env.WEBAUTHN_RP_NAME ?? 'PassVault',
       origin: env.WEBAUTHN_ORIGIN ?? publicUrl,
+      origins: [env.WEBAUTHN_ORIGIN ?? publicUrl, ...androidOrigins(env, assetLinksFile)],
     },
+    assetLinksFile,
     oidc: {
       ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
         ? {
@@ -158,6 +174,50 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     },
     bootstrap: readBootstrap(env),
     generatedSecrets,
+  }
+}
+
+/**
+ * The origins an Android build of the app presents during a WebAuthn ceremony.
+ *
+ * A browser sends `https://passvault.example.org`. An Android app does not: the platform sends
+ * `android:apk-key-hash:<base64url of the SHA-256 of the signing certificate>`, because there is
+ * no page and no URL — the binding is to the installed package instead. Verifying against the
+ * https origin alone therefore refuses every passkey created from the app, *after* the system
+ * sheet has already created it, which reads to the user as the app breaking on the way back.
+ *
+ * The fingerprints are read from `assetlinks.json` rather than configured separately. That file
+ * already has to exist, already has to name the exact certificate, and is already served from
+ * this domain — two lists of the same fingerprints would be one list and one stale list.
+ *
+ * `WEBAUTHN_ANDROID_ORIGINS` overrides it, for a debug build signed with a different key or an
+ * installation whose asset links are served by something else.
+ */
+function androidOrigins(env: NodeJS.ProcessEnv, assetLinksFile: string): string[] {
+  const configured = (env.WEBAUTHN_ANDROID_ORIGINS ?? '')
+    .split(/[,;\s]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+  if (configured.length > 0) {
+    return configured
+  }
+  if (!existsSync(assetLinksFile)) {
+    return []
+  }
+  try {
+    const statements = JSON.parse(readFileSync(assetLinksFile, 'utf8')) as {
+      target?: { sha256_cert_fingerprints?: string[] }
+    }[]
+    return statements
+      .flatMap((statement) => statement.target?.sha256_cert_fingerprints ?? [])
+      .map((fingerprint) => fingerprint.replace(/[^0-9a-fA-F]/g, ''))
+      .filter((hex) => hex.length === 64)
+      .map((hex) => `android:apk-key-hash:${toBase64Url(new Uint8Array(Buffer.from(hex, 'hex')))}`)
+  } catch {
+    // A malformed asset links file is a reason for passkeys from the app not to work, not a
+    // reason for the server not to start. The file is served verbatim elsewhere, so whoever
+    // wrote it can see what they wrote.
+    return []
   }
 }
 

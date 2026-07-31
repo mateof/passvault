@@ -342,14 +342,12 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
    * a keystore this process has never seen and must not.
    */
   app.get('/.well-known/assetlinks.json', async (request, reply) => {
-    const file = resolve(
-      process.env.ASSETLINKS_FILE ??
-        join(dirname(fileURLToPath(import.meta.url)), '..', 'well-known', 'assetlinks.json'),
-    )
-    if (!existsSync(file)) {
+    // The same path the WebAuthn origins are derived from, so the file that grants the app
+    // access and the file that is served can never be two different files.
+    if (!existsSync(config.assetLinksFile)) {
       return reply.status(404).send({ error: 'not_found' })
     }
-    return reply.type('application/json').send(readFileSync(file, 'utf8'))
+    return reply.type('application/json').send(readFileSync(config.assetLinksFile, 'utf8'))
   })
 
   app.get('/api/v1/health', async () => ({ status: 'ok' }))

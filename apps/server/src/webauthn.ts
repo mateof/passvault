@@ -74,7 +74,10 @@ export class WebAuthnChallenges {
 const relyingParty = (config: ServerConfig) => ({
   id: config.webAuthn.relyingPartyId,
   name: config.webAuthn.relyingPartyName,
-  origin: config.webAuthn.origin,
+  // Every origin a ceremony may legitimately come from, not just the browser's. The Android app
+  // presents `android:apk-key-hash:...` instead of a URL, so verifying against the https origin
+  // alone refused every passkey the app created — after the system sheet had already created it.
+  origins: config.webAuthn.origins,
 })
 
 export async function beginPasskeyRegistration(
@@ -126,7 +129,7 @@ export async function finishPasskeyRegistration(
   const verification = await verifyRegistrationResponse({
     response,
     expectedChallenge: challenge,
-    expectedOrigin: rp.origin,
+    expectedOrigin: rp.origins,
     expectedRPID: rp.id,
     requireUserVerification: false,
   })
@@ -205,7 +208,7 @@ export async function finishPasskeyLogin(
   const verification = await verifyAuthenticationResponse({
     response,
     expectedChallenge: challenge,
-    expectedOrigin: rp.origin,
+    expectedOrigin: rp.origins,
     expectedRPID: rp.id,
     credential: {
       id: stored.credential_id,
