@@ -12,15 +12,13 @@
 # leftovers, three database drivers nobody asked for, and a browser front end's runtime beside
 # the bundle that front end was already compiled into.
 
-FROM node:22-bookworm-slim AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
 # better-sqlite3 builds native code. Present in the build stage only — the
 # runtime stage receives the compiled artefacts and needs no compiler.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3 make g++
 
 # Manifests first, so a change to source code does not invalidate the dependency layer.
 COPY package.json package-lock.json ./
@@ -100,7 +98,12 @@ RUN set -eux; \
     find node_modules -name '*.md' -delete
 
 
-FROM node:22-bookworm-slim AS runtime
+# Alpine, which is roughly a third of the Debian base and the largest single saving available
+# here. The native modules all resolve musl builds — better-sqlite3 is compiled from source in
+# the stage above, and argon2 and canvas publish musl binaries — and the workflow starts the
+# finished image and waits for its health endpoint before publishing, so a mismatch fails the
+# build rather than reaching somebody's NAS.
+FROM node:22-alpine AS runtime
 
 # Unprivileged. The image writes to /data and nothing else, and the one thing worth having
 # on a host that holds other people's ticket barcodes is that a compromise of this process
