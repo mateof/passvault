@@ -3,9 +3,10 @@ import { domainSeparated, fromBase64Url, toBase64Url, verifyBytes } from '@passv
 import { newId, toInstant } from '@passvault/db'
 import { badRequest, forbidden, notFound } from './errors.js'
 import { ensureServerDevice, serverDeviceFrom, signAsServer } from './server-device.js'
-import { findEvent, hasAccess, type EventDeps } from './events.js'
+import { createEvent, findEvent, hasAccess, type EventDeps } from './events.js'
 import * as repo from './repository.js'
-import { reconcileTicket, setPayment, submitClaim } from './tickets.js'
+import { addTickets, reconcileTicket, setPayment, submitClaim } from './tickets.js'
+import type { AssignmentMode, BarcodeFormat } from '@passvault/tkpak'
 
 /**
  * The signed operation log, as specified in `docs/spec/sync-protocol.md`.
@@ -17,7 +18,9 @@ import { reconcileTicket, setPayment, submitClaim } from './tickets.js'
 export const OPERATION_DOMAIN = 'passvault/v1/operation'
 
 export type OperationType =
+  | 'event.create'
   | 'event.update'
+  | 'ticket.add'
   | 'ticket.assign'
   | 'ticket.unassign'
   | 'ticket.remove'
@@ -26,7 +29,9 @@ export type OperationType =
 
 /** Types this version applies. Anything else is retained, not lost — see `applyOperation`. */
 const APPLIED_TYPES: readonly string[] = [
+  'event.create',
   'event.update',
+  'ticket.add',
   'ticket.assign',
   'ticket.unassign',
   'ticket.remove',
@@ -36,7 +41,9 @@ const APPLIED_TYPES: readonly string[] = [
 
 /** Types only the event's creator may issue. Checked on replay, not trusted from the sender. */
 const CREATOR_ONLY: readonly string[] = [
+  'event.create',
   'event.update',
+  'ticket.add',
   'ticket.assign',
   'ticket.unassign',
   'ticket.remove',
@@ -176,6 +183,95 @@ export interface PushResult {
 
 export interface SyncDeps extends EventDeps {
   crypto: EventDeps['crypto']
+}
+
+/**
+ * Brings an event that only exists on a phone into existence here.
+ *
+ * Until this, an event created offline could never reach a server. Synchronisation only ever
+ * exchanged the log of events the server already had, so a wallet built on a phone — which is
+ * how this product is meant to be used — stayed on that phone, counted as "local only" and
+ * silently skipped. `event.create` was in the specification from the start; it was this side
+ * that had no handler for it.
+ *
+ * Three things are checked before anything is written, and each one is the reason a different
+ * attack does not work:
+ *
+ *   * the batch really does declare this event, with `event.create` scoped to this id;
+ *   * the device that signed it is registered, active, and belongs to the caller — so an id
+ *     cannot be claimed on somebody else's behalf;
+ *   * the signature verifies against that device's key, so a caller cannot adopt an event by
+ *     replaying an operation they did not produce.
+ *
+ * The event key is generated here rather than uploaded. The operations carry their fields in the
+ * clear over TLS and the server encrypts them into its own columns, so a key from the phone would
+ * be a second key for the same rows with nothing to unlock. An event password still removes the
+ * server's own slot, exactly as it does for an event created through the API.
+ */
+export async function adoptEventFromLog(
+  deps: SyncDeps,
+  input: {
+    eventId: string
+    actorUserId: string
+    creatorDataKey: Uint8Array
+    operations: SignedOperation[]
+    password?: string
+  },
+): Promise<{ adopted: boolean }> {
+  if (await findEvent(deps, input.eventId)) {
+    return { adopted: false }
+  }
+
+  const declaration = input.operations.find(
+    (operation) =>
+      operation.type === 'event.create' &&
+      operation.scope.kind === 'event' &&
+      operation.scope.id === input.eventId,
+  )
+  if (!declaration) {
+    return { adopted: false }
+  }
+
+  const device = await deps.db.db
+    .selectFrom('devices')
+    .selectAll()
+    .where('id', '=', declaration.deviceId)
+    .executeTakeFirst()
+  if (!device || device.status !== 'ACTIVE' || device.user_id !== input.actorUserId) {
+    return { adopted: false }
+  }
+
+  const { signature, ...unsigned } = declaration
+  if (
+    !verifyBytes(
+      fromBase64Url(device.signing_public_key),
+      signingInput(unsigned),
+      fromBase64Url(signature),
+    )
+  ) {
+    return { adopted: false }
+  }
+
+  const name = typeof declaration.body.name === 'string' ? declaration.body.name : 'Evento'
+  await createEvent(deps, {
+    eventId: input.eventId,
+    creatorUserId: input.actorUserId,
+    creatorDataKey: input.creatorDataKey,
+    name,
+    ...(typeof declaration.body.venue === 'string' ? { venue: declaration.body.venue } : {}),
+    ...(typeof declaration.body.startsAt === 'string'
+      ? { startsAt: declaration.body.startsAt }
+      : {}),
+    ...(input.password ? { password: input.password } : {}),
+  })
+  await repo.recordAudit(deps.db, {
+    actorUserId: input.actorUserId,
+    actorDeviceId: declaration.deviceId,
+    action: 'event.adopted',
+    subjectKind: 'event',
+    subjectId: input.eventId,
+  })
+  return { adopted: true }
 }
 
 /**
@@ -390,6 +486,53 @@ async function applyOperation(
         .execute()
       return
     }
+    case 'ticket.add': {
+      // The id comes from the operation, not from here. Every later operation about this ticket —
+      // an assignment, a payment, a withdrawal — names it by the id the device that created it
+      // chose, so minting another would leave all of them pointing at nothing.
+      const ticketId = String(body.ticketId)
+      const existing = await deps.db.db
+        .selectFrom('tickets')
+        .select('id')
+        .where('id', '=', ticketId)
+        .executeTakeFirst()
+      if (existing) {
+        // Already here, from another device's copy of the same log. Adding it twice is not a
+        // failure; the log is the shared record and both devices are entitled to replay it.
+        return
+      }
+      await addTickets(deps, {
+        eventId: context.event.id,
+        actorUserId: context.event.creator_user_id,
+        eventKey: context.eventKey,
+        tickets: [
+          {
+            id: ticketId,
+            ...(typeof body.label === 'string' ? { label: body.label } : {}),
+            ...(typeof body.section === 'string' ? { section: body.section } : {}),
+            ...(typeof body.row === 'string' ? { row: body.row } : {}),
+            ...(typeof body.seat === 'string' ? { seat: body.seat } : {}),
+            ...(typeof body.barcodeValue === 'string'
+              ? {
+                  barcode: {
+                    format: String(body.barcodeFormat ?? 'QR_CODE') as BarcodeFormat,
+                    value: body.barcodeValue,
+                  },
+                }
+              : {}),
+            ...(typeof body.documentPage === 'number' ? { documentPage: body.documentPage } : {}),
+            ...(typeof body.assignmentMode === 'string'
+              ? { assignmentMode: body.assignmentMode as AssignmentMode }
+              : {}),
+          },
+        ],
+      })
+      return
+    }
+    // `event.create` replays as a set of field values rather than as a creation. By the time it is
+    // applied the row exists — `adoptEventFromLog` made it, because an operation cannot be checked
+    // against an event that is not there — so what is left is exactly what `event.update` does.
+    case 'event.create':
     case 'event.update': {
       const changes: Record<string, Buffer | string | null> = {}
       if (typeof body.name === 'string') {

@@ -22,6 +22,14 @@ const deviceHash = (deviceId: string): string =>
   createHash('sha256').update(deviceId, 'utf8').digest('base64url')
 
 export interface NewTicket {
+  /**
+   * Its identifier, when it already has one.
+   *
+   * A ticket added on a phone is referred to by later operations — an assignment, a payment, a
+   * withdrawal — by the id that phone gave it. Minting a new one here would make every one of
+   * those operations point at nothing.
+   */
+  id?: string
   label?: string
   section?: string
   row?: string
@@ -52,7 +60,7 @@ export async function addTickets(
   const ids: string[] = []
   const now = toInstant()
   for (const ticket of input.tickets) {
-    const id = newId()
+    const id = ticket.id ?? newId()
     ids.push(id)
     await deps.db.db
       .insertInto('tickets')

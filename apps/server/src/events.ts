@@ -52,6 +52,14 @@ export interface EventDeps {
 }
 
 export interface CreateEventInput {
+  /**
+   * The identifier to create it under, when it already has one.
+   *
+   * A phone creates events offline and signs a log of operations against that id. Publishing one
+   * has to keep it: an id minted here would orphan every operation the device has already signed
+   * and every ticket that refers to them.
+   */
+  eventId?: string
   creatorUserId: string
   creatorDataKey: Uint8Array
   name: string
@@ -71,7 +79,7 @@ export interface CreatedEvent {
 }
 
 export async function createEvent(deps: EventDeps, input: CreateEventInput): Promise<CreatedEvent> {
-  const eventId = newId()
+  const eventId = input.eventId ?? newId()
   const eventKey = createDataKey()
 
   let envelope: KeyEnvelope = addKeySlot(

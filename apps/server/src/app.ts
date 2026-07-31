@@ -83,6 +83,7 @@ import {
   listEventsForUser,
 } from './events.js'
 import {
+  adoptEventFromLog,
   listQuarantined,
   nextLamport,
   pullOperations,
@@ -1269,7 +1270,20 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   app.post('/api/v1/sync/:id', async (request) => {
     const { id } = eventParams.parse(request.params)
     const body = syncBody.parse(request.body ?? {})
-    const { session, eventKey } = await openEvent(request, id, body.eventPassword)
+
+    // An event that only exists on a phone is created here first, from the `event.create` its own
+    // log carries. Without this the call below fails with "no such event" and a wallet built
+    // offline — which is how this product is meant to be used — can never reach a server at all.
+    const session = await sessionOf(request)
+    const adopting = await adoptEventFromLog(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      creatorDataKey: vaults.require(session.id).dataKey,
+      operations: body.operations,
+      ...(body.eventPassword ? { password: body.eventPassword } : {}),
+    })
+
+    const { eventKey } = await openEvent(request, id, body.eventPassword)
 
     const push = await pushOperations(eventDeps, {
       eventId: id,
@@ -1293,6 +1307,9 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       hasMore: pull.hasMore,
       // So a device that has been offline does not guess and lose every race on reconnection.
       nextLamport: await nextLamport(eventDeps, id),
+      // Told plainly, because it is the difference between "your event is now on the server" and
+      // "your event was already there", and the client says one of those two things to the user.
+      created: adopting.adopted,
     }
   })
 
