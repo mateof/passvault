@@ -429,3 +429,54 @@ describe('a suspended account', () => {
     expect(response.json().error).toBe('auth.error.accountSuspended')
   })
 })
+
+/**
+ * Enrolling a second factor.
+ *
+ * TOTP is RFC 6238 and the URI is the key format Google published and everybody adopted, so there
+ * is nothing here specific to any authenticator: what matters is that the parameters are the ones
+ * Google Authenticator and Microsoft Authenticator require of a third-party account — HMAC-SHA1,
+ * six digits, a thirty-second step — because those two are the strictest about it.
+ */
+describe('turning on a second factor', () => {
+  const enrol = async (): Promise<{ secret: string; uri: string }> => {
+    const token = await login(server, ADMIN)
+    const response = await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/totp/enrol',
+      headers: bearer(token),
+    })
+    return response.json()
+  }
+
+  it('hands over a secret and a URI an authenticator understands', async () => {
+    const { secret, uri } = await enrol()
+
+    expect(secret).toMatch(/^[A-Z2-7]+$/)
+    expect(uri.startsWith('otpauth://totp/')).toBe(true)
+  })
+
+  it('uses the parameters both major authenticators require', async () => {
+    const { uri } = await enrol()
+
+    expect(uri).toContain('algorithm=SHA1')
+    expect(uri).toContain('digits=6')
+    expect(uri).toContain('period=30')
+  })
+
+  it('names the account by address, not by identifier', async () => {
+    // What an authenticator shows in a list of a dozen. A UUID there tells its owner nothing.
+    const { uri } = await enrol()
+
+    expect(decodeURIComponent(uri)).toContain(ADMIN.email)
+  })
+
+  it('does not satisfy a second factor until a code confirms it', async () => {
+    await enrol()
+    const token = await login(server, ADMIN)
+
+    // Still signed in with a password alone: an unconfirmed secret must never be in force, or an
+    // enrolment somebody abandoned would lock them out with a code they never scanned.
+    expect(token).toEqual(expect.any(String))
+  })
+})

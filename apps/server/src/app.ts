@@ -23,6 +23,7 @@ import {
   confirmTotpEnrolment,
   loginWithOidc,
   loginWithPassword,
+  readEmail,
   register,
   setVaultPassphrase,
   unlockSessionVault,
@@ -491,7 +492,17 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (!user) {
       throw unauthorized('auth.error.invalidCredentials')
     }
-    return beginTotpEnrolment(deps, session.user_id, user.id)
+    // Named by address rather than by identifier. This is the label an authenticator shows in a
+    // list of a dozen accounts, and "PassVault (019fb9a3-55e8-…)" tells its owner nothing about
+    // which account it is for. The server can read the address without the user present — that is
+    // what the master-derived key is for — and it is the user's own.
+    return beginTotpEnrolment(
+      deps,
+      session.user_id,
+      user.email_cipher.length > 0
+        ? readEmail(deps, user.id, new Uint8Array(user.email_cipher))
+        : user.id,
+    )
   })
 
   const totpConfirmBody = z.object({ code: z.string().min(6).max(8) })
