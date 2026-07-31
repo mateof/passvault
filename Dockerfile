@@ -18,7 +18,7 @@ WORKDIR /app
 
 # better-sqlite3 builds native code. Present in the build stage only — the
 # runtime stage receives the compiled artefacts and needs no compiler.
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ binutils
 
 # Manifests first, so a change to source code does not invalidate the dependency layer.
 COPY package.json package-lock.json ./
@@ -50,6 +50,11 @@ RUN npm run build --workspace @passvault/web
 # Drop development dependencies rather than reinstalling, so the native modules built above
 # are the ones that ship — a fresh `npm ci --omit=dev` would rebuild them.
 RUN npm prune --omit=dev
+
+# Two copies of the same native canvas were being installed — one for the rasteriser and one
+# nested under pdfjs — at roughly 35 MB each. `dedupe` collapses them where the version ranges
+# allow it and leaves them alone where they do not, which is the only safe way to do this.
+RUN npm dedupe --omit=dev
 
 # Which database drivers to keep. `sqlite` is the default because it is what a single-box
 # deployment uses and what this image is for; `all` keeps every engine the server supports, for
@@ -95,7 +100,8 @@ RUN set -eux; \
              node_modules/@js-joda; \
     fi; \
     find node_modules -name '*.map' -delete; \
-    find node_modules -name '*.md' -delete
+    find node_modules -name '*.md' -delete; \
+    find node_modules -name '*.node' -exec strip --strip-unneeded {} + || true
 
 
 # Alpine, which is roughly a third of the Debian base and the largest single saving available
