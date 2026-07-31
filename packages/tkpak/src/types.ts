@@ -97,6 +97,18 @@ export interface TkpakEvent {
   notes?: string
   defaultAssignmentMode: AssignmentMode
   passwordProtected: boolean
+  /**
+   * Documents belonging to the event rather than to any one ticket.
+   *
+   * The file the tickets were split out of. Every other document in a file is a single ticket's
+   * page, reached through `TkpakTicket.documentBlobId`, and a reader with only that link had no
+   * way to tell the original apart from a page — so exports carried the pages and dropped the one
+   * document that holds the map, the terms and the gate instructions.
+   *
+   * Optional, and absent in files written before this existed. A reader that finds it missing has
+   * a file with no original, which is exactly what those files are.
+   */
+  documentIds?: string[]
 }
 
 export interface TkpakBarcode {

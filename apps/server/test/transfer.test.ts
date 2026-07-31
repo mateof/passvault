@@ -190,6 +190,90 @@ describe('exporting an event', () => {
   })
 })
 
+describe('the original document travels with the event', () => {
+  /** Imports a PDF the way the web does, which is what gives the event an original at all. */
+  const importPdf = async (): Promise<void> => {
+    const pdf = await ticketPdf([
+      { codes: [{ text: '8412-ORIG-0001' }], heading: 'Entrada 1' },
+      { codes: [], heading: 'Como chegar' },
+    ])
+    const proposal = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/ingest`,
+      headers: { ...bearer(organiser), 'content-type': 'application/pdf' },
+      payload: Buffer.from(pdf),
+    })
+    await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/ingest/${proposal.json().ingestId}/confirm`,
+      headers: bearer(organiser),
+      payload: { include: [0] },
+    })
+  }
+
+  it('is named in the bundle, so a reader can tell it from a ticket’s own page', async () => {
+    // Every other document in a package is one ticket's page. Without something saying which is
+    // the file it all came out of, a reader has no way to keep the map, the terms and the gate
+    // instructions — the pages ingestion drops on purpose.
+    await importPdf()
+
+    const opened = await openWithPassword(
+      new Uint8Array((await exportEvent(organiser)).rawPayload),
+      EXPORT_PASSWORD,
+    )
+
+    expect(opened.bundle.event.documentIds).toHaveLength(1)
+    expect(opened.documents.get(opened.bundle.event.documentIds![0])?.mediaType).toBe(
+      'application/pdf',
+    )
+  })
+
+  it('arrives whole, and is listed as the imported event’s original', async () => {
+    await importPdf()
+    const archive = (await exportEvent(organiser)).rawPayload
+
+    const imported = await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/import',
+      headers: {
+        ...bearer(member),
+        'content-type': 'application/vnd.passvault.tkpak',
+        'x-passvault-password': EXPORT_PASSWORD,
+      },
+      payload: Buffer.from(archive),
+    })
+    expect(imported.statusCode).toBe(201)
+
+    const documents = (
+      await server.app.inject({
+        url: `/api/v1/events/${imported.json().eventId}/documents`,
+        headers: bearer(member),
+      })
+    ).json().documents
+    expect(documents).toHaveLength(1)
+    expect(documents[0].mediaType).toBe('application/pdf')
+  })
+
+  it('is not sent with a handful of seats', async () => {
+    // Somebody being given one ticket is not being given everybody's document, and a file sent
+    // through a messaging app is usually up against a size limit.
+    await importPdf()
+    const tickets = (
+      await server.app.inject({
+        url: `/api/v1/events/${eventId}/tickets`,
+        headers: bearer(organiser),
+      })
+    ).json().tickets
+
+    const opened = await openWithPassword(
+      new Uint8Array((await exportEvent(organiser, { ticketIds: [tickets[0].id] })).rawPayload),
+      EXPORT_PASSWORD,
+    )
+
+    expect(opened.bundle.event.documentIds ?? []).toEqual([])
+  })
+})
+
 describe('an export never shows more than the exporter could see', () => {
   it('omits a payment record the recipient is not entitled to', async () => {
     const { ticketIds } = (

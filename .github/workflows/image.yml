@@ -41,6 +41,25 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
 
+      # Built and started before it is published, because the image is pruned hard — build
+      # leftovers, source maps, drivers no default installation loads — and the way that goes
+      # wrong is a file missing at import time, which no Dockerfile syntax check would notice.
+      # A container that answers its own health endpoint has resolved every module it needs.
+      - name: Build and smoke test
+        run: |
+          docker build -t passvault:smoke .
+          docker run -d --name smoke -e MASTER_KEY="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')" \
+            -e BLIND_INDEX_KEY="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')" \
+            -p 8080:8080 passvault:smoke
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/v1/health; then ready=1; break; fi
+            sleep 2
+          done
+          docker logs smoke
+          docker rm -f smoke
+          test -n "${ready:-}" || { echo "::error::the image did not answer /api/v1/health"; exit 1; }
+          echo "image size: $(docker image inspect passvault:smoke --format '{{.Size}}' | awk '{printf "%.0f MB\n", $1/1048576}')"
+
       - uses: docker/build-push-action@v6
         with:
           context: .

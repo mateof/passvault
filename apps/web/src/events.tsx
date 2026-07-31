@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   api,
+  type AccessEntry,
   type EventDetail,
+  type Group,
   type EventSummary,
   type IngestProposal,
   type PaymentState,
@@ -11,6 +13,8 @@ import {
 } from './api/passvault'
 import { ApiError } from './api/client'
 import { useT } from './i18n'
+import { useKnownAddress } from './groups'
+import { useSession } from './session'
 import { EventMark, Icon } from './icons'
 import {
   Banner,
@@ -170,6 +174,8 @@ function CreateEventCard({
   const [startsAt, setStartsAt] = useState('')
   const [icon, setIcon] = useState('concert')
   const [colour, setColour] = useState('violet')
+  const [password, setPassword] = useState('')
+  const [mode, setMode] = useState('OPEN')
 
   return (
     <Card title={t('events.create')} icon="plus">
@@ -185,6 +191,10 @@ function CreateEventCard({
             startsAt: startsAt ? new Date(`${startsAt}T00:00:00.000Z`).toISOString() : undefined,
             icon,
             colour,
+            defaultAssignmentMode: mode,
+            // Only when one was typed. An empty string would be a password, and a password
+            // cannot be added or removed afterwards — it decides who can decrypt at all.
+            password: password.trim() === '' ? undefined : password,
           })
           onClose()
           await onCreated()
@@ -193,6 +203,24 @@ function CreateEventCard({
         <Field label={t('events.name')} value={name} onChange={setName} required />
         <Field label={t('events.venue')} value={venue} onChange={setVenue} />
         <Field label={t('events.startsAt')} value={startsAt} onChange={setStartsAt} type="date" />
+        <Select
+          label={t('events.assignmentMode')}
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'OPEN', label: t('events.assignmentMode.OPEN') },
+            { value: 'ASSIGNED', label: t('events.assignmentMode.ASSIGNED') },
+            { value: 'SELF_CLAIM', label: t('events.assignmentMode.SELF_CLAIM') },
+          ]}
+        />
+        <Field
+          label={t('events.password')}
+          value={password}
+          onChange={setPassword}
+          type="password"
+          autoComplete="new-password"
+          help={t('events.passwordHelp')}
+        />
         <MarkPicker icon={icon} colour={colour} onIcon={setIcon} onColour={setColour} />
       </Form>
     </Card>
@@ -397,6 +425,10 @@ export function EventPage() {
         ) : null}
       </Card>
 
+      <SharingCard eventId={id} />
+
+      <ClaimCard eventId={id} tickets={tickets} onClaimed={load} />
+
       <EventAppearanceCard event={event} onChanged={load} />
 
       <DocumentsCard eventId={id} tickets={tickets} onChanged={load} />
@@ -415,6 +447,180 @@ export function EventPage() {
       <ExportCard eventId={id} />
       <QuarantineCard eventId={id} />
     </>
+  )
+}
+
+/**
+ * Who this event is shared with, and with whom else to share it.
+ *
+ * Sharing used to be write-only — an organiser could grant access and had no way to see what they
+ * had granted, so "did I remember to share this with the family?" could only be answered by doing
+ * it again. A group is chosen from the ones you have; a person is typed as an address and checked
+ * before the button does anything, because a typo in an address is otherwise discovered when a
+ * friend never sees the ticket.
+ */
+function SharingCard({ eventId }: { eventId: string }) {
+  const { t, locale } = useT()
+  const [access, setAccess] = useState<AccessEntry[]>()
+  const [groups, setGroups] = useState<Group[]>([])
+  const [group, setGroup] = useState('')
+  const [email, setEmail] = useState('')
+  const [denied, setDenied] = useState(false)
+  const known = useKnownAddress(email)
+
+  const load = useCallback(async () => {
+    try {
+      const [shared, mine] = await Promise.all([
+        api.eventAccess(locale, eventId),
+        api.groups(locale),
+      ])
+      setAccess(shared.access)
+      setGroups(mine.groups)
+      setDenied(false)
+    } catch (cause) {
+      // Only the creator may read the guest list. For everybody else this card is not an error,
+      // it is simply not theirs.
+      if (cause instanceof ApiError && cause.status === 403) setDenied(true)
+      else setAccess([])
+    }
+  }, [eventId, locale])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  if (denied) return null
+  if (!access) return null
+
+  return (
+    <Card title={t('sharing.title')} icon="users">
+      {access.length === 0 ? (
+        <Empty icon="users">{t('sharing.none')}</Empty>
+      ) : (
+        <ul className="list">
+          {access.map((entry) => (
+            <li key={`${entry.subjectKind}:${entry.subjectId}`} className="list-row">
+              <span>
+                <Icon name={entry.subjectKind === 'GROUP' ? 'users' : 'account'} size={16} />{' '}
+                {entry.label || entry.subjectId.slice(0, 8)}
+              </span>
+              <Button
+                variant="quiet"
+                onClick={async () => {
+                  await api.revokeEventAccess(locale, eventId, {
+                    subjectKind: entry.subjectKind,
+                    subjectId: entry.subjectId,
+                  })
+                  await load()
+                }}
+              >
+                {t('sharing.revoke')}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Revoking stops what happens next and cannot recall what was already delivered. Said
+          here rather than in a tooltip, because people expect the opposite. */}
+      {access.length > 0 ? <Banner kind="info">{t('sharing.revokeExplain')}</Banner> : null}
+
+      {groups.length > 0 ? (
+        <Form
+          submitLabel={t('sharing.shareWithGroup')}
+          submitIcon="users"
+          disabled={group === ''}
+          onSubmit={async () => {
+            await api.shareEvent(locale, eventId, { subjectKind: 'GROUP', subjectId: group })
+            setGroup('')
+            await load()
+          }}
+        >
+          <Select
+            label={t('sharing.group')}
+            value={group}
+            onChange={setGroup}
+            options={[
+              { value: '', label: t('sharing.choose') },
+              ...groups.map((entry) => ({ value: entry.id, label: entry.name })),
+            ]}
+          />
+        </Form>
+      ) : (
+        <p className="muted">{t('sharing.noGroups')}</p>
+      )}
+
+      <Form
+        submitLabel={t('sharing.shareWithPerson')}
+        submitIcon="mail"
+        disabled={known !== true}
+        onSubmit={async () => {
+          await api.shareEvent(locale, eventId, { subjectKind: 'USER', email: email.trim() })
+          setEmail('')
+          await load()
+        }}
+      >
+        <Field
+          label={t('sharing.email')}
+          value={email}
+          onChange={setEmail}
+          type="email"
+          autoComplete="off"
+          {...(known === false ? { help: t('groups.unknownEmail') } : {})}
+          {...(known === true ? { help: t('groups.knownEmail') } : {})}
+        />
+      </Form>
+    </Card>
+  )
+}
+
+/**
+ * Taking a free ticket, for the people an event was shared with.
+ *
+ * Only ever shown when there is something to take: a self-claim ticket still free, and none of
+ * them already held by whoever is looking. A claim button on an event with nothing left to claim
+ * is a button whose only function is to produce a refusal.
+ */
+function ClaimCard({
+  eventId,
+  tickets,
+  onClaimed,
+}: {
+  eventId: string
+  tickets: TicketSummary[]
+  onClaimed: () => Promise<void>
+}) {
+  const { t, locale } = useT()
+  const { me } = useSession()
+  const [failure, setFailure] = useState<string>()
+
+  const free = tickets.filter(
+    (ticket) => ticket.assignmentMode === 'SELF_CLAIM' && ticket.assignmentState === 'FREE',
+  )
+  const alreadyMine = tickets.some((ticket) => ticket.holderUserId === me?.userId)
+  if (free.length === 0 || alreadyMine) return null
+
+  return (
+    <Card title={t('claim.title')} icon="ticket">
+      <p className="muted">{t('claim.explain', { count: free.length })}</p>
+      {failure ? <Banner kind="error">{failure}</Banner> : null}
+      <div className="button-row">
+        <Button
+          icon="check"
+          onClick={async () => {
+            try {
+              await api.claimFree(locale, eventId)
+              setFailure(undefined)
+              await onClaimed()
+            } catch (cause) {
+              setFailure(cause instanceof ApiError ? cause.message : t('error.unexpected'))
+            }
+          }}
+        >
+          {t('claim.take')}
+        </Button>
+      </div>
+    </Card>
   )
 }
 
@@ -630,6 +836,11 @@ function TicketRow({
             <Field label={t('tickets.holder')} value={holder} onChange={setHolder} />
           </Form>
 
+          {/* By address, which is the difference between writing somebody's name on a ticket and
+              giving it to them: an assigned holder with an account is the only one who can see
+              the barcode of their own ticket and nobody else's. */}
+          <AssignToAccount ticketId={ticket.id} onChanged={onChanged} />
+
           <PaymentForm ticket={ticket} onChanged={onChanged} />
 
           {confirmWithdraw ? (
@@ -671,6 +882,43 @@ function TicketRow({
         </div>
       ) : null}
     </li>
+  )
+}
+
+function AssignToAccount({
+  ticketId,
+  onChanged,
+}: {
+  ticketId: string
+  onChanged: () => Promise<void>
+}) {
+  const { t, locale } = useT()
+  const [email, setEmail] = useState('')
+  const known = useKnownAddress(email)
+
+  return (
+    <Form
+      submitLabel={t('tickets.assignTo')}
+      submitIcon="account"
+      disabled={known !== true}
+      onSubmit={async () => {
+        const found = await api.lookup(locale, email.trim())
+        if (!found.userId) return
+        await api.assign(locale, ticketId, { holderUserId: found.userId })
+        setEmail('')
+        await onChanged()
+      }}
+    >
+      <Field
+        label={t('tickets.holderEmail')}
+        value={email}
+        onChange={setEmail}
+        type="email"
+        autoComplete="off"
+        {...(known === false ? {help: t('groups.unknownEmail')} : {})}
+        {...(known === true ? {help: t('groups.knownEmail')} : {})}
+      />
+    </Form>
   )
 }
 

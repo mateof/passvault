@@ -323,12 +323,16 @@ describe('the document tickets were split out of', () => {
   it('cannot be smuggled onto an event by someone who did not create it', async () => {
     // The original is what settles a disagreement at a gate. Whoever brought the tickets says
     // what it is, in the same way only they may add tickets.
-    await server.app.inject({
+    const shared = await server.app.inject({
       method: 'POST',
       url: `/api/v1/events/${eventId}/access`,
       headers: bearer(organiser),
-      payload: { subjectKind: 'USER', subjectId: MEMBER.email, role: 'MEMBER' },
+      payload: { subjectKind: 'USER', email: MEMBER.email, role: 'MEMBER' },
     })
+    // Asserted, because the first version of this passed an address where a UUID was required:
+    // the share was rejected, the member never had access, and the refusal below was the wrong
+    // refusal for the right status code.
+    expect(shared.statusCode).toBe(201)
     const pdf = Buffer.from(await ticketPdf([{ codes: [{ text: '8412-UP-0004' }] }]))
 
     const response = await server.app.inject({

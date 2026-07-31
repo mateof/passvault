@@ -5,12 +5,13 @@ import {
   inspectTkpak,
   openWithPassword,
   writeTkpak,
+  type DocumentMediaType,
   type TkpakBundle,
   type TkpakDocument,
   type TkpakTicket,
 } from '@passvault/tkpak'
 import { badRequest, forbidden, notFound } from './errors.js'
-import { findEvent, hasAccess, type EventDeps } from './events.js'
+import { findEvent, hasAccess, listEventDocuments, type EventDeps } from './events.js'
 import { readBlob, storeBlob } from './blobs.js'
 import * as repo from './repository.js'
 import { addTickets, projectTickets } from './tickets.js'
@@ -146,11 +147,31 @@ export async function exportEvent(deps: TransferDeps, input: ExportInput): Promi
     }
   }
 
+  // The file the tickets were split out of, whole, beside the pages. Sending only the pages
+  // sends only what ingestion kept — and the pages it drops are the map, the terms and the gate
+  // instructions, which is exactly what somebody receiving a ticket for a venue they have never
+  // been to needs. Skipped for a partial export: a person receiving one seat is not being sent
+  // everybody's document.
+  const eventDocumentIds: string[] = []
+  if (input.includeDocuments !== false && !input.ticketIds) {
+    for (const document of await listEventDocuments(deps, input.eventId)) {
+      if (documents.some((held) => held.id === document.id)) {
+        continue
+      }
+      const blob = await readBlob(deps, { blobId: document.id, eventKey: input.eventKey })
+      documents.push({ id: document.id, mediaType: blob.mediaType, bytes: blob.bytes })
+      eventDocumentIds.push(document.id)
+    }
+  }
+
   const projection = projectEventForBundle(deps, event, input.eventKey)
   const bundle: Omit<TkpakBundle, 'fileId'> = {
     exportedAt: toInstant(),
     ...(input.exportedFor ? { exportedFor: input.exportedFor } : {}),
-    event: projection,
+    event: {
+      ...projection,
+      ...(eventDocumentIds.length > 0 ? { documentIds: eventDocumentIds } : {}),
+    },
     tickets,
     operations: [],
   }
@@ -258,6 +279,14 @@ export interface ImportResult {
  * different people's tickets end up in one list with no way to tell them apart. Merging is a
  * synchronisation concern, and synchronisation has an operation log for it.
  */
+/** The column's spelling of a media type. The wire uses the full type; the schema uses a code. */
+const MEDIA_TYPE_CODES: Record<DocumentMediaType, 'PDF' | 'PNG' | 'JPEG' | 'PKPASS'> = {
+  'application/pdf': 'PDF',
+  'image/png': 'PNG',
+  'image/jpeg': 'JPEG',
+  'application/vnd.apple.pkpass': 'PKPASS',
+}
+
 export async function importArchive(
   deps: TransferDeps,
   input: {
@@ -293,6 +322,34 @@ export async function importArchive(
       bytes: document.bytes,
     })
     blobIdByOriginal.set(document.id, stored.id)
+  }
+
+  // The originals recorded as imports, so they are listed as the event's documents rather than
+  // sitting on disk as blobs nothing points at. Everything else in the file is one ticket's page,
+  // reached from that ticket, and calling those originals would list a page per seat.
+  for (const originalId of opened.bundle.event.documentIds ?? []) {
+    const storedId = blobIdByOriginal.get(originalId)
+    const document = opened.documents.get(originalId)
+    if (!storedId || !document) {
+      continue
+    }
+    await deps.db.db
+      .insertInto('ingest_batches')
+      .values({
+        id: newId(),
+        event_id: created.eventId,
+        created_by: input.importerUserId,
+        source_media_type: MEDIA_TYPE_CODES[document.mediaType],
+        source_blob_id: storedId,
+        // Split wherever the file came from, so nothing was counted or detected here.
+        page_count: null,
+        detected_count: null,
+        state: 'CONFIRMED',
+        failure_reason: null,
+        created_at: toInstant(),
+        updated_at: toInstant(),
+      })
+      .execute()
   }
 
   await addTickets(deps, {

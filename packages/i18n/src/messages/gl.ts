@@ -148,6 +148,8 @@ export const gl = {
   'error.rateLimited': 'Demasiadas peticións. Proba outra vez en pouco.',
   'groups.error.unknownEmail': 'Non hai ningunha conta con ese correo neste servidor.',
   'groups.error.cannotRemoveOwner': 'Non se pode quitar a quen creou o grupo.',
+  'groups.error.ownerOnly': 'Só quen creou o grupo pode borralo.',
+  'groups.error.unknownUser': 'Non hai ningunha conta con ese correo neste servidor.',
 
   // ─── Administración ───
   'admin.error.lastAdmin':

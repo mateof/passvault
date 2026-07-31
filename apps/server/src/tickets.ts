@@ -162,6 +162,85 @@ export async function assignTicket(
     .execute()
 }
 
+/**
+ * Takes a free ticket for yourself, online.
+ *
+ * The self-claim mode as somebody in the group actually meets it: they open the event, press
+ * claim, and get whichever ticket is still free. Coupons exist for the offline case — a phone
+ * with no connectivity cannot be asked whether a ticket is still free, so it is given permission
+ * in advance — and requiring one here would mean an organiser had to hand out a code per seat
+ * before anybody could take theirs, which is the friction the mode exists to remove.
+ *
+ * One per person. Claiming is a race between friends, and a race the first person can win twice
+ * is not a fair one.
+ *
+ * The guard against two people claiming the same seat is the `WHERE assignment_state = 'FREE'`
+ * on the update, not the read above it: two requests can both see the same free ticket, and only
+ * one of them can change a row that is still free. The loser is told to try again rather than
+ * being handed a seat somebody else is already holding.
+ */
+export async function claimFreeTicket(
+  deps: EventDeps,
+  input: { eventId: string; userId: string; eventKey: Uint8Array },
+): Promise<{ ticketId: string }> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event) {
+    throw notFound()
+  }
+
+  const held = await deps.db.db
+    .selectFrom('tickets')
+    .select('id')
+    .where('event_id', '=', input.eventId)
+    .where('holder_user_id', '=', input.userId)
+    .where('status', '=', 'ACTIVE')
+    .executeTakeFirst()
+  if (held) {
+    throw badRequest('claim.rejected.overAllowance', { allowance: 1 })
+  }
+
+  const free = await deps.db.db
+    .selectFrom('tickets')
+    .select(['id', 'assignment_mode'])
+    .where('event_id', '=', input.eventId)
+    .where('status', '=', 'ACTIVE')
+    .where('assignment_state', '=', 'FREE')
+    .orderBy('created_at', 'asc')
+    .execute()
+
+  const claimable = free.find((ticket) => ticket.assignment_mode === 'SELF_CLAIM')
+  if (!claimable) {
+    throw badRequest('claim.error.notClaimable')
+  }
+
+  const result = await deps.db.db
+    .updateTable('tickets')
+    .set({
+      assignment_state: 'CLAIMED',
+      holder_user_id: input.userId,
+      assigned_at: toInstant(),
+      updated_at: toInstant(),
+    })
+    .where('id', '=', claimable.id)
+    .where('assignment_state', '=', 'FREE')
+    .executeTakeFirst()
+
+  if (Number(result.numUpdatedRows) === 0) {
+    // Somebody else took it between the read and the write. Honest rather than silent: the
+    // caller retries and gets the next one.
+    throw badRequest('claim.rejected.lostRace')
+  }
+
+  await repo.recordAudit(deps.db, {
+    actorUserId: input.userId,
+    action: 'ticket.claimed',
+    subjectKind: 'ticket',
+    subjectId: claimable.id,
+  })
+
+  return { ticketId: claimable.id }
+}
+
 export interface IssuedCoupon {
   ticketId: string
   coupon: string

@@ -71,7 +71,15 @@ const INGEST_MESSAGE_KEYS: Record<IngestErrorCode, MessageKey> = {
 }
 import { readBlob, storeBlob } from './blobs.js'
 import { AppError, badRequest, forbidden, notFound, unauthorized } from './errors.js'
-import { addMember, createGroup, listGroups, listMembers, removeMember } from './groups.js'
+import {
+  addMember,
+  createGroup,
+  deleteGroup,
+  listGroups,
+  listMembers,
+  removeMember,
+  renameGroup,
+} from './groups.js'
 import { exportEvent, importArchive, inspectArchive, type TransferDeps } from './transfer.js'
 import {
   EVENT_COLOURS,
@@ -79,6 +87,7 @@ import {
   createEvent,
   findEvent,
   grantAccess,
+  listAccess,
   hasAccess,
   listEventDocuments,
   listEventsForUser,
@@ -101,6 +110,7 @@ import {
 import {
   addTickets,
   assignTicket,
+  claimFreeTicket,
   ensureDevice,
   issueClaimCoupons,
   projectTickets,
@@ -1281,6 +1291,56 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     return reply.status(201).send(added)
   })
 
+  /**
+   * Renames a group, which until now meant building a new one and re-sharing every event.
+   */
+  app.patch('/api/v1/groups/:id', async (request) => {
+    const session = await sessionOf(request)
+    vaults.require(session.id)
+    const { id } = groupParams.parse(request.params)
+    await renameGroup(eventDeps, {
+      groupId: id,
+      actorUserId: session.user_id,
+      name: groupBody.parse(request.body).name,
+    })
+    return { renamed: true }
+  })
+
+  /**
+   * Deletes one, and closes every event it was opening.
+   *
+   * The owner alone. Access granted through the group goes with it — a circle that no longer
+   * exists must not still be letting people in, which is usually the reason it is being deleted.
+   */
+  app.delete('/api/v1/groups/:id', async (request) => {
+    const session = await sessionOf(request)
+    vaults.require(session.id)
+    const { id } = groupParams.parse(request.params)
+    await deleteGroup(eventDeps, { groupId: id, actorUserId: session.user_id })
+    return { deleted: true }
+  })
+
+  /**
+   * Whether an address belongs to an account here.
+   *
+   * So that "add this person" can say *before* submitting that nobody on this server uses that
+   * address — a typo in an email is otherwise discovered when a friend never sees the ticket.
+   *
+   * Answers yes or no and never more: no name, no identifier that was not asked for by address.
+   * It is an existence oracle, which is why it needs a session — on an invitation-only server
+   * that means it is answerable by people who were let in on purpose, and no one else.
+   */
+  app.get('/api/v1/directory/lookup', async (request) => {
+    await sessionOf(request)
+    const { email } = z.object({ email: z.string().email() }).parse(request.query)
+    const user = await repo.findUserByEmailIndex(db, crypto.emailIndex(email))
+    return {
+      email,
+      exists: user !== undefined && user.status === 'ACTIVE',
+      ...(user && user.status === 'ACTIVE' ? { userId: user.id } : {}),
+    }
+  })
+
   app.delete('/api/v1/groups/:id/members/:userId', async (request) => {
     const session = await sessionOf(request)
     vaults.require(session.id)
@@ -1290,21 +1350,60 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     return { removed: true }
   })
 
-  const accessBody = z.object({
-    subjectKind: z.enum(['GROUP', 'USER']),
-    subjectId: z.string().uuid(),
-    role: z.enum(['ORGANISER', 'MEMBER']).optional(),
-  })
+  /**
+   * Who to share with, named the way the person sharing thinks of them.
+   *
+   * A group by identifier, because that is what a picker returns. A person by *address*, because
+   * nobody knows anybody's user identifier — the first version accepted only a UUID for both,
+   * which made "share with Ana" impossible from any interface a human uses.
+   */
+  const accessBody = z
+    .object({
+      subjectKind: z.enum(['GROUP', 'USER']),
+      subjectId: z.string().uuid().optional(),
+      email: z.string().email().optional(),
+      role: z.enum(['ORGANISER', 'MEMBER']).optional(),
+    })
+    .refine((body) => body.subjectId !== undefined || body.email !== undefined, {
+      message: 'subjectId or email is required',
+    })
+
+  /** Resolves whichever of the two was given into the identifier the tables store. */
+  const subjectOf = async (body: z.infer<typeof accessBody>): Promise<string> => {
+    if (body.subjectKind === 'USER' && body.email) {
+      const user = await repo.findUserByEmailIndex(db, crypto.emailIndex(body.email))
+      if (!user || user.status !== 'ACTIVE') {
+        // Said plainly rather than accepted and quietly dropped. A share that goes nowhere is
+        // discovered when a friend never sees the ticket, which is far too late.
+        throw badRequest('groups.error.unknownUser')
+      }
+      return user.id
+    }
+    if (!body.subjectId) {
+      throw badRequest('groups.error.unknownUser')
+    }
+    return body.subjectId
+  }
 
   app.post('/api/v1/events/:id/access', async (request, reply) => {
     const { id } = eventParams.parse(request.params)
     const session = await sessionOf(request)
+    const body = accessBody.parse(request.body)
     await grantAccess(eventDeps, {
       eventId: id,
       actorUserId: session.user_id,
-      ...accessBody.parse(request.body),
+      subjectKind: body.subjectKind,
+      subjectId: await subjectOf(body),
+      ...(body.role ? { role: body.role } : {}),
     })
     return reply.status(201).send({ granted: true })
+  })
+
+  /** What the creator granted, so sharing is something they can look at rather than only do. */
+  app.get('/api/v1/events/:id/access', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    return { access: await listAccess(eventDeps, { eventId: id, actorUserId: session.user_id }) }
   })
 
   app.delete('/api/v1/events/:id/access', async (request) => {
@@ -1315,7 +1414,7 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       eventId: id,
       actorUserId: session.user_id,
       subjectKind: body.subjectKind,
-      subjectId: body.subjectId,
+      subjectId: await subjectOf(body),
     })
     // Named for what it does. It stops future access; it does not recall a file already sent.
     return { revoked: true, recallsDeliveredTickets: false }
@@ -1421,6 +1520,24 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       ...assignBody.parse(request.body),
     })
     return { assigned: true }
+  })
+
+  /**
+   * Takes a free ticket, for people the event was shared with.
+   *
+   * The online half of self-claim. `POST /tickets/:id/claim` needs a coupon because it is built
+   * for a phone that was offline when it decided; somebody looking at the event in front of them
+   * needs no permission slip, only a seat that is still free.
+   */
+  app.post('/api/v1/events/:id/claim', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    const claimed = await claimFreeTicket(eventDeps, {
+      eventId: id,
+      userId: session.user_id,
+      eventKey,
+    })
+    return reply.status(201).send(claimed)
   })
 
   const couponsBody = z.object({ allowance: z.number().int().min(1).max(20).optional() })

@@ -17,6 +17,7 @@ import { Icon, type IconName } from './icons'
 import { ApiError } from './api/client'
 import { passkeysSupported, usePasskey } from './api/webauthn'
 import { EventPage, EventsPage } from './events'
+import { GroupsPage } from './groups'
 import { AccountPage } from './account'
 import { AdminPage } from './admin'
 
@@ -550,6 +551,7 @@ function Shell() {
 
         <nav className="nav">
           <NavItem to="/" icon="events" label={t('nav.events')} end />
+          <NavItem to="/groups" icon="users" label={t('nav.groups')} />
           <NavItem to="/account" icon="account" label={t('nav.account')} />
           {me?.isAdmin ? <NavItem to="/admin" icon="admin" label={t('nav.admin')} /> : null}
         </nav>
@@ -584,6 +586,7 @@ function Shell() {
             <Routes>
               <Route path="/" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventPage />} />
+              <Route path="/groups" element={<GroupsPage />} />
               <Route path="/account" element={<AccountPage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

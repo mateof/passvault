@@ -95,6 +95,30 @@ export interface AdminWhitelistEntry {
   createdAt: string
 }
 
+export interface Group {
+  id: string
+  name: string
+  role: 'OWNER' | 'ORGANISER' | 'MEMBER'
+  memberCount: number
+  isOwner: boolean
+}
+
+export interface GroupMember {
+  userId: string
+  role: string
+  email: string
+  isSelf: boolean
+}
+
+export interface AccessEntry {
+  subjectKind: 'GROUP' | 'USER'
+  subjectId: string
+  role: 'ORGANISER' | 'MEMBER'
+  /** The group's name or the person's address, so a share can be read rather than decoded. */
+  label: string
+  grantedAt: string
+}
+
 export interface EventSummary {
   id: string
   name: string
@@ -480,6 +504,74 @@ export const api = {
       `/api/v1/events/${encodeURIComponent(eventId)}/documents/${encodeURIComponent(documentId)}`,
       { ...json(locale), blob: true },
     ),
+
+  // ── Groups and sharing ───────────────────────────────────────────────────────
+
+  groups: (locale: string) => request<{ groups: Group[] }>('/api/v1/groups', json(locale)),
+
+  createGroup: (locale: string, name: string) =>
+    request<{ groupId: string }>('/api/v1/groups', { ...json(locale), body: { name } }),
+
+  renameGroup: (locale: string, id: string, name: string) =>
+    request<{ renamed: boolean }>(`/api/v1/groups/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'PATCH',
+      body: { name },
+    }),
+
+  deleteGroup: (locale: string, id: string) =>
+    request<{ deleted: boolean }>(`/api/v1/groups/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
+  groupMembers: (locale: string, id: string) =>
+    request<{ members: GroupMember[] }>(`/api/v1/groups/${encodeURIComponent(id)}/members`, json(locale)),
+
+  addGroupMember: (locale: string, id: string, email: string) =>
+    request<{ userId: string }>(`/api/v1/groups/${encodeURIComponent(id)}/members`, {
+      ...json(locale),
+      body: { email },
+    }),
+
+  removeGroupMember: (locale: string, id: string, userId: string) =>
+    request<{ removed: boolean }>(
+      `/api/v1/groups/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+      { ...json(locale), method: 'DELETE' },
+    ),
+
+  /** Whether an address belongs to an account here, so a typo is caught before it is submitted. */
+  lookup: (locale: string, email: string) =>
+    request<{ email: string; exists: boolean; userId?: string }>(
+      `/api/v1/directory/lookup?email=${encodeURIComponent(email)}`,
+      json(locale),
+    ),
+
+  /** Takes a free ticket in a self-claim event, with no coupon to be handed out first. */
+  claimFree: (locale: string, eventId: string) =>
+    request<{ ticketId: string }>(`/api/v1/events/${encodeURIComponent(eventId)}/claim`, {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  eventAccess: (locale: string, eventId: string) =>
+    request<{ access: AccessEntry[] }>(
+      `/api/v1/events/${encodeURIComponent(eventId)}/access`,
+      json(locale),
+    ),
+
+  shareEvent: (locale: string, eventId: string, body: Record<string, unknown>) =>
+    request<{ granted: boolean }>(`/api/v1/events/${encodeURIComponent(eventId)}/access`, {
+      ...json(locale),
+      body,
+    }),
+
+  revokeEventAccess: (locale: string, eventId: string, body: Record<string, unknown>) =>
+    request<{ revoked: boolean }>(`/api/v1/events/${encodeURIComponent(eventId)}/access`, {
+      ...json(locale),
+      method: 'DELETE',
+      body,
+    }),
 
   /** Completes an account an administrator created, from the link in the invitation mail. */
   completeSetup: (locale: string, body: Record<string, unknown>) =>

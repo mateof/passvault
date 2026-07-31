@@ -359,25 +359,136 @@ export async function grantAccess(
   if (event.creator_user_id !== input.actorUserId) {
     throw forbidden()
   }
-  await deps.db.db
-    .insertInto('event_access')
-    .values({
-      id: newId(),
-      event_id: input.eventId,
-      subject_kind: input.subjectKind,
-      subject_id: input.subjectId,
-      role: input.role ?? 'MEMBER',
-      granted_by: input.actorUserId,
-      granted_at: toInstant(),
-      revoked_at: null,
-    })
-    .execute()
+  // Granting the same access twice says the same thing, so it leaves one row rather than a pile
+  // of them — which is what a list of who can see this would otherwise show.
+  const existing = await deps.db.db
+    .selectFrom('event_access')
+    .select('id')
+    .where('event_id', '=', input.eventId)
+    .where('subject_kind', '=', input.subjectKind)
+    .where('subject_id', '=', input.subjectId)
+    .executeTakeFirst()
+  if (existing) {
+    await deps.db.db
+      .updateTable('event_access')
+      .set({ role: input.role ?? 'MEMBER', revoked_at: null, granted_at: toInstant() })
+      .where('id', '=', existing.id)
+      .execute()
+  } else {
+    await deps.db.db
+      .insertInto('event_access')
+      .values({
+        id: newId(),
+        event_id: input.eventId,
+        subject_kind: input.subjectKind,
+        subject_id: input.subjectId,
+        role: input.role ?? 'MEMBER',
+        granted_by: input.actorUserId,
+        granted_at: toInstant(),
+        revoked_at: null,
+      })
+      .execute()
+  }
   await repo.recordAudit(deps.db, {
     actorUserId: input.actorUserId,
     action: 'event.access.granted',
     subjectKind: 'event',
     subjectId: input.eventId,
   })
+}
+
+/**
+ * Who an event is shared with.
+ *
+ * Sharing was write-only: an organiser could grant access and had no way of seeing what they had
+ * granted, so "did I remember to share this with the family?" could only be answered by sharing
+ * again. Groups come back by name and people by address, because a column of identifiers is not
+ * an answer to that question.
+ */
+export interface EventAccessEntry {
+  subjectKind: 'GROUP' | 'USER'
+  subjectId: string
+  role: 'ORGANISER' | 'MEMBER'
+  /** The group's name or the person's address. Empty when the subject no longer exists. */
+  label: string
+  grantedAt: string
+}
+
+export async function listAccess(
+  deps: EventDeps,
+  input: { eventId: string; actorUserId: string },
+): Promise<EventAccessEntry[]> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event) {
+    throw notFound()
+  }
+  if (event.creator_user_id !== input.actorUserId) {
+    // Who else an event was shared with is the creator's business. A member knowing they can see
+    // it does not entitle them to the guest list.
+    throw forbidden('event.error.notCreator')
+  }
+
+  const rows = await deps.db.db
+    .selectFrom('event_access')
+    .select(['subject_kind', 'subject_id', 'role', 'granted_at'])
+    .where('event_id', '=', input.eventId)
+    .where('revoked_at', 'is', null)
+    .orderBy('granted_at', 'asc')
+    .execute()
+
+  const entries: EventAccessEntry[] = []
+  for (const row of rows) {
+    entries.push({
+      subjectKind: row.subject_kind,
+      subjectId: row.subject_id,
+      role: row.role,
+      label:
+        row.subject_kind === 'GROUP'
+          ? await groupNameFor(deps, row.subject_id)
+          : await userEmailFor(deps, row.subject_id),
+      grantedAt: row.granted_at,
+    })
+  }
+  return entries
+}
+
+async function groupNameFor(deps: EventDeps, groupId: string): Promise<string> {
+  const row = await deps.db.db
+    .selectFrom('groups')
+    .select(['id', 'name_cipher'])
+    .where('id', '=', groupId)
+    .where('status', '=', 'ACTIVE')
+    .executeTakeFirst()
+  if (!row) {
+    return ''
+  }
+  try {
+    return deps.crypto.decryptField(
+      deps.crypto.serverKey(`group:${groupId}`, 'email'),
+      new Uint8Array(row.name_cipher),
+      { table: 'groups', column: 'name_cipher', rowId: groupId },
+    )
+  } catch {
+    // A group still stored under its owner's key, which the server cannot open. Its name appears
+    // the next time its owner lists their groups; an empty label beats a failed request.
+    return ''
+  }
+}
+
+async function userEmailFor(deps: EventDeps, userId: string): Promise<string> {
+  const row = await deps.db.db
+    .selectFrom('users')
+    .select(['id', 'email_cipher'])
+    .where('id', '=', userId)
+    .executeTakeFirst()
+  if (!row) {
+    return ''
+  }
+  return deps.crypto.decryptField(
+    deps.crypto.serverKey(userId, 'email'),
+    new Uint8Array(row.email_cipher),
+    { table: 'users', column: 'email_cipher', rowId: userId },
+  )
 }
 
 /**

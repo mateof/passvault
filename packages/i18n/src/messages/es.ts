@@ -132,6 +132,8 @@ export const es: Catalogue = {
   'error.rateLimited': 'Demasiadas peticiones. Prueba otra vez en un momento.',
   'groups.error.unknownEmail': 'No hay ninguna cuenta con ese correo en este servidor.',
   'groups.error.cannotRemoveOwner': 'No se puede quitar a quien creó el grupo.',
+  'groups.error.ownerOnly': 'Solo quien creó el grupo puede borrarlo.',
+  'groups.error.unknownUser': 'No hay ninguna cuenta con ese correo en este servidor.',
 
   // ─── Administración ───
   'admin.error.lastAdmin':

@@ -14,6 +14,12 @@ import type { EventDeps } from './events.js'
  * circle of friends, which is exactly the kind of thing a stolen database should not spell out.
  * Membership rows are not encrypted, because they are user ids and the graph is what the queries
  * need — knowing that two accounts share a group is not knowing what they call it.
+ *
+ * The name is encrypted under a key derived per group from the master key, not under the owner's
+ * data key. The first draft used the owner's, which made a group unreadable to everybody in it
+ * except the person who created it: the moment a member asked for their own list, the decryption
+ * failed and the request died. This is the same trade a password-less event already makes and
+ * docs/security.md already states — the operator can read it, a stolen database cannot.
  */
 
 export interface GroupSummary {
@@ -21,6 +27,8 @@ export interface GroupSummary {
   name: string
   role: 'OWNER' | 'ORGANISER' | 'MEMBER'
   memberCount: number
+  /** Whether the caller may rename or delete it, which the interface has to know before drawing. */
+  isOwner: boolean
 }
 
 const groupAad = (groupId: string) => ({
@@ -28,6 +36,55 @@ const groupAad = (groupId: string) => ({
   column: 'name_cipher',
   rowId: groupId,
 })
+
+/** Derived per group, so one group's name never opens another's. */
+const groupKey = (deps: EventDeps, groupId: string): Uint8Array =>
+  deps.crypto.serverKey(`group:${groupId}`, 'email')
+
+/**
+ * The name, however it happens to be stored.
+ *
+ * Groups made before the key changed are still under the owner's data key, and there is no
+ * migration that could reach them — the server cannot decrypt with a key it never holds. So the
+ * owner's key is tried second, and when it works the row is rewritten under the group key. The
+ * group repairs itself the first time its owner looks at it, and until then a member sees a
+ * placeholder rather than an error page.
+ */
+async function readGroupName(
+  deps: EventDeps,
+  row: { id: string; name_cipher: Uint8Array | Buffer },
+  fallbackKey?: Uint8Array,
+): Promise<string> {
+  const stored = new Uint8Array(row.name_cipher)
+  try {
+    return deps.crypto.decryptField(groupKey(deps, row.id), stored, groupAad(row.id))
+  } catch {
+    if (!fallbackKey) {
+      return ''
+    }
+    const name = (() => {
+      try {
+        return deps.crypto.decryptField(fallbackKey, stored, groupAad(row.id))
+      } catch {
+        return ''
+      }
+    })()
+    if (name === '') {
+      return ''
+    }
+    await deps.db.db
+      .updateTable('groups')
+      .set({
+        name_cipher: Buffer.from(
+          deps.crypto.encryptField(groupKey(deps, row.id), name, groupAad(row.id)),
+        ),
+        updated_at: toInstant(),
+      })
+      .where('id', '=', row.id)
+      .execute()
+    return name
+  }
+}
 
 export async function createGroup(
   deps: EventDeps,
@@ -41,7 +98,7 @@ export async function createGroup(
     .values({
       id: groupId,
       name_cipher: Buffer.from(
-        deps.crypto.encryptField(input.ownerDataKey, input.name, groupAad(groupId)),
+        deps.crypto.encryptField(groupKey(deps, groupId), input.name, groupAad(groupId)),
       ),
       owner_user_id: input.ownerUserId,
       status: 'ACTIVE',
@@ -96,16 +153,10 @@ export async function listGroups(
       .execute()
     summaries.push({
       id: row.id,
-      // Decrypted with the caller's key, which only works because a group is readable by the
-      // person who made it. Shared groups would need the same key-wrapping the events use; that
-      // is the next step and not this one.
-      name: deps.crypto.decryptField(
-        input.dataKey,
-        new Uint8Array(row.name_cipher),
-        groupAad(row.id),
-      ),
+      name: await readGroupName(deps, row, input.dataKey),
       role: row.role,
       memberCount: members.length,
+      isOwner: row.owner_user_id === input.userId,
     })
   }
   return summaries
@@ -193,6 +244,75 @@ export async function addMember(
 }
 
 /**
+ * Renames a group.
+ *
+ * "The family" becomes "Family and the Souto cousins" and nothing else about it changes: the
+ * members stay, and so does every event already shared with it. Without this the only way to fix
+ * a typo was to build the group again and re-share everything.
+ */
+export async function renameGroup(
+  deps: EventDeps,
+  input: { groupId: string; actorUserId: string; name: string },
+): Promise<void> {
+  await requireOrganiser(deps, input.groupId, input.actorUserId)
+  await deps.db.db
+    .updateTable('groups')
+    .set({
+      name_cipher: Buffer.from(
+        deps.crypto.encryptField(groupKey(deps, input.groupId), input.name, groupAad(input.groupId)),
+      ),
+      updated_at: toInstant(),
+    })
+    .where('id', '=', input.groupId)
+    .where('status', '=', 'ACTIVE')
+    .execute()
+}
+
+/**
+ * Deletes a group, and with it the access every event granted through it.
+ *
+ * Marked inactive rather than erased, like a departed member: past assignments still resolve to
+ * the people who held them. The access rows are revoked outright, though — a group that no longer
+ * exists must not still be opening events, which is the whole reason somebody deletes one.
+ *
+ * The owner alone, not any organiser. Deleting is the one action nobody can undo from the
+ * interface, and an organiser was trusted to add people rather than to dissolve the circle.
+ */
+export async function deleteGroup(
+  deps: EventDeps,
+  input: { groupId: string; actorUserId: string },
+): Promise<void> {
+  const group = await deps.db.db
+    .selectFrom('groups')
+    .select('owner_user_id')
+    .where('id', '=', input.groupId)
+    .where('status', '=', 'ACTIVE')
+    .executeTakeFirst()
+  if (!group) {
+    throw notFound()
+  }
+  if (group.owner_user_id !== input.actorUserId) {
+    throw forbidden('groups.error.ownerOnly')
+  }
+
+  // Stamped rather than deleted, which is how every other revocation in the schema reads and
+  // what keeps a record of the access having existed.
+  await deps.db.db
+    .updateTable('event_access')
+    .set({ revoked_at: toInstant() })
+    .where('subject_kind', '=', 'GROUP')
+    .where('subject_id', '=', input.groupId)
+    .where('revoked_at', 'is', null)
+    .execute()
+
+  await deps.db.db
+    .updateTable('groups')
+    .set({ status: 'ARCHIVED', updated_at: toInstant() })
+    .where('id', '=', input.groupId)
+    .execute()
+}
+
+/**
  * Removes somebody.
  *
  * Marked inactive rather than deleted: the row is what lets a past assignment still resolve to a
@@ -223,10 +343,18 @@ export async function removeMember(
     .execute()
 }
 
+/**
+ * Who is in a group, by name rather than by identifier.
+ *
+ * The address is included, because a list of UUIDs is not a list of people and the owner added
+ * every one of them by typing exactly this. Members see each other: a group is a circle that
+ * already shares events, and hiding the addresses would leave an owner unable to tell which of
+ * two accounts belonging to the same person they invited.
+ */
 export async function listMembers(
   deps: EventDeps,
   input: { groupId: string; actorUserId: string },
-): Promise<{ userId: string; role: string }[]> {
+): Promise<{ userId: string; role: string; email: string; isSelf: boolean }[]> {
   const membership = await deps.db.db
     .selectFrom('group_members')
     .select('id')
@@ -240,10 +368,22 @@ export async function listMembers(
 
   const rows = await deps.db.db
     .selectFrom('group_members')
-    .select(['user_id', 'role'])
-    .where('group_id', '=', input.groupId)
-    .where('status', '=', 'ACTIVE')
+    .innerJoin('users', 'users.id', 'group_members.user_id')
+    .select(['group_members.user_id', 'group_members.role', 'users.email_cipher'])
+    .where('group_members.group_id', '=', input.groupId)
+    .where('group_members.status', '=', 'ACTIVE')
     .execute()
 
-  return rows.map((row) => ({ userId: row.user_id, role: row.role }))
+  return rows.map((row) => ({
+    userId: row.user_id,
+    role: row.role,
+    // Decrypted here rather than through the accounts module, which wants a mailer and a
+    // configuration to do the same two lines. The key is derived per user for exactly this.
+    email: deps.crypto.decryptField(
+      deps.crypto.serverKey(row.user_id, 'email'),
+      new Uint8Array(row.email_cipher),
+      { table: 'users', column: 'email_cipher', rowId: row.user_id },
+    ),
+    isSelf: row.user_id === input.actorUserId,
+  }))
 }

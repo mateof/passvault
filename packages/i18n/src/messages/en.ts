@@ -129,6 +129,8 @@ export const en: Catalogue = {
   'error.rateLimited': 'Too many requests. Try again shortly.',
   'groups.error.unknownEmail': 'No account on this server uses that email address.',
   'groups.error.cannotRemoveOwner': 'The person who created the group cannot be removed.',
+  'groups.error.ownerOnly': 'Only whoever created the group can delete it.',
+  'groups.error.unknownUser': 'No account on this server uses that address.',
 
   // ─── Administration ───
   'admin.error.lastAdmin':
