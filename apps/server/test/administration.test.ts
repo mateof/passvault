@@ -117,6 +117,49 @@ describe('an administrator named in the deployment file', () => {
     await expect(login(server, BOOT_ADMIN)).resolves.toEqual(expect.any(String))
   })
 
+  /**
+   * A password one character short of the rule used to come back as "an unexpected error
+   * occurred" — the wording reserved for a crash — on a screen that had never said what the
+   * rule was. Somebody trying to set the administrator's password read that as the server
+   * being broken, which is exactly what it sounds like.
+   */
+  it('says a short password is short, not that something went wrong', async () => {
+    server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email })
+
+    const response = await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/registration/complete-setup',
+      headers: { 'accept-language': 'es' },
+      payload: {
+        token: tokenFromLastMail(server),
+        email: BOOT_ADMIN.email,
+        password: 'corta1234',
+        passphrase: BOOT_ADMIN.passphrase,
+      },
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json().message).toContain('al menos 10 caracteres')
+  })
+
+  it('says the same about a short vault passphrase', async () => {
+    server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email })
+
+    const response = await server.app.inject({
+      method: 'POST',
+      url: '/api/v1/registration/complete-setup',
+      payload: {
+        token: tokenFromLastMail(server),
+        email: BOOT_ADMIN.email,
+        password: BOOT_ADMIN.password,
+        passphrase: 'curta',
+      },
+    })
+
+    expect(response.json().message).toContain('8')
+    expect(response.json().message).not.toContain('inesperado')
+  })
+
   it('says the link has been used rather than failing as though the server broke', async () => {
     server = await startTestServer({ ADMIN_EMAIL: BOOT_ADMIN.email })
     const token = tokenFromLastMail(server)

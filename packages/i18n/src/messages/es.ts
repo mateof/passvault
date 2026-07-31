@@ -25,6 +25,7 @@ export const es: Catalogue = {
   'auth.error.tooManyAttempts':
     'Demasiados intentos. Espera {minutes, plural, one {# minuto} other {# minutos}} antes de volver a probar.',
   'auth.error.passkeyFailed': 'No se ha podido verificar la llave de acceso.',
+  'auth.error.passwordTooShort': 'La contraseña tiene que tener al menos {minimum} caracteres.',
   'auth.error.passwordLoginDisabled':
     'En esta instalación no se puede entrar con contraseña. Usa Google, Microsoft o una llave de acceso.',
   'auth.otp.subject': 'Tu código de acceso a PassVault',
@@ -126,6 +127,7 @@ export const es: Catalogue = {
   'error.unexpected': 'Se ha producido un error inesperado.',
   'error.forbidden': 'No tienes permiso para hacer esto.',
   'error.notFound': 'No se ha encontrado lo que buscabas.',
+  'error.validation': 'Hay algún dato del formulario que no es válido. Repásalo y prueba otra vez.',
   'error.rateLimited': 'Demasiadas peticiones. Prueba otra vez en un momento.',
   'groups.error.unknownEmail': 'No hay ninguna cuenta con ese correo en este servidor.',
   'groups.error.cannotRemoveOwner': 'No se puede quitar a quien creó el grupo.',

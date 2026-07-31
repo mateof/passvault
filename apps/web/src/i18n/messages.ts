@@ -28,6 +28,7 @@ export const gl = {
   'common.loading': 'Cargando…',
   'common.empty': 'Aínda non hai nada aquí.',
   'common.required': 'Este campo é obrigatorio.',
+  'rule.minChars': '{min, plural, one {Polo menos # carácter.} other {Polo menos # caracteres.}}',
 
   'login.title': 'Entrar',
   'login.email': 'Correo electrónico',
@@ -122,7 +123,8 @@ export const gl = {
     'Cando alguén importa este ficheiro xa ten o código da entrada. Non se pode retirar despois.',
   'transfer.import': 'Importar .tkpak',
   'transfer.importPassword': 'Contrasinal do ficheiro',
-  'transfer.importDone': '{count, plural, one {Importouse # entrada} other {Importáronse # entradas}} de «{event}».',
+  'transfer.importDone':
+    '{count, plural, one {Importouse # entrada} other {Importáronse # entradas}} de «{event}».',
   'transfer.unverifiedSender': 'Non se puido verificar quen enviou este ficheiro.',
 
   'ingest.title': 'Importar un documento',
@@ -238,6 +240,7 @@ export const es: Record<WebMessageKey, string> = {
   'common.loading': 'Cargando…',
   'common.empty': 'Todavía no hay nada aquí.',
   'common.required': 'Este campo es obligatorio.',
+  'rule.minChars': '{min, plural, one {Al menos # carácter.} other {Al menos # caracteres.}}',
 
   'login.title': 'Entrar',
   'login.email': 'Correo electrónico',
@@ -443,6 +446,7 @@ export const en: Record<WebMessageKey, string> = {
   'common.loading': 'Loading…',
   'common.empty': 'Nothing here yet.',
   'common.required': 'This field is required.',
+  'rule.minChars': '{min, plural, one {At least # character.} other {At least # characters.}}',
 
   'login.title': 'Sign in',
   'login.email': 'Email address',
@@ -591,8 +595,7 @@ export const en: Record<WebMessageKey, string> = {
   'admin.createUserHelp':
     'It is created without a password and a link is sent so the person chooses their own. You never learn it, and they choose the vault passphrase themselves: if you chose it, you could read their data.',
   'admin.alsoAdministrator': 'Also administers the server',
-  'admin.closedStillWorks':
-    'Registration is closed, but accounts created from here still work.',
+  'admin.closedStillWorks': 'Registration is closed, but accounts created from here still work.',
 
   'admin.invitations': 'Invitations',
   'admin.invitationsInactive':

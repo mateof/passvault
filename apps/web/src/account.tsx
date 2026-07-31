@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from './api/passvault'
+import { api, MINIMUM_PASSPHRASE_LENGTH } from './api/passvault'
 import { useT, LOCALES, LOCALE_NAMES, type Locale } from './i18n'
 import { useSession } from './session'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
@@ -57,6 +57,8 @@ export function AccountPage() {
             onChange={setPassphrase}
             type="password"
             autoComplete="new-password"
+            minLength={MINIMUM_PASSPHRASE_LENGTH}
+            help={t('rule.minChars', { min: MINIMUM_PASSPHRASE_LENGTH })}
             required
           />
         </Form>

@@ -8,6 +8,15 @@ import { request, type RequestOptions } from './client'
  * one side or the other of it.
  */
 
+/**
+ * The two length rules the server enforces, stated here so the forms can state them too.
+ *
+ * They live beside the calls they constrain rather than in each screen: they are part of the
+ * server's contract, and a screen that guesses them shows the user a rule that is wrong.
+ */
+export const MINIMUM_PASSWORD_LENGTH = 10
+export const MINIMUM_PASSPHRASE_LENGTH = 8
+
 export interface Me {
   userId: string
   locale: string

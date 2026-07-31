@@ -19,6 +19,13 @@ export function Field(props: {
   required?: boolean
   help?: string
   autoComplete?: string
+  /**
+   * The server's own rule, repeated here so the browser refuses to submit.
+   *
+   * Not belt and braces: without it a password one character short of the rule made a round
+   * trip and came back as a refusal on a screen that had never said what the rule was.
+   */
+  minLength?: number
 }) {
   return (
     <label className="field">
@@ -29,6 +36,7 @@ export function Field(props: {
         value={props.value}
         placeholder={props.placeholder}
         required={props.required}
+        minLength={props.minLength}
         autoComplete={props.autoComplete}
         onChange={(event: ChangeEvent<HTMLInputElement>) => props.onChange(event.target.value)}
       />

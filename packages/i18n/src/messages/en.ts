@@ -24,6 +24,7 @@ export const en: Catalogue = {
   'auth.error.tooManyAttempts':
     'Too many attempts. Wait {minutes, plural, one {# minute} other {# minutes}} before trying again.',
   'auth.error.passkeyFailed': 'The passkey could not be verified.',
+  'auth.error.passwordTooShort': 'The password has to be at least {minimum} characters long.',
   'auth.error.passwordLoginDisabled':
     'This installation does not allow signing in with a password. Use Google, Microsoft or a passkey.',
   'auth.otp.subject': 'Your PassVault sign-in code',
@@ -123,6 +124,7 @@ export const en: Catalogue = {
   'error.unexpected': 'Something went wrong.',
   'error.forbidden': 'You do not have permission to do this.',
   'error.notFound': 'That could not be found.',
+  'error.validation': 'Something in the form is not valid. Check it and try again.',
   'error.rateLimited': 'Too many requests. Try again shortly.',
   'groups.error.unknownEmail': 'No account on this server uses that email address.',
   'groups.error.cannotRemoveOwner': 'The person who created the group cannot be removed.',

@@ -8,7 +8,7 @@ import {
   useNavigate,
   useSearchParams,
 } from 'react-router-dom'
-import { api } from './api/passvault'
+import { api, MINIMUM_PASSPHRASE_LENGTH, MINIMUM_PASSWORD_LENGTH } from './api/passvault'
 import { I18nProvider, LOCALES, LOCALE_NAMES, useT, type Locale } from './i18n'
 import { SessionProvider, useSession } from './session'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
@@ -224,6 +224,8 @@ function RegisterPage() {
           onChange={setPassword}
           type="password"
           autoComplete="new-password"
+          minLength={MINIMUM_PASSWORD_LENGTH}
+          help={t('rule.minChars', { min: MINIMUM_PASSWORD_LENGTH })}
           required
         />
         <Field
@@ -232,7 +234,8 @@ function RegisterPage() {
           onChange={setPassphrase}
           type="password"
           autoComplete="new-password"
-          help={t('vault.setWarning')}
+          minLength={MINIMUM_PASSPHRASE_LENGTH}
+          help={`${t('rule.minChars', { min: MINIMUM_PASSPHRASE_LENGTH })} ${t('vault.setWarning')}`}
           required
         />
         {mode === 'INVITATION' ? (
@@ -310,6 +313,8 @@ function SetPasswordPage() {
           onChange={setPassword}
           type="password"
           autoComplete="new-password"
+          minLength={MINIMUM_PASSWORD_LENGTH}
+          help={t('rule.minChars', { min: MINIMUM_PASSWORD_LENGTH })}
           required
         />
         <Field
@@ -318,7 +323,8 @@ function SetPasswordPage() {
           onChange={setPassphrase}
           type="password"
           autoComplete="new-password"
-          help={t('vault.setWarning')}
+          minLength={MINIMUM_PASSPHRASE_LENGTH}
+          help={`${t('rule.minChars', { min: MINIMUM_PASSPHRASE_LENGTH })} ${t('vault.setWarning')}`}
           required
         />
       </Form>
@@ -377,6 +383,8 @@ function VaultGate() {
             onChange={setPassphrase}
             type="password"
             autoComplete="new-password"
+            minLength={MINIMUM_PASSPHRASE_LENGTH}
+            help={t('rule.minChars', { min: MINIMUM_PASSPHRASE_LENGTH })}
             required
           />
         </Form>

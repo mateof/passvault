@@ -35,6 +35,7 @@ export const gl = {
   'auth.error.tooManyAttempts':
     'Demasiados intentos. Agarda {minutes, plural, one {# minuto} other {# minutos}} antes de probar outra vez.',
   'auth.error.passkeyFailed': 'Non se puido verificar a chave de acceso.',
+  'auth.error.passwordTooShort': 'O contrasinal ten que ter polo menos {minimum} caracteres.',
   'auth.error.passwordLoginDisabled':
     'Nesta instalación non se pode entrar con contrasinal. Usa Google, Microsoft ou unha chave de acceso.',
   'auth.otp.subject': 'O teu código de acceso a PassVault',
@@ -142,6 +143,7 @@ export const gl = {
   'error.unexpected': 'Produciuse un erro inesperado.',
   'error.forbidden': 'Non tes permiso para facer isto.',
   'error.notFound': 'Non se atopou o que buscabas.',
+  'error.validation': 'Hai algún dato do formulario que non é válido. Repásao e proba outra vez.',
   'error.rateLimited': 'Demasiadas peticións. Proba outra vez en pouco.',
   'groups.error.unknownEmail': 'Non hai ningunha conta con ese correo neste servidor.',
   'groups.error.cannotRemoveOwner': 'Non se pode quitar a quen creou o grupo.',

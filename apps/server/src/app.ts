@@ -2,7 +2,13 @@ import { randomBytes } from 'node:crypto'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { hashPassword, toBase64Url, type Argon2Params } from '@passvault/crypto'
 import { migrateToLatest, newId, openDatabase, toInstant, type DatabaseHandle } from '@passvault/db'
-import { createTranslator, resolveLocale, type Locale, type MessageKey } from '@passvault/i18n'
+import {
+  createTranslator,
+  resolveLocale,
+  type Locale,
+  type MessageKey,
+  type MessageValues,
+} from '@passvault/i18n'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -117,6 +123,33 @@ import {
   removeCredential,
 } from './webauthn.js'
 
+/**
+ * Says what is wrong with a request body, in the user's language.
+ *
+ * The two secrets get their own wording because they are the two fields a user actually gets
+ * wrong, and "too_small on password" is not something to put in front of anybody. Everything
+ * else falls back to a generic message: the field paths are an API contract in English, and
+ * translating every one of them would be a second catalogue that drifts from the first.
+ */
+function validationMessage(error: z.ZodError): { key: MessageKey; values?: MessageValues } {
+  for (const issue of error.issues) {
+    if (issue.code !== 'too_small') {
+      continue
+    }
+    const field = issue.path.at(-1)
+    if (field === 'passphrase') {
+      return {
+        key: 'vault.error.passphraseTooShort',
+        values: { minimum: Number(issue.minimum) },
+      }
+    }
+    if (field === 'password') {
+      return { key: 'auth.error.passwordTooShort', values: { minimum: Number(issue.minimum) } }
+    }
+  }
+  return { key: 'error.validation' }
+}
+
 export interface BuildOptions {
   config?: ServerConfig
   mailer?: Mailer
@@ -219,9 +252,13 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       })
     }
     if (error instanceof z.ZodError) {
+      // Reported as what it is. This said "an unexpected error occurred" — the wording reserved
+      // for a crash — so a password one character short of the rule read to the user as the
+      // server being broken, on a screen that had never told them the rule in the first place.
+      const { key, values } = validationMessage(error)
       return reply.status(400).send({
         error: 'validation',
-        message: t('error.unexpected'),
+        message: t(key, values),
         details: error.issues.map((issue) => ({ path: issue.path.join('.'), code: issue.code })),
       })
     }
@@ -271,7 +308,8 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
    * deployed, and the log line below is what would have said so.
    */
   const webRoot = resolve(
-    process.env.WEB_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist'),
+    process.env.WEB_ROOT ??
+      join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'web', 'dist'),
   )
   if (existsSync(join(webRoot, 'index.html'))) {
     await app.register(fastifyStatic, { root: webRoot, wildcard: false })
