@@ -74,6 +74,7 @@ export const gl = {
   // ─── Events ───
   'event.passwordRequired': 'Este evento pide un contrasinal. Pídello a quen o compartiu contigo.',
   'event.error.wrongPassword': 'O contrasinal do evento non é correcto.',
+  'event.error.notCreator': 'Só quen creou o evento pode facer isto.',
   'event.warning.passwordLost':
     'Se se perde o contrasinal do evento non se poden recuperar as súas entradas.',
   'event.ticketCount': '{count, plural, =0 {sen entradas} one {# entrada} other {# entradas}}',

@@ -208,6 +208,17 @@ describe('the document tickets were split out of', () => {
       headers: bearer(organiser),
     })
 
+  /** An identifier a phone chose, which is the point: the client names its own documents. */
+  const PHONE_DOCUMENT = '019fb79c-7154-7360-afee-885db51765cd'
+
+  const put = (documentId: string, payload: Buffer, query = '') =>
+    server.app.inject({
+      method: 'PUT',
+      url: `/api/v1/events/${eventId}/documents/${documentId}${query}`,
+      headers: { ...bearer(organiser), 'content-type': 'application/pdf' },
+      payload,
+    })
+
   it('is listed once the import is confirmed', async () => {
     await ingestAndConfirm()
 
@@ -218,7 +229,9 @@ describe('the document tickets were split out of', () => {
     await ingestAndConfirm()
 
     expect((await documents()).json().documents[0]).toMatchObject({
-      mediaType: 'PDF',
+      // The media type as the wire spells it, not as the column stores it. A client reading
+      // `PDF` and looking for `pdf` decided every document was a pass.
+      mediaType: 'application/pdf',
       pageCount: 3,
     })
   })
@@ -264,6 +277,69 @@ describe('the document tickets were split out of', () => {
     })
 
     expect(response.statusCode).toBe(404)
+  })
+
+  it('uploaded whole by a client, under the identifier that client already uses', async () => {
+    // What a phone has to be able to do. The synchronisation log carries what happened to an
+    // event, and the PDF it all came from is not an event that happened — so without this the
+    // tickets arrive and the original stays on the phone.
+    const pdf = Buffer.from(await ticketPdf([{ codes: [{ text: '8412-UP-0001' }] }]))
+
+    const response = await put(PHONE_DOCUMENT, pdf, '?pages=1')
+
+    expect(response.statusCode).toBe(201)
+    expect((await documents()).json().documents).toMatchObject([
+      { id: PHONE_DOCUMENT, mediaType: 'application/pdf', pageCount: 1 },
+    ])
+  })
+
+  it('is the same document when the same identifier is uploaded again', async () => {
+    // A phone synchronises every day and holds the same PDF every time. Storing a second copy
+    // per synchronisation is how a shared identifier earns its keep: saying it twice says the
+    // same thing.
+    const pdf = Buffer.from(await ticketPdf([{ codes: [{ text: '8412-UP-0002' }] }]))
+    await put(PHONE_DOCUMENT, pdf)
+
+    const again = await put(PHONE_DOCUMENT, pdf)
+
+    expect(again.statusCode).toBe(200)
+    expect(again.json()).toMatchObject({ stored: false })
+    expect((await documents()).json().documents).toHaveLength(1)
+  })
+
+  it('comes back byte for byte, which is the only reason to keep the original', async () => {
+    const pdf = Buffer.from(await ticketPdf([{ codes: [{ text: '8412-UP-0003' }] }]))
+    await put(PHONE_DOCUMENT, pdf)
+
+    const response = await server.app.inject({
+      url: `/api/v1/events/${eventId}/documents/${PHONE_DOCUMENT}`,
+      headers: bearer(organiser),
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(Buffer.from(response.rawPayload).equals(pdf)).toBe(true)
+  })
+
+  it('cannot be smuggled onto an event by someone who did not create it', async () => {
+    // The original is what settles a disagreement at a gate. Whoever brought the tickets says
+    // what it is, in the same way only they may add tickets.
+    await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/access`,
+      headers: bearer(organiser),
+      payload: { subjectKind: 'USER', subjectId: MEMBER.email, role: 'MEMBER' },
+    })
+    const pdf = Buffer.from(await ticketPdf([{ codes: [{ text: '8412-UP-0004' }] }]))
+
+    const response = await server.app.inject({
+      method: 'PUT',
+      url: `/api/v1/events/${eventId}/documents/${PHONE_DOCUMENT}`,
+      headers: { ...bearer(member), 'content-type': 'application/pdf' },
+      payload: pdf,
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect((await documents()).json().documents).toEqual([])
   })
 
   it('becomes the cover, so an imported event is recognisable without choosing anything', async () => {

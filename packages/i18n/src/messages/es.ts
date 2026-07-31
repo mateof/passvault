@@ -63,6 +63,7 @@ export const es: Catalogue = {
   'event.passwordRequired':
     'Este evento pide una contraseña. Pídesela a quien lo compartió contigo.',
   'event.error.wrongPassword': 'La contraseña del evento no es correcta.',
+  'event.error.notCreator': 'Solo quien creó el evento puede hacer esto.',
   'event.warning.passwordLost':
     'Si se pierde la contraseña del evento no se pueden recuperar sus entradas.',
   'event.ticketCount': '{count, plural, =0 {sin entradas} one {# entrada} other {# entradas}}',

@@ -946,6 +946,15 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
    */
   const MAXIMUM_IMAGE_BYTES = 4 * 1024 * 1024
 
+  /**
+   * The ceiling for a document a client uploads whole.
+   *
+   * Half the body limit rather than all of it, which is the difference between a refusal and a
+   * severed connection: Fastify rejects an oversized body before any handler runs, so a ceiling
+   * set at the limit could never produce the sentence saying how big a file may be.
+   */
+  const MAXIMUM_DOCUMENT_BYTES = 32 * 1024 * 1024
+
   const createEventBody = z.object({
     name: z.string().min(1).max(200),
     venue: z.string().max(200).optional(),
@@ -1114,6 +1123,91 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     const { id } = eventParams.parse(request.params)
     await openEvent(request, id)
     return { documents: await listEventDocuments(eventDeps, id) }
+  })
+
+  /**
+   * A document a client already holds, uploaded whole.
+   *
+   * The synchronisation protocol carries a signed log of what happened to an event — it created
+   * tickets, it assigned them, it paid for them — and a thirty-megabyte PDF is none of those
+   * things. So a wallet built on a phone from a PDF synchronised its tickets and left the file
+   * behind, and the event on the server had no original at all: exactly the pages ingestion drops
+   * on purpose, missing from the one place a second device would go looking for them.
+   *
+   * Under the identifier the client already uses, which is what makes it idempotent: a phone that
+   * synchronises every day uploads its PDF once and finds it there afterwards. That is also why
+   * this is a PUT — the client names the resource, and saying it twice says the same thing.
+   *
+   * Only the creator may upload one. Anyone the event is shared with can read the original; the
+   * question of what the original *is* belongs to whoever brought the tickets, in the same way
+   * adding tickets does.
+   */
+  app.put('/api/v1/events/:id/documents/:documentId', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { documentId } = z.object({ documentId: z.string().uuid() }).parse(request.params)
+    const pages = z
+      .object({ pages: z.coerce.number().int().positive().max(10_000).optional() })
+      .parse(request.query ?? {}).pages
+    const { session, eventKey } = await openEvent(request, id)
+
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    if (event.creator_user_id !== session.user_id) {
+      throw forbidden('event.error.notCreator')
+    }
+
+    const existing = await db.db
+      .selectFrom('blobs')
+      .select(['id', 'event_id'])
+      .where('id', '=', documentId)
+      .executeTakeFirst()
+    if (existing) {
+      // Already here. Not an error and not a second copy: the same identifier means the same
+      // document, which is the whole reason the client gets to choose it.
+      if (existing.event_id !== id) {
+        throw badRequest('ingest.error.unsupportedFile')
+      }
+      return reply.status(200).send({ documentId, stored: false })
+    }
+
+    const bytes = asBytes(request.body)
+    if (bytes.byteLength > MAXIMUM_DOCUMENT_BYTES) {
+      throw badRequest('ingest.error.fileTooLarge', {
+        maxMegabytes: Math.floor(MAXIMUM_DOCUMENT_BYTES / 1024 / 1024),
+      })
+    }
+    const mediaType = detectMediaType(bytes)
+    const stored = await storeBlob(transferDeps, {
+      id: documentId,
+      eventId: id,
+      eventKey,
+      mediaType,
+      bytes,
+    })
+
+    // A batch row beside it, so the file has the same provenance as one this server split itself
+    // and the listing has somewhere to read a page count from. The split happened on the phone,
+    // which is why nothing was detected here.
+    await db.db
+      .insertInto('ingest_batches')
+      .values({
+        id: newId(),
+        event_id: id,
+        created_by: session.user_id,
+        source_media_type: mediaTypeCode(mediaType),
+        source_blob_id: stored.id,
+        page_count: pages ?? null,
+        detected_count: null,
+        state: 'CONFIRMED',
+        failure_reason: null,
+        created_at: toInstant(),
+        updated_at: toInstant(),
+      })
+      .execute()
+
+    return reply.status(201).send({ documentId: stored.id, stored: true })
   })
 
   app.get('/api/v1/events/:id/documents/:documentId', async (request, reply) => {

@@ -30,6 +30,14 @@ const FROM_STORED: Record<string, DocumentMediaType> = {
 
 const blobAad = (blobId: string): string => `passvault/v1/blob:${blobId}`
 
+/**
+ * The stored kind as a media type.
+ *
+ * The column holds `PDF`, the wire holds `application/pdf`, and every listing that returned the
+ * former was read by a client expecting the latter — which is why the web called every PDF a pass.
+ */
+export const mediaTypeOf = (stored: string): DocumentMediaType | undefined => FROM_STORED[stored]
+
 export interface StoredBlob {
   id: string
   mediaType: DocumentMediaType
@@ -43,9 +51,18 @@ export async function storeBlob(
     eventKey: Uint8Array
     mediaType: DocumentMediaType
     bytes: Uint8Array
+    /**
+     * The identifier to store it under, when the client already has one.
+     *
+     * A phone names its documents before it has ever met a server, and uploading under a fresh
+     * identifier each time would mean re-uploading the same PDF at every synchronisation with no
+     * way of telling it apart from a new one. Sharing the identifier makes the upload idempotent,
+     * the same way tickets and events already share theirs across devices.
+     */
+    id?: string
   },
 ): Promise<StoredBlob> {
-  const id = newId()
+  const id = input.id ?? newId()
   const nonce = randomNonce()
   const ciphertext = seal({
     key: input.eventKey,

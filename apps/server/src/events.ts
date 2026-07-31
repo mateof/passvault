@@ -16,6 +16,7 @@ import {
 } from '@passvault/crypto'
 import { newId, toInstant, type DatabaseHandle } from '@passvault/db'
 import type { AssignmentMode } from '@passvault/tkpak'
+import { mediaTypeOf } from './blobs.js'
 import type { CryptoContext } from './crypto-context.js'
 import { badRequest, forbidden, notFound, unauthorized } from './errors.js'
 import * as repo from './repository.js'
@@ -614,6 +615,11 @@ export interface EventDocument {
  * ingestion left out — the map, the terms, the instructions — which are exactly the pages the
  * rule that makes the split right is guaranteed to drop. And when a turnstile disagrees with the
  * app, the original is what settles it.
+ *
+ * The whole file, never the page a ticket was cut from. Both are blobs of this event, and a
+ * listing that took every blob would call each ticket's own page an original document — which is
+ * why this asks the imports what they were given rather than asking the disk what is on it. A
+ * document uploaded whole by a phone is recorded as an import for exactly that reason.
  */
 export async function listEventDocuments(
   deps: EventDeps,
@@ -645,7 +651,9 @@ export async function listEventDocuments(
   return batches.map((batch) => ({
     id: String(batch.blob_id),
     batchId: batch.batch_id,
-    mediaType: batch.media_type,
+    // The media type as the wire spells it. The column says `PDF`; a client reading that and
+    // looking for `pdf` concluded every document it was told about was a pass.
+    mediaType: mediaTypeOf(batch.media_type) ?? batch.media_type,
     pageCount: batch.page_count,
     byteCount: batch.byte_length,
     createdAt: batch.created_at,
