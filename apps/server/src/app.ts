@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { hashPassword, toBase64Url, type Argon2Params } from '@passvault/crypto'
 import { migrateToLatest, newId, openDatabase, toInstant, type DatabaseHandle } from '@passvault/db'
 import { createTranslator, resolveLocale, type Locale, type MessageKey } from '@passvault/i18n'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fastifyStatic from '@fastify/static'
@@ -271,6 +271,29 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         'Build it with `npm run build --workspace @passvault/web` or set WEB_ROOT.',
     )
   }
+
+  /**
+   * Digital asset links, which is what makes a passkey work in the Android app.
+   *
+   * A passkey is bound to an origin. The app is not a browser, so Android has to be told that this
+   * package, signed with this certificate, speaks for this domain — and the only place it will
+   * look is `https://<domain>/.well-known/assetlinks.json`. Without it the credential manager
+   * refuses before showing anything, which reads to the user as the fingerprint sensor being
+   * broken.
+   *
+   * Served from a file rather than generated, because the certificate fingerprint in it comes from
+   * a keystore this process has never seen and must not.
+   */
+  app.get('/.well-known/assetlinks.json', async (request, reply) => {
+    const file = resolve(
+      process.env.ASSETLINKS_FILE ??
+        join(dirname(fileURLToPath(import.meta.url)), '..', 'well-known', 'assetlinks.json'),
+    )
+    if (!existsSync(file)) {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+    return reply.type('application/json').send(readFileSync(file, 'utf8'))
+  })
 
   app.get('/api/v1/health', async () => ({ status: 'ok' }))
 

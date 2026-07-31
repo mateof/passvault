@@ -66,6 +66,8 @@ COPY --from=build /app/package.json package.json
 COPY --from=build /app/packages packages
 COPY --from=build /app/apps/server apps/server
 COPY --from=build /app/apps/web/dist apps/web/dist
+# The asset links file, which is what lets the Android app use a passkey for this domain.
+COPY --from=build /app/apps/server/well-known apps/server/well-known
 
 # Created before dropping privileges, and owned by the user that will write to it. A volume
 # mounted over it inherits this ownership, which is what stops the usual first-run failure

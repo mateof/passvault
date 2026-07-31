@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mateof.passvault",
+      "sha256_cert_fingerprints": [
+        "BE:C5:86:C1:3B:AC:74:5C:0E:C3:30:B1:99:74:8D:CD:90:5F:68:00:B8:93:8C:DD:A8:F6:85:D4:92:9B:DF:C2"
+      ]
+    }
+  }
+]
