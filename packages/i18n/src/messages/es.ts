@@ -135,6 +135,18 @@ export const es: Catalogue = {
   'groups.error.ownerOnly': 'Solo quien creó el grupo puede borrarlo.',
   'groups.error.unknownUser': 'No hay ninguna cuenta con ese correo en este servidor.',
 
+  // --- Nombres de usuario, etiquetas, invitaciones y avisos ---
+  'handle.error.invalid':
+    'Un nombre de usuario tiene entre 3 y 32 caracteres: letras sin acentos, números, punto, guión o guión bajo.',
+  'handle.error.taken': 'Ese nombre de usuario ya está cogido.',
+  'tags.error.unknown': 'Esa etiqueta no existe o no es tuya.',
+  'invitation.error.withdrawn': 'Esta invitación ya no está disponible.',
+  'invitation.pending': '{inviter} comparte contigo {event}.',
+  'notice.event.invited': '{inviter} comparte contigo {event}.',
+  'notice.event.accepted': 'Han aceptado el evento que compartiste.',
+  'notice.event.declined': 'Han rechazado el evento que compartiste.',
+  'notice.ticket.assigned': 'Te han asignado una entrada.',
+
   // ─── Administración ───
   'admin.error.lastAdmin':
     'Este es el único administrador que queda. Nombra a otro antes de quitarle el cargo o suspenderlo, o nadie podrá administrar esta instalación.',

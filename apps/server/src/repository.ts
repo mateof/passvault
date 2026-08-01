@@ -220,6 +220,13 @@ export async function insertSession(
     deviceId?: string | null
     idleMinutes: number
     hardHours: number
+    /**
+     * Where this was opened from, so somebody reading their own list of sessions can tell the
+     * phone in their pocket from the laptop they left at work. Absent when a proxy strips it,
+     * which is a reason to show less rather than to refuse a sign-in.
+     */
+    userAgent?: string | null
+    ipAddress?: string | null
   },
 ): Promise<SessionRow> {
   const id = newId()
@@ -233,6 +240,10 @@ export async function insertSession(
     idle_expires_at: instantIn(options.idleMinutes * 60),
     hard_expires_at: instantIn(options.hardHours * 3600),
     revoked_at: null,
+    user_agent: options.userAgent?.slice(0, 200) ?? null,
+    ip_address: options.ipAddress?.slice(0, 64) ?? null,
+    last_seen_at: now,
+    label_cipher: null,
   }
   await handle.db.insertInto('sessions').values(row).execute()
   return row
@@ -264,7 +275,9 @@ export async function touchSession(
 ): Promise<void> {
   await handle.db
     .updateTable('sessions')
-    .set({ idle_expires_at: instantIn(idleMinutes * 60) })
+    // Both in one statement, since this already runs on every authenticated request and a
+    // second UPDATE for a timestamp would double the busiest write in the server.
+    .set({ idle_expires_at: instantIn(idleMinutes * 60), last_seen_at: toInstant() })
     .where('id', '=', sessionId)
     .execute()
 }

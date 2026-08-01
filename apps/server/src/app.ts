@@ -70,6 +70,25 @@ const INGEST_MESSAGE_KEYS: Record<IngestErrorCode, MessageKey> = {
   RASTERIZER_UNAVAILABLE: 'error.unexpected',
 }
 import { readBlob, storeBlob } from './blobs.js'
+import { assertHandle, findPerson, requirePerson, setHandle } from './directory.js'
+import {
+  acceptInvitation,
+  declineInvitation,
+  invite,
+  listInvitations as listEventInvitations,
+  withdrawInvitations,
+} from './invitations.js'
+import { countUnread, listNotices, markRead } from './notifications.js'
+import { listSessions, revokeOtherSessions, revokeSession } from './sessions.js'
+import {
+  TAG_COLOURS,
+  createTag,
+  deleteTag,
+  listTags,
+  setEventTags,
+  tagsByEvent,
+  updateTag,
+} from './tags.js'
 import { AppError, badRequest, forbidden, notFound, unauthorized } from './errors.js'
 import {
   addMember,
@@ -931,6 +950,11 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     ...(options.argon2Params ? { argon2Params: options.argon2Params } : {}),
   }
 
+  // The directory looks people up by address as well as by handle, and the blind index is what
+  // makes an encrypted address searchable. Passed in rather than reached for, so the module
+  // never has to know how an address is indexed.
+  const directoryDeps = { ...eventDeps, emailIndex: (email: string) => crypto.emailIndex(email) }
+
   /** Every ticket operation needs the event key, which needs an unlocked vault first. */
   const openEvent = async (
     request: FastifyRequest,
@@ -1020,7 +1044,13 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   app.get('/api/v1/events', async (request) => {
     const session = await sessionOf(request)
     vaults.require(session.id)
-    return { events: await listEventsForUser(eventDeps, session.user_id) }
+    const events = await listEventsForUser(eventDeps, session.user_id)
+    // One query for the whole wallet rather than one per event: a list of twelve events would
+    // otherwise be thirteen round trips to draw twelve coloured dots.
+    const tagged = await tagsByEvent(eventDeps, { ownerUserId: session.user_id })
+    return {
+      events: events.map((event) => ({ ...event, tagIds: tagged.get(event.id) ?? [] })),
+    }
   })
 
   const eventParams = z.object({ id: z.string().uuid() })
@@ -1044,7 +1074,13 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (!event) {
       throw notFound()
     }
-    return projectEvent(eventDeps, event, eventKey, session.user_id)
+    // The reader's own labels, not the creator's: a label is what an event is to whoever is
+    // looking at it, and two people looking at the same event see their own vocabulary.
+    const tagged = await tagsByEvent(eventDeps, { ownerUserId: session.user_id })
+    return {
+      ...projectEvent(eventDeps, event, eventKey, session.user_id),
+      tagIds: tagged.get(id) ?? [],
+    }
   })
 
   const appearanceBody = z.object({
@@ -1237,6 +1273,193 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       .send(Buffer.from(blob.bytes))
   })
 
+  /**
+   * The sessions open on this account.
+   *
+   * Somebody who leaves a phone in a taxi has one useful question — which of these is it, and how
+   * do I end it — and until now the answer was to wait for it to expire.
+   */
+  app.get('/api/v1/sessions', async (request) => {
+    const session = await sessionOf(request)
+    return {
+      sessions: await listSessions(eventDeps, {
+        userId: session.user_id,
+        currentSessionId: session.id,
+      }),
+    }
+  })
+
+  app.delete('/api/v1/sessions/:id', async (request) => {
+    const session = await sessionOf(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await revokeSession(eventDeps, { userId: session.user_id, sessionId: id })
+    return { revoked: true }
+  })
+
+  /** Everything except this one, which is what somebody does after losing a device. */
+  app.post('/api/v1/sessions/revoke-others', async (request) => {
+    const session = await sessionOf(request)
+    const revoked = await revokeOtherSessions(eventDeps, {
+      userId: session.user_id,
+      keepSessionId: session.id,
+    })
+    return { revoked }
+  })
+
+  /**
+   * A public name to be found by.
+   *
+   * Claimed rather than assigned, checked for collisions, and optional: an account without one
+   * is shared with by address exactly as before.
+   */
+  app.put('/api/v1/me/handle', async (request) => {
+    const session = await sessionOf(request)
+    const body = z.object({ handle: z.string().min(3).max(32) }).parse(request.body)
+    return setHandle(eventDeps, { userId: session.user_id, handle: body.handle })
+  })
+
+  /** Whether a handle is free, so the field can say so before anybody presses anything. */
+  app.get('/api/v1/directory/handle', async (request) => {
+    await sessionOf(request)
+    const { handle } = z.object({ handle: z.string().min(1).max(32) }).parse(request.query)
+    const normalised = assertHandle(handle)
+    const found = await findPerson(directoryDeps, { handle: normalised })
+    return { handle: normalised, taken: found !== undefined, userId: found?.userId }
+  })
+
+  // ── Labels ───────────────────────────────────────────────────────────────────
+
+  const tagBody = z.object({
+    name: z.string().min(1).max(60).optional(),
+    colour: z.enum(TAG_COLOURS).optional(),
+  })
+
+  app.get('/api/v1/tags', async (request) => {
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    return { tags: await listTags(eventDeps, { ownerUserId: session.user_id, dataKey: vault.dataKey }) }
+  })
+
+  app.post('/api/v1/tags', async (request, reply) => {
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    const body = z
+      .object({ name: z.string().min(1).max(60), colour: z.enum(TAG_COLOURS).optional() })
+      .parse(request.body)
+    const created = await createTag(eventDeps, {
+      ownerUserId: session.user_id,
+      dataKey: vault.dataKey,
+      name: body.name,
+      colour: body.colour ?? 'violet',
+    })
+    return reply.status(201).send(created)
+  })
+
+  app.patch('/api/v1/tags/:id', async (request) => {
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    const body = tagBody.parse(request.body ?? {})
+    await updateTag(eventDeps, {
+      tagId: id,
+      ownerUserId: session.user_id,
+      dataKey: vault.dataKey,
+      ...(body.name === undefined ? {} : { name: body.name }),
+      ...(body.colour === undefined ? {} : { colour: body.colour }),
+    })
+    return { updated: true }
+  })
+
+  app.delete('/api/v1/tags/:id', async (request) => {
+    const session = await sessionOf(request)
+    vaults.require(session.id)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await deleteTag(eventDeps, { tagId: id, ownerUserId: session.user_id })
+    return { deleted: true }
+  })
+
+  /** Which labels an event carries, for the person whose labels they are. */
+  app.put('/api/v1/events/:id/tags', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    const body = z.object({ tagIds: z.array(z.string().uuid()).max(20) }).parse(request.body)
+    await setEventTags(eventDeps, {
+      eventId: id,
+      ownerUserId: session.user_id,
+      tagIds: body.tagIds,
+    })
+    return { tagIds: body.tagIds }
+  })
+
+  // ── Notices and invitations ──────────────────────────────────────────────────
+
+  app.get('/api/v1/notifications', async (request) => {
+    const session = await sessionOf(request)
+    const query = z.object({ unread: z.coerce.boolean().optional() }).parse(request.query ?? {})
+    return {
+      notifications: await listNotices(eventDeps, {
+        userId: session.user_id,
+        ...(query.unread ? { unreadOnly: true } : {}),
+      }),
+      unread: await countUnread(eventDeps, session.user_id),
+    }
+  })
+
+  app.post('/api/v1/notifications/read', async (request) => {
+    const session = await sessionOf(request)
+    const body = z.object({ id: z.string().uuid().optional() }).parse(request.body ?? {})
+    await markRead(eventDeps, {
+      userId: session.user_id,
+      ...(body.id ? { noticeId: body.id } : {}),
+    })
+    return { read: true }
+  })
+
+  /** What this account has been offered and has not answered. */
+  app.get('/api/v1/invitations', async (request) => {
+    const session = await sessionOf(request)
+    const query = z.object({ pending: z.coerce.boolean().optional() }).parse(request.query ?? {})
+    return {
+      invitations: await listEventInvitations(eventDeps, {
+        userId: session.user_id,
+        ...(query.pending === false ? {} : { pendingOnly: true }),
+      }),
+    }
+  })
+
+  /**
+   * Says yes, which is what grants the access.
+   *
+   * The password goes here rather than at the moment of sharing, because it is the recipient who
+   * has to type it and this is the first moment they are present.
+   */
+  app.post('/api/v1/invitations/:id/accept', async (request) => {
+    const session = await sessionOf(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    const body = z.object({ password: z.string().optional() }).parse(request.body ?? {})
+    return acceptInvitation(eventDeps, {
+      invitationId: id,
+      userId: session.user_id,
+      sessionId: session.id,
+      ...(body.password ? { password: body.password } : {}),
+      openEvent: async (eventId, password) => {
+        await openEventKey(eventDeps, {
+          eventId,
+          sessionId: session.id,
+          userId: session.user_id,
+          ...(password ? { password } : {}),
+        })
+      },
+    })
+  })
+
+  app.post('/api/v1/invitations/:id/decline', async (request) => {
+    const session = await sessionOf(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await declineInvitation(eventDeps, { invitationId: id, userId: session.user_id })
+    return { declined: true }
+  })
+
   const groupBody = z.object({ name: z.string().min(1).max(120) })
   const groupParams = z.object({ id: z.string().uuid() })
   const memberBody = z.object({ email: z.string().email() })
@@ -1362,22 +1585,25 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       subjectKind: z.enum(['GROUP', 'USER']),
       subjectId: z.string().uuid().optional(),
       email: z.string().email().optional(),
+      handle: z.string().min(3).max(32).optional(),
       role: z.enum(['ORGANISER', 'MEMBER']).optional(),
     })
-    .refine((body) => body.subjectId !== undefined || body.email !== undefined, {
-      message: 'subjectId or email is required',
-    })
+    .refine(
+      (body) =>
+        body.subjectId !== undefined || body.email !== undefined || body.handle !== undefined,
+      { message: 'subjectId, email or handle is required' },
+    )
 
-  /** Resolves whichever of the two was given into the identifier the tables store. */
+  /** Resolves whichever way the caller named somebody into the identifier the tables store. */
   const subjectOf = async (body: z.infer<typeof accessBody>): Promise<string> => {
-    if (body.subjectKind === 'USER' && body.email) {
-      const user = await repo.findUserByEmailIndex(db, crypto.emailIndex(body.email))
-      if (!user || user.status !== 'ACTIVE') {
-        // Said plainly rather than accepted and quietly dropped. A share that goes nowhere is
-        // discovered when a friend never sees the ticket, which is far too late.
-        throw badRequest('groups.error.unknownUser')
-      }
-      return user.id
+    if (body.subjectKind === 'USER') {
+      // Said plainly rather than accepted and quietly dropped. A share that goes nowhere is
+      // discovered when a friend never sees the ticket, which is far too late.
+      return requirePerson(directoryDeps, {
+        ...(body.subjectId ? { userId: body.subjectId } : {}),
+        ...(body.email ? { email: body.email } : {}),
+        ...(body.handle ? { handle: body.handle } : {}),
+      })
     }
     if (!body.subjectId) {
       throw badRequest('groups.error.unknownUser')
@@ -1385,18 +1611,93 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     return body.subjectId
   }
 
+  /**
+   * Everybody an invitation reaches, which for a group is everybody in it.
+   *
+   * A group cannot answer a question, so the invitation is written per person. Somebody joining
+   * the group later is not invited retroactively — which matches what the group screen already
+   * says about sharing, and is the honest behaviour: they were not in the circle when it was
+   * offered.
+   */
+  const membersOf = async (subjectKind: string, subjectId: string): Promise<string[]> => {
+    if (subjectKind === 'USER') {
+      return [subjectId]
+    }
+    const rows = await db.db
+      .selectFrom('group_members')
+      .select('user_id')
+      .where('group_id', '=', subjectId)
+      .where('status', '=', 'ACTIVE')
+      .execute()
+    return rows.map((row) => row.user_id)
+  }
+
+  /**
+   * Offers an event to a group or a person.
+   *
+   * An offer, not a grant. Access used to begin the moment somebody shared, so an event appeared
+   * in a wallet without its owner having agreed to hold something that carries a friend's name,
+   * their seat and sometimes what they paid — and with nowhere to be told about it, so it was
+   * invisible until they happened to look.
+   *
+   * Now everybody it reaches gets an invitation and a notice, and access begins when they accept.
+   * The event password is typed then, by the person who has to type it, at the first moment they
+   * are present.
+   *
+   * The creator is never invited to their own event: they already hold it.
+   */
   app.post('/api/v1/events/:id/access', async (request, reply) => {
     const { id } = eventParams.parse(request.params)
-    const session = await sessionOf(request)
+    const { session, eventKey } = await openEvent(request, id)
     const body = accessBody.parse(request.body)
-    await grantAccess(eventDeps, {
-      eventId: id,
-      actorUserId: session.user_id,
-      subjectKind: body.subjectKind,
-      subjectId: await subjectOf(body),
-      ...(body.role ? { role: body.role } : {}),
-    })
-    return reply.status(201).send({ granted: true })
+    const subjectId = await subjectOf(body)
+
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    if (event.creator_user_id !== session.user_id) {
+      throw forbidden('event.error.notCreator')
+    }
+
+    // A group is recorded as an offer to the whole circle — that is what the creator shared
+    // with and what they can take back. A person gets no access row here at all: theirs is
+    // written when they accept, so the list shows them as offered rather than as holding
+    // something they never agreed to.
+    if (body.subjectKind === 'GROUP') {
+      await grantAccess(eventDeps, {
+        eventId: id,
+        actorUserId: session.user_id,
+        subjectKind: 'GROUP',
+        subjectId,
+        ...(body.role ? { role: body.role } : {}),
+      })
+    }
+
+    // The name, decrypted here because this is where the key is. A notice cannot carry a
+    // ciphertext its reader has no key for.
+    const projected = await projectEvent(eventDeps, event, eventKey, session.user_id)
+    const inviterName = (await repo.findUserById(db, session.user_id))?.handle ?? ''
+
+    let invited = 0
+    for (const userId of await membersOf(body.subjectKind, subjectId)) {
+      if (userId === event.creator_user_id) {
+        continue
+      }
+      const outcome = await invite(eventDeps, {
+        eventId: id,
+        userId,
+        invitedBy: session.user_id,
+        ...(body.subjectKind === 'GROUP' ? { viaGroupId: subjectId } : {}),
+        eventName: projected.name,
+        inviterName,
+      })
+      if (!outcome.alreadyInvited) {
+        invited += 1
+      }
+    }
+
+    return reply.status(201).send({ granted: true, invited })
   })
 
   /** What the creator granted, so sharing is something they can look at rather than only do. */
@@ -1410,11 +1711,17 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     const { id } = eventParams.parse(request.params)
     const session = await sessionOf(request)
     const body = accessBody.parse(request.body)
+    const subjectId = await subjectOf(body)
     await revokeAccess(eventDeps, {
       eventId: id,
       actorUserId: session.user_id,
       subjectKind: body.subjectKind,
-      subjectId: await subjectOf(body),
+      subjectId,
+    })
+    // And the invitation, or an event stays offered to somebody it was taken away from.
+    await withdrawInvitations(eventDeps, {
+      eventId: id,
+      ...(body.subjectKind === 'USER' ? { userId: subjectId } : { viaGroupId: subjectId }),
     })
     // Named for what it does. It stops future access; it does not recall a file already sent.
     return { revoked: true, recallsDeliveredTickets: false }

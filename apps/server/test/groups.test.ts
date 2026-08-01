@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   ADMIN,
   MEMBER,
+  acceptInvitations,
   bearer,
   login,
   registerFirstAdmin,
@@ -236,6 +237,9 @@ describe('renaming and deleting', () => {
       headers: bearer(owner),
       payload: { subjectKind: 'GROUP', subjectId: groupId },
     })
+    // Offered to the circle, then held by the person: being in a group that was given an event
+    // is not the same as having agreed to hold it.
+    await acceptInvitations(server, member)
     expect(
       (await server.app.inject({ url: '/api/v1/events', headers: bearer(member) })).json().events,
     ).toHaveLength(1)

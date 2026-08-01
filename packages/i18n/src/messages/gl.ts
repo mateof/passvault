@@ -151,6 +151,18 @@ export const gl = {
   'groups.error.ownerOnly': 'Só quen creou o grupo pode borralo.',
   'groups.error.unknownUser': 'Non hai ningunha conta con ese correo neste servidor.',
 
+  // --- Handles, labels, invitations and notices ---
+  'handle.error.invalid':
+    'Un nome de usuario ten entre 3 e 32 caracteres: letras sen acentos, números, punto, guión ou guión baixo.',
+  'handle.error.taken': 'Ese nome de usuario xa está collido.',
+  'tags.error.unknown': 'Esa etiqueta non existe ou non é túa.',
+  'invitation.error.withdrawn': 'Este convite xa non está dispoñible.',
+  'invitation.pending': '{inviter} comparte contigo {event}.',
+  'notice.event.invited': '{inviter} comparte contigo {event}.',
+  'notice.event.accepted': 'Aceptaron o evento que compartiches.',
+  'notice.event.declined': 'Rexeitaron o evento que compartiches.',
+  'notice.ticket.assigned': 'Asignáronche unha entrada.',
+
   // ─── Administración ───
   'admin.error.lastAdmin':
     'Este é o único administrador que queda. Nomea outro antes de quitarlle o cargo ou suspendelo, ou ninguén poderá administrar esta instalación.',

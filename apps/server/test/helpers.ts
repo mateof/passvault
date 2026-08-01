@@ -108,3 +108,36 @@ export async function setRegistrationMode(
     throw new Error(`could not set registration mode: ${response.statusCode} ${response.body}`)
   }
 }
+
+/**
+ * Says yes to everything this account has been offered.
+ *
+ * Sharing offers an event; holding it is the recipient's decision. Most tests are about what
+ * somebody can see once they hold it, so they share and then accept — this is that second step,
+ * written once rather than in every file.
+ *
+ * The password belongs here for the same reason it belongs in the interface: accepting is the
+ * first moment the person who has to type it is present.
+ */
+export async function acceptInvitations(
+  server: TestServer,
+  token: string,
+  password?: string,
+): Promise<number> {
+  const pending = (
+    await server.app.inject({ url: '/api/v1/invitations', headers: bearer(token) })
+  ).json().invitations as { id: string }[]
+
+  for (const invitation of pending) {
+    const response = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/invitations/${invitation.id}/accept`,
+      headers: bearer(token),
+      payload: password === undefined ? {} : { password },
+    })
+    if (response.statusCode >= 400) {
+      throw new Error(`could not accept an invitation: ${response.statusCode} ${response.body}`)
+    }
+  }
+  return pending.length
+}

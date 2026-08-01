@@ -887,3 +887,159 @@ button.link {
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
+
+/*
+ * Dialogs.
+ *
+ * The screens here had grown into long vertical stacks: every action a card, every card below
+ * the last, so an event page was a scroll through eight panels of which seven were not what
+ * anybody came for. A dialog is the fix for the ones that are *acts* rather than *information* —
+ * sharing, labelling, creating — and the page keeps what somebody came to read.
+ *
+ * Built on the native <dialog> element, which brings the focus trap, Escape to close and the
+ * top layer with it. Doing those three by hand is how a modal ends up keyboard-hostile.
+ */
+.modal {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 0;
+  width: min(34rem, calc(100vw - 2rem));
+  box-shadow: var(--shadow-3);
+}
+
+.modal::backdrop {
+  background: rgb(15 18 32 / 55%);
+  backdrop-filter: blur(2px);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-title {
+  font-size: 1.05rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.modal-body {
+  padding: 1.25rem;
+  /* Tall content scrolls inside the dialog rather than growing it past the viewport. */
+  max-height: min(70vh, 40rem);
+  overflow-y: auto;
+}
+
+.modal-body .card {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* An event that has already happened, faded and out of the way rather than deleted. */
+.past {
+  opacity: 0.55;
+}
+
+.past:hover {
+  opacity: 0.85;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.toolbar .field {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  background: var(--surface-sunken);
+}
+
+.tag-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.tag-chip.is-selectable {
+  cursor: pointer;
+}
+
+.tag-chip.is-off {
+  opacity: 0.45;
+}
+
+.badge-count {
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--danger, #d94141);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.row-toggle {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+}
+
+.row-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.list-row:last-child {
+  border-bottom: none;
+}

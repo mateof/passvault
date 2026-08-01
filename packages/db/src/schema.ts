@@ -16,6 +16,14 @@ export interface UsersTable {
   id: string
   email_cipher: Bytes
   email_key: string
+  /**
+   * A public name somebody can be found by.
+   *
+   * Plaintext, alone among the things this table knows about a person, because being findable is
+   * what it is for: an address is how you reach somebody and a handle is how you name them to a
+   * third party. Null for every account that never chose one.
+   */
+  handle: string | null
   display_name_cipher: Bytes | null
   password_hash: string | null
   status: 'ACTIVE' | 'INVITED' | 'SUSPENDED'
@@ -92,6 +100,46 @@ export interface SessionsTable {
   idle_expires_at: Instant
   hard_expires_at: Instant
   revoked_at: Instant | null
+  /** What opened it and from where, so a list of sessions is recognisable rather than a list of ids. */
+  user_agent: string | null
+  ip_address: string | null
+  last_seen_at: Instant | null
+  /** What the client called itself, when it said. A phone knows its model; a browser does not. */
+  label_cipher: Bytes | null
+}
+
+export interface TagsTable {
+  id: string
+  owner_user_id: string
+  name_cipher: Bytes
+  colour: string
+  created_at: Instant
+}
+
+export interface EventTagsTable {
+  event_id: string
+  tag_id: string
+  created_at: Instant
+}
+
+export interface EventInvitationsTable {
+  id: string
+  event_id: string
+  user_id: string
+  invited_by: string
+  via_group_id: string | null
+  state: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN'
+  created_at: Instant
+  answered_at: Instant | null
+}
+
+export interface NotificationsTable {
+  id: string
+  user_id: string
+  kind: string
+  payload_cipher: Bytes
+  created_at: Instant
+  read_at: Instant | null
 }
 
 export interface RegistrationSettingsTable {
@@ -323,6 +371,10 @@ export interface Database {
   operations: OperationsTable
   ingest_batches: IngestBatchesTable
   audit_events: AuditEventsTable
+  tags: TagsTable
+  event_tags: EventTagsTable
+  event_invitations: EventInvitationsTable
+  notifications: NotificationsTable
 }
 
 /** Every table name, in an order that satisfies foreign keys when inserting. */
@@ -350,5 +402,9 @@ export const TABLES_IN_DEPENDENCY_ORDER = [
   'claim_requests',
   'operations',
   'ingest_batches',
+  'tags',
+  'event_tags',
+  'event_invitations',
+  'notifications',
   'audit_events',
 ] as const satisfies readonly (keyof Database)[]

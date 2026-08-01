@@ -5,6 +5,7 @@ import {
   type AccessEntry,
   type EventDetail,
   type Group,
+  type Tag,
   type EventSummary,
   type IngestProposal,
   type PaymentState,
@@ -20,13 +21,16 @@ import {
   Banner,
   Button,
   Card,
+  Checkbox,
   Empty,
   Field,
   FilePicker,
   Form,
   Loading,
+  Modal,
   PageHead,
   Select,
+  TagChip,
   StateBadge,
   useObjectUrl,
 } from './ui'
@@ -49,11 +53,33 @@ function shortDate(value: string | null | undefined, locale: string): string | u
     : parsed.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
+/**
+ * When it starts, with the time if it has one.
+ *
+ * A date with no time is stored as midnight UTC, which is how "the 14th of August" is written
+ * down — so a midnight instant is shown as a day and anything else gets its clock. Printing
+ * "00:00" beside every dateless event would be inventing a detail nobody entered.
+ */
+function whenText(value: string | null | undefined, locale: string): string | undefined {
+  if (!value) return undefined
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  const midnightUtc = parsed.getUTCHours() === 0 && parsed.getUTCMinutes() === 0
+  return midnightUtc
+    ? shortDate(value, locale)
+    : parsed.toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' })
+}
+
 export function EventsPage() {
   const { t, locale } = useT()
   const [events, setEvents] = useState<EventSummary[]>()
+  const [tags, setTags] = useState<Tag[]>([])
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string>()
+  const [search, setSearch] = useState('')
+  const [tagFilter, setTagFilter] = useState<string>('')
+  const [order, setOrder] = useState<'date' | 'name' | 'added'>('date')
+  const [showPast, setShowPast] = useState(true)
 
   const load = useCallback(async () => {
     try {
@@ -66,10 +92,19 @@ export function EventsPage() {
         listed.events.map(async (summary) =>
           api
             .event(locale, summary.id)
-            .catch(() => ({ id: summary.id, name: '', passwordProtected: true })),
+            .then((detail) => ({ ...detail, tagIds: summary.tagIds ?? detail.tagIds ?? [] }))
+            .catch(() => ({
+              id: summary.id,
+              name: '',
+              passwordProtected: true,
+              tagIds: summary.tagIds ?? [],
+            })),
         ),
       )
       setEvents(loaded)
+      // Labels come with the wallet rather than per event: a list of twelve events would
+      // otherwise be thirteen requests to draw twelve coloured chips.
+      setTags((await api.tags(locale)).tags)
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : t('error.unexpected'))
       setEvents([])
@@ -82,13 +117,47 @@ export function EventsPage() {
 
   if (events === undefined) return <Loading />
 
+  const now = Date.now()
+  const isPast = (event: EventSummary): boolean =>
+    // An event with no date is never past: "we do not know when" is not "it already happened".
+    // A day's grace, because a concert at nine last night is still the thing in your pocket
+    // this morning and should not vanish while you are on the way home.
+    event.startsAt !== undefined &&
+    event.startsAt !== null &&
+    new Date(event.startsAt).getTime() < now - 86_400_000
+
+  const matches = (event: EventSummary): boolean => {
+    const needle = search.trim().toLowerCase()
+    const haystack = `${event.name ?? ''} ${event.venue ?? ''}`.toLowerCase()
+    if (needle !== '' && !haystack.includes(needle)) return false
+    if (tagFilter !== '' && !(event.tagIds ?? []).includes(tagFilter)) return false
+    if (!showPast && isPast(event)) return false
+    return true
+  }
+
+  const shown = events.filter(matches).sort((left, right) => {
+    // Past events sink, whatever the order: they are still here and no longer the answer to
+    // "what am I going to".
+    const pastDifference = Number(isPast(left)) - Number(isPast(right))
+    if (pastDifference !== 0) return pastDifference
+    if (order === 'name') return (left.name ?? '').localeCompare(right.name ?? '', locale)
+    if (order === 'date') {
+      // Undated events after dated ones: a date is what this ordering is about, and a blank
+      // sorts arbitrarily wherever it is put.
+      if (!left.startsAt) return right.startsAt ? 1 : 0
+      if (!right.startsAt) return -1
+      return left.startsAt.localeCompare(right.startsAt)
+    }
+    return 0
+  })
+
   return (
     <>
       <PageHead
         title={t('events.title')}
         subtitle={t('events.subtitle', { count: events.length })}
         action={
-          <Button icon="plus" onClick={() => setCreating((open) => !open)}>
+          <Button icon="plus" onClick={() => setCreating(true)}>
             {t('events.create')}
           </Button>
         }
@@ -96,16 +165,61 @@ export function EventsPage() {
 
       {error ? <Banner kind="error">{error}</Banner> : null}
 
-      {creating ? <CreateEventCard onCreated={load} onClose={() => setCreating(false)} /> : null}
+      {/* A toolbar rather than three more stacked cards. Searching, filtering and ordering are
+          one decision about the same list, and splitting them into panels is what made this
+          page a column of boxes. */}
+      {events.length > 0 ? (
+        <div className="toolbar">
+          <Field label={t('events.search')} value={search} onChange={setSearch} />
+          <Select
+            label={t('events.order')}
+            value={order}
+            onChange={(value) => setOrder(value as 'date' | 'name' | 'added')}
+            options={[
+              { value: 'date', label: t('events.orderDate') },
+              { value: 'name', label: t('events.orderName') },
+              { value: 'added', label: t('events.orderAdded') },
+            ]}
+          />
+          <Checkbox label={t('events.showPast')} checked={showPast} onChange={setShowPast} />
+        </div>
+      ) : null}
 
-      {events.length === 0 && !creating ? (
+      {tags.length > 0 ? (
+        <div className="toolbar">
+          {tags.map((tag) => (
+            <TagChip
+              key={tag.id}
+              name={tag.name}
+              colour={tag.colour}
+              on={tagFilter === '' || tagFilter === tag.id}
+              onClick={() => setTagFilter(tagFilter === tag.id ? '' : tag.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <Modal
+        open={creating}
+        title={t('events.create')}
+        icon="plus"
+        onClose={() => setCreating(false)}
+      >
+        <CreateEventCard onCreated={load} onClose={() => setCreating(false)} />
+      </Modal>
+
+      {shown.length === 0 ? (
         <Card>
-          <Empty icon="events">{t('events.none')}</Empty>
+          <Empty icon="events">{events.length === 0 ? t('events.none') : t('events.noMatch')}</Empty>
         </Card>
       ) : (
         <div className="grid">
-          {events.map((event) => (
-            <Link className="card-link" key={event.id} to={`/events/${event.id}`}>
+          {shown.map((event) => (
+            <Link
+              className={`card-link${isPast(event) ? ' past' : ''}`}
+              key={event.id}
+              to={`/events/${event.id}`}
+            >
               <EventThumb event={event} />
               <span className="card-link-body">
                 <span className="card-link-title">{event.name || t('events.locked')}</span>
@@ -119,7 +233,7 @@ export function EventsPage() {
                   {event.startsAt ? (
                     <span>
                       <Icon name="calendar" size={14} />
-                      {shortDate(event.startsAt, locale)}
+                      {whenText(event.startsAt, locale)}
                     </span>
                   ) : null}
                   {event.passwordProtected ? (
@@ -128,6 +242,12 @@ export function EventsPage() {
                       {t('events.protected')}
                     </span>
                   ) : null}
+                  {(event.tagIds ?? []).map((tagId) => {
+                    const tag = tags.find((row) => row.id === tagId)
+                    return tag ? (
+                      <TagChip key={tag.id} name={tag.name} colour={tag.colour} />
+                    ) : null
+                  })}
                 </span>
               </span>
               <Icon name="chevron" size={18} />
@@ -188,7 +308,10 @@ function CreateEventCard({
             venue: venue || undefined,
             // The server wants a full instant, and a date input gives a day. Sent as
             // midnight UTC rather than dropped, which is what a bare date means here.
-            startsAt: startsAt ? new Date(`${startsAt}T00:00:00.000Z`).toISOString() : undefined,
+            // A local time, sent as the instant it is. The field gives "2026-08-14T21:00"
+            // with no zone, and `new Date` reads that in the browser's own — which is the one
+            // the person typing it meant.
+            startsAt: startsAt ? new Date(startsAt).toISOString() : undefined,
             icon,
             colour,
             defaultAssignmentMode: mode,
@@ -202,7 +325,14 @@ function CreateEventCard({
       >
         <Field label={t('events.name')} value={name} onChange={setName} required />
         <Field label={t('events.venue')} value={venue} onChange={setVenue} />
-        <Field label={t('events.startsAt')} value={startsAt} onChange={setStartsAt} type="date" />
+        {/* A local datetime rather than a bare date: an event at nine in the evening is a
+            different thing from one "on the 14th", and the wallet sorts by this. */}
+        <Field
+          label={t('events.startsAt')}
+          value={startsAt}
+          onChange={setStartsAt}
+          type="datetime-local"
+        />
         <Select
           label={t('events.assignmentMode')}
           value={mode}
@@ -390,7 +520,7 @@ export function EventPage() {
   const meta = [
     event.venue ? { icon: 'place' as const, text: event.venue } : undefined,
     event.startsAt
-      ? { icon: 'calendar' as const, text: shortDate(event.startsAt, locale) }
+      ? { icon: 'calendar' as const, text: whenText(event.startsAt, locale) }
       : undefined,
     { icon: 'ticket' as const, text: t('events.tickets', { count: tickets.length }) },
   ].filter(Boolean) as { icon: 'place' | 'calendar' | 'ticket'; text: string }[]

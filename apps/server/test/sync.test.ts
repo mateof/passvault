@@ -10,6 +10,7 @@ import { signingInput, type SignedOperation } from '../src/operations.js'
 import {
   ADMIN,
   MEMBER,
+  acceptInvitations,
   bearer,
   login,
   registerFirstAdmin,
@@ -62,6 +63,9 @@ beforeEach(async () => {
     headers: bearer(organiser),
     payload: { subjectKind: 'USER', subjectId: memberId },
   })
+  // Sharing offers the event; holding it is the member's own decision. These tests are about
+  // what a device does once its owner holds one, so the answer is given here.
+  await acceptInvitations(server, member)
 })
 
 afterEach(async () => {

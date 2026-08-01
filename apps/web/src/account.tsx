@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { api, MINIMUM_PASSPHRASE_LENGTH } from './api/passvault'
+import { useCallback, useEffect, useState } from 'react'
+import { api, MINIMUM_PASSPHRASE_LENGTH, type OpenSession } from './api/passvault'
 import { ApiError } from './api/client'
 import { createPasskey, passkeysSupported } from './api/webauthn'
 import { useT, LOCALES, LOCALE_NAMES, type Locale } from './i18n'
@@ -43,6 +43,10 @@ export function AccountPage() {
           onChange={setLocale}
         />
       </Card>
+
+      <HandleCard />
+
+      <SessionsCard />
 
       <Card title={t('vault.setTitle')}>
         <Banner kind="warning">{t('vault.setWarning')}</Banner>
@@ -196,6 +200,149 @@ function SecondFactorCard() {
           </Form>
         </>
       )}
+    </Card>
+  )
+}
+
+
+/**
+ * The name people can find you by.
+ *
+ * Everything else this account knows about somebody is encrypted; a handle deliberately is not,
+ * because being findable is the whole job. An address is how you reach a person and is theirs to
+ * give out; a handle is how somebody else names them to the server — "share it with ana" — and a
+ * name nobody can look up is not a name.
+ *
+ * Optional, and stays optional. An account without one is shared with by address exactly as
+ * before, which is what every account did until now.
+ */
+function HandleCard() {
+  const { t, locale } = useT()
+  const [handle, setHandle] = useState('')
+  const [taken, setTaken] = useState<boolean>()
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    const trimmed = handle.trim()
+    if (trimmed.length < 3) {
+      setTaken(undefined)
+      return
+    }
+    let cancelled = false
+    // Debounced: this fires per keystroke and asks a question about every account on the server.
+    const timer = setTimeout(() => {
+      api
+        .handleAvailable(locale, trimmed)
+        .then((result) => {
+          if (!cancelled) setTaken(result.taken)
+        })
+        .catch(() => {
+          if (!cancelled) setTaken(undefined)
+        })
+    }, 500)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [handle, locale])
+
+  return (
+    <Card title={t('handle.title')} icon="account">
+      <p className="muted">{t('handle.explain')}</p>
+      <Form
+        submitLabel={t('handle.save')}
+        submitIcon="check"
+        disabled={handle.trim().length < 3 || taken === true}
+        onSubmit={async () => {
+          await api.setHandle(locale, handle.trim())
+          setSaved(true)
+        }}
+      >
+        <Field
+          label={t('handle.field')}
+          value={handle}
+          onChange={(value) => {
+            setHandle(value)
+            setSaved(false)
+          }}
+          autoComplete="off"
+          {...(taken === true ? { help: t('handle.taken') } : {})}
+          {...(taken === false ? { help: t('handle.free') } : {})}
+        />
+      </Form>
+      {saved ? <Banner kind="success">{t('handle.free')}</Banner> : null}
+    </Card>
+  )
+}
+
+/**
+ * Where this account is open, and how to close one.
+ *
+ * A session used to be invisible: it existed, it expired eventually, and the only way to end one
+ * was to stop using it. A phone left in a taxi is exactly the case this has to answer, and
+ * "wait for it to expire" is not an answer.
+ *
+ * What each row shows is what the request carried — a user agent, an address, when it was last
+ * used. None of it is proof of anything, and it is presented as a way to recognise which row is
+ * which rather than as a security claim.
+ */
+function SessionsCard() {
+  const { t, locale } = useT()
+  const [sessions, setSessions] = useState<OpenSession[]>()
+
+  const load = useCallback(async () => {
+    setSessions((await api.sessions(locale)).sessions)
+  }, [locale])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  if (!sessions) return null
+
+  return (
+    <Card title={t('sessions.title')} icon="shield">
+      <p className="muted">{t('sessions.subtitle')}</p>
+      <ul className="list">
+        {sessions.map((session) => (
+          <li key={session.id} className="list-row">
+            <span>
+              {session.userAgent ?? t('sessions.unknownClient')}
+              <span className="row-meta">
+                {session.ipAddress ? ` · ${session.ipAddress}` : ''}
+                {session.lastSeenAt
+                  ? ` · ${t('sessions.lastSeen')} ${new Date(session.lastSeenAt).toLocaleString(locale)}`
+                  : ''}
+                {session.current ? ` · ${t('sessions.current')}` : ''}
+              </span>
+            </span>
+            {/* Ending the current one is allowed and is simply signing out: somebody pressing the
+                button next to the session they are using has said something perfectly clear. */}
+            <Button
+              variant="quiet"
+              onClick={async () => {
+                await api.revokeSession(locale, session.id)
+                await load()
+              }}
+            >
+              {t('sessions.revoke')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {sessions.length > 1 ? (
+        <div className="button-row">
+          <Button
+            variant="danger"
+            onClick={async () => {
+              await api.revokeOtherSessions(locale)
+              await load()
+            }}
+          >
+            {t('sessions.revokeOthers')}
+          </Button>
+        </div>
+      ) : null}
     </Card>
   )
 }

@@ -132,6 +132,18 @@ export const en: Catalogue = {
   'groups.error.ownerOnly': 'Only whoever created the group can delete it.',
   'groups.error.unknownUser': 'No account on this server uses that address.',
 
+  // --- Handles, labels, invitations and notices ---
+  'handle.error.invalid':
+    'A username is 3 to 32 characters: unaccented letters, digits, dot, dash or underscore.',
+  'handle.error.taken': 'That username is already taken.',
+  'tags.error.unknown': 'That label does not exist, or is not yours.',
+  'invitation.error.withdrawn': 'That invitation is no longer available.',
+  'invitation.pending': '{inviter} is sharing {event} with you.',
+  'notice.event.invited': '{inviter} is sharing {event} with you.',
+  'notice.event.accepted': 'Your shared event was accepted.',
+  'notice.event.declined': 'Your shared event was declined.',
+  'notice.ticket.assigned': 'A ticket was assigned to you.',
+
   // ─── Administration ───
   'admin.error.lastAdmin':
     'This is the last administrator left. Appoint another one before demoting or suspending them, or nobody will be able to administer this installation.',

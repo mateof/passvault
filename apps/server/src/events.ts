@@ -283,6 +283,15 @@ export async function listEventsForUser(
     .where('event_access.revoked_at', 'is', null)
     .where('group_members.user_id', '=', userId)
     .where('group_members.status', '=', 'ACTIVE')
+    // Offered to the circle is not the same as held by the person. The same rule `hasAccess`
+    // applies, applied here too — a listing that showed what opening refuses would be a wallet
+    // full of events that answer "not yours" when tapped.
+    .innerJoin('event_invitations', (join) =>
+      join
+        .onRef('event_invitations.event_id', '=', 'events.id')
+        .on('event_invitations.user_id', '=', userId)
+        .on('event_invitations.state', '=', 'ACCEPTED'),
+    )
     .execute()
 
   const byId = new Map<string, (typeof created)[number]>()
@@ -339,7 +348,21 @@ export async function hasAccess(
     .where('group_members.user_id', '=', userId)
     .where('group_members.status', '=', 'ACTIVE')
     .executeTakeFirst()
-  return throughGroup !== undefined
+  if (!throughGroup) {
+    return false
+  }
+
+  // Sharing with a group offers the event to everybody in it; holding it is still each person's
+  // own decision. Without this, adding somebody to a group would put events in their wallet that
+  // they never agreed to hold — which is precisely what invitations exist to stop.
+  const accepted = await deps.db.db
+    .selectFrom('event_invitations')
+    .select('id')
+    .where('event_id', '=', eventId)
+    .where('user_id', '=', userId)
+    .where('state', '=', 'ACCEPTED')
+    .executeTakeFirst()
+  return accepted !== undefined
 }
 
 export async function grantAccess(
@@ -412,6 +435,8 @@ export interface EventAccessEntry {
   /** The group's name or the person's address. Empty when the subject no longer exists. */
   label: string
   grantedAt: string
+  /** Offered and unanswered. Holding an event is the recipient's decision, so this is a state. */
+  pending: boolean
 }
 
 export async function listAccess(
@@ -447,8 +472,34 @@ export async function listAccess(
           ? await groupNameFor(deps, row.subject_id)
           : await userEmailFor(deps, row.subject_id),
       grantedAt: row.granted_at,
+      pending: false,
     })
   }
+
+  // People who have been offered it and have not answered. Without these the creator's list is
+  // a list of everybody who said yes, which reads as "I never shared it with Ana" rather than
+  // "Ana has not answered".
+  const pending = await deps.db.db
+    .selectFrom('event_invitations')
+    .select(['user_id', 'created_at'])
+    .where('event_id', '=', input.eventId)
+    .where('state', '=', 'PENDING')
+    .execute()
+
+  for (const row of pending) {
+    if (entries.some((entry) => entry.subjectKind === 'USER' && entry.subjectId === row.user_id)) {
+      continue
+    }
+    entries.push({
+      subjectKind: 'USER',
+      subjectId: row.user_id,
+      role: 'MEMBER',
+      label: await userEmailFor(deps, row.user_id),
+      grantedAt: row.created_at,
+      pending: true,
+    })
+  }
+
   return entries
 }
 

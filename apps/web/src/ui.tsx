@@ -1,4 +1,11 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import { ApiError } from './api/client'
 import { useT } from './i18n'
 import { Icon, type IconName } from './icons'
@@ -300,4 +307,86 @@ export function StateBadge({ state }: { state: string }) {
   const { t } = useT()
   const key = `state.${state}` as never
   return <span className={`badge badge-${state.toLowerCase()}`}>{t(key)}</span>
+}
+
+/**
+ * A dialog, on the platform's own element.
+ *
+ * `<dialog showModal>` brings three things that are tedious and easy to get wrong by hand: focus
+ * is trapped inside, Escape closes it, and it renders in the top layer so nothing on the page can
+ * cover it. A div with a high z-index has none of those and is how a modal ends up impossible to
+ * use with a keyboard.
+ *
+ * Used for the things that are *acts* — share this, label that, create one — while the page keeps
+ * the things somebody came to read. The screens here had become long vertical stacks of panels,
+ * most of which were not what the visit was about.
+ */
+export function Modal(props: {
+  open: boolean
+  title: string
+  icon?: IconName
+  onClose: () => void
+  children: ReactNode
+}) {
+  const { t } = useT()
+  const ref = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const dialog = ref.current
+    if (!dialog) return
+    if (props.open && !dialog.open) dialog.showModal()
+    if (!props.open && dialog.open) dialog.close()
+  }, [props.open])
+
+  return (
+    <dialog
+      ref={ref}
+      className="modal"
+      // Escape and the backdrop both close it, and both arrive here rather than as a state the
+      // caller has to keep in step.
+      onClose={props.onClose}
+      onClick={(event) => {
+        if (event.target === ref.current) props.onClose()
+      }}
+    >
+      <div className="modal-head">
+        <h2 className="modal-title">
+          {props.icon ? <Icon name={props.icon} size={18} /> : null} {props.title}
+        </h2>
+        <Button variant="quiet" icon="close" onClick={props.onClose}>
+          {t('action.close')}
+        </Button>
+      </div>
+      <div className="modal-body">{props.children}</div>
+    </dialog>
+  )
+}
+
+/** A label, as the coloured chip it is drawn as everywhere. */
+export function TagChip(props: {
+  name: string
+  colour: string
+  on?: boolean
+  onClick?: () => void
+}) {
+  const className = [
+    'tag-chip',
+    `mark-${props.colour}`,
+    props.onClick ? 'is-selectable' : '',
+    props.on === false ? 'is-off' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return props.onClick ? (
+    <button type="button" className={className} onClick={props.onClick}>
+      <span className="tag-dot" />
+      {props.name}
+    </button>
+  ) : (
+    <span className={className}>
+      <span className="tag-dot" />
+      {props.name}
+    </span>
+  )
 }

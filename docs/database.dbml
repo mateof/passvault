@@ -59,6 +59,7 @@ Table users {
   id varchar(36) [pk]
   email_cipher varbinary [not null, note: 'AES-256-GCM. The address itself is never stored in the clear.']
   email_key varchar(43) [not null, unique, note: 'HMAC-SHA256 blind index. What lookups and uniqueness use. Non-null so SQL Server accepts the unique index.']
+  handle varchar(32) [null, unique, note: 'A public name to be found by, casefolded. Plaintext alone among this table: an address is how you reach somebody, a handle is how a third party names them.']
   display_name_cipher varbinary [null]
   password_hash varchar(255) [null, note: 'Argon2id PHC string. Null for accounts that only sign in through a provider or a passkey.']
   status varchar(16) [not null, default: 'ACTIVE']
@@ -160,12 +161,76 @@ Table sessions {
   idle_expires_at varchar(24) [not null, note: 'Advanced on use. Bounds how long an unwrapped data key stays in memory.']
   hard_expires_at varchar(24) [not null]
   revoked_at varchar(24) [null]
+  user_agent varchar(200) [null, note: 'What opened it, so a list of sessions is recognisable rather than a list of identifiers.']
+  ip_address varchar(64) [null, note: 'Where from. Absent behind a proxy that strips it, which is a reason to show less rather than refuse a sign-in.']
+  last_seen_at varchar(32) [null]
+  label_cipher varbinary [null, note: 'What the client called itself. A phone knows its model; a browser does not.']
 
   indexes {
     (user_id, revoked_at)
     idle_expires_at
   }
 }
+
+Table tags {
+  id varchar(36) [pk]
+  owner_user_id varchar(36) [not null]
+  name_cipher varbinary [not null, note: 'The name is as much about a person as the events it groups: "work", "Ana birthday".']
+  colour varchar(16) [not null, note: 'One of a closed set. In the clear, because it ends up in a class name.']
+  created_at varchar(32) [not null]
+
+  indexes {
+    owner_user_id
+  }
+}
+
+Table event_tags {
+  event_id varchar(36) [not null]
+  tag_id varchar(36) [not null]
+  created_at varchar(32) [not null]
+
+  indexes {
+    (event_id, tag_id) [pk]
+  }
+}
+
+Table event_invitations {
+  id varchar(36) [pk]
+  event_id varchar(36) [not null]
+  user_id varchar(36) [not null, note: 'A person even when the invitation came through a group: a group cannot answer a question.']
+  invited_by varchar(36) [not null]
+  via_group_id varchar(36) [null, note: 'Which group carried it, so revoking the group withdraws what it brought and nothing else.']
+  state varchar(16) [not null, note: 'PENDING, ACCEPTED, DECLINED or WITHDRAWN. Access begins at ACCEPTED.']
+  created_at varchar(32) [not null]
+  answered_at varchar(32) [null]
+
+  indexes {
+    (user_id, state)
+    event_id
+  }
+}
+
+Table notifications {
+  id varchar(36) [pk]
+  user_id varchar(36) [not null]
+  kind varchar(40) [not null, note: 'A message key, not a sentence: the wording lives in the catalogue and renders in the readers language.']
+  payload_cipher varbinary [not null, note: 'Whatever the kind needs to render and to act on. Ciphertext, because it names events and people.']
+  created_at varchar(32) [not null]
+  read_at varchar(32) [null]
+
+  indexes {
+    (user_id, read_at)
+  }
+}
+
+Ref: tags.owner_user_id > users.id
+Ref: event_tags.event_id > events.id
+Ref: event_tags.tag_id > tags.id
+Ref: event_invitations.event_id > events.id
+Ref: event_invitations.user_id > users.id
+Ref: event_invitations.invited_by > users.id
+Ref: event_invitations.via_group_id > groups.id
+Ref: notifications.user_id > users.id
 
 // ─── Registration ────────────────────────────────────────────────────────────
 

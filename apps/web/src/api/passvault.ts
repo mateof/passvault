@@ -95,6 +95,41 @@ export interface AdminWhitelistEntry {
   createdAt: string
 }
 
+export interface Tag {
+  id: string
+  name: string
+  colour: string
+  eventCount: number
+}
+
+export interface Notice {
+  id: string
+  kind: string
+  payload: Record<string, string>
+  createdAt: string
+  read: boolean
+}
+
+export interface Invitation {
+  id: string
+  eventId: string
+  invitedBy: string
+  viaGroupId: string | null
+  state: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN'
+  passwordProtected: boolean
+  createdAt: string
+}
+
+export interface OpenSession {
+  id: string
+  current: boolean
+  userAgent: string | null
+  ipAddress: string | null
+  createdAt: string
+  lastSeenAt: string | null
+  expiresAt: string
+}
+
 export interface Group {
   id: string
   name: string
@@ -120,6 +155,8 @@ export interface AccessEntry {
 }
 
 export interface EventSummary {
+  /** The reader's own labels on it. Two people see their own vocabulary for the same event. */
+  tagIds?: string[]
   id: string
   name: string
   venue?: string | null
@@ -336,10 +373,15 @@ export const api = {
    * encryption forces on every other screen.
    */
   events: (locale: string) =>
-    request<{ events: { id: string; createdAt: string; passwordProtected: boolean }[] }>(
-      '/api/v1/events',
-      json(locale),
-    ),
+    request<{
+      events: {
+        id: string
+        createdAt: string
+        passwordProtected: boolean
+        /** The reader's own labels, sent with the wallet so a list is one request, not thirteen. */
+        tagIds?: string[]
+      }[]
+    }>('/api/v1/events', json(locale)),
 
   createEvent: (locale: string, body: Record<string, unknown>) =>
     request<{ eventId: string; passwordProtected: boolean; readableByServer: boolean }>(
@@ -503,6 +545,86 @@ export const api = {
     request<Blob>(
       `/api/v1/events/${encodeURIComponent(eventId)}/documents/${encodeURIComponent(documentId)}`,
       { ...json(locale), blob: true },
+    ),
+
+  // ── Labels, notices, invitations and sessions ────────────────────────────────
+
+  tags: (locale: string) => request<{ tags: Tag[] }>('/api/v1/tags', json(locale)),
+
+  createTag: (locale: string, name: string, colour: string) =>
+    request<{ tagId: string }>('/api/v1/tags', { ...json(locale), body: { name, colour } }),
+
+  updateTag: (locale: string, id: string, body: Record<string, unknown>) =>
+    request<{ updated: boolean }>(`/api/v1/tags/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'PATCH',
+      body,
+    }),
+
+  deleteTag: (locale: string, id: string) =>
+    request<{ deleted: boolean }>(`/api/v1/tags/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
+  setEventTags: (locale: string, eventId: string, tagIds: string[]) =>
+    request<{ tagIds: string[] }>(`/api/v1/events/${encodeURIComponent(eventId)}/tags`, {
+      ...json(locale),
+      method: 'PUT',
+      body: { tagIds },
+    }),
+
+  notifications: (locale: string) =>
+    request<{ notifications: Notice[]; unread: number }>('/api/v1/notifications', json(locale)),
+
+  markNoticesRead: (locale: string, id?: string) =>
+    request<{ read: boolean }>('/api/v1/notifications/read', {
+      ...json(locale),
+      body: id ? { id } : {},
+    }),
+
+  invitations: (locale: string) =>
+    request<{ invitations: Invitation[] }>('/api/v1/invitations', json(locale)),
+
+  /** Says yes, which is what puts the event in the wallet. The password is typed here. */
+  acceptInvitation: (locale: string, id: string, password?: string) =>
+    request<{ eventId: string }>(`/api/v1/invitations/${encodeURIComponent(id)}/accept`, {
+      ...json(locale),
+      body: password ? { password } : {},
+    }),
+
+  declineInvitation: (locale: string, id: string) =>
+    request<{ declined: boolean }>(`/api/v1/invitations/${encodeURIComponent(id)}/decline`, {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  sessions: (locale: string) =>
+    request<{ sessions: OpenSession[] }>('/api/v1/sessions', json(locale)),
+
+  revokeSession: (locale: string, id: string) =>
+    request<{ revoked: boolean }>(`/api/v1/sessions/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
+  revokeOtherSessions: (locale: string) =>
+    request<{ revoked: number }>('/api/v1/sessions/revoke-others', {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  setHandle: (locale: string, handle: string) =>
+    request<{ handle: string }>('/api/v1/me/handle', {
+      ...json(locale),
+      method: 'PUT',
+      body: { handle },
+    }),
+
+  handleAvailable: (locale: string, handle: string) =>
+    request<{ handle: string; taken: boolean }>(
+      `/api/v1/directory/handle?handle=${encodeURIComponent(handle)}`,
+      json(locale),
     ),
 
   // ── Groups and sharing ───────────────────────────────────────────────────────

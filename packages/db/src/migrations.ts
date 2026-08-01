@@ -1,5 +1,5 @@
 import { sql, type Kysely, type Migration, type MigrationProvider } from 'kysely'
-import { columnTypes, type Engine } from './engine.js'
+import { columnTypes, treatsNullsAsEqualInUniqueIndex, type Engine } from './engine.js'
 
 /**
  * Schema migrations, parameterised by engine.
@@ -22,6 +22,188 @@ export function migrations(engine: Engine): Record<string, Migration> {
     '0001_initial_schema': initialSchema(engine),
     '0002_event_appearance': eventAppearance(engine),
     '0003_ticket_source_batch': ticketSourceBatch(engine),
+    '0004_handles_tags_and_notices': handlesTagsAndNotices(engine),
+  }
+}
+
+/**
+ * Handles, labels, invitations, notices, and where a session was opened from.
+ *
+ * Five things in one migration because they are one change: sharing an event with somebody is
+ * the moment all of them meet. You find the person by handle rather than by remembering which
+ * address they signed up with, they are told rather than silently given something, they decide,
+ * and the event they accept is one you can find again among forty by its label and its date.
+ *
+ * A handle is plaintext and every other thing about a person here is not. That is deliberate and
+ * it is the point of a handle: an address is a way to reach somebody and a handle is a way to be
+ * found, so it is a public name in a way an address never is. Nobody is given one — the column is
+ * nullable — and an account with none is exactly as usable as before, minus the finding.
+ */
+function handlesTagsAndNotices(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      // Stored casefolded: two people cannot be `ana` and `Ana`, because the whole value of a
+      // handle is that saying it aloud identifies one person.
+      //
+      // The uniqueness is an index rather than a column constraint, and not for tidiness —
+      // SQLite refuses outright to add a UNIQUE column to a table that already exists. On the
+      // engines that allow it, a unique index also lets every account that never chose a handle
+      // keep a NULL there; SQL Server counts NULLs as equal, so there it is filtered to the rows
+      // that have one, which is the same rule written the way that engine understands.
+      await db.schema
+        .alterTable('users')
+        .addColumn('handle', sql.raw(t.varchar(32)))
+        .execute()
+      if (treatsNullsAsEqualInUniqueIndex(engine)) {
+        await sql
+          .raw('create unique index idx_users_handle on users (handle) where handle is not null')
+          .execute(db)
+      } else {
+        await db.schema
+          .createIndex('idx_users_handle')
+          .on('users')
+          .column('handle')
+          .unique()
+          .execute()
+      }
+
+      // Where a session was opened from, so somebody looking at a list of their own sessions can
+      // recognise which is the phone in their pocket and which is the one to end. Both nullable:
+      // a request behind a proxy that strips them still has to be able to sign in.
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('user_agent', sql.raw(t.varchar(200)))
+        .execute()
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('ip_address', sql.raw(t.varchar(64)))
+        .execute()
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('last_seen_at', sql.raw(t.varchar(32)))
+        .execute()
+      // What the person called it, when they were asked. A phone says "Pixel 8"; a browser is
+      // whatever its user agent claims, which is why the two are separate columns.
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('label_cipher', sql.raw(t.binary))
+        .execute()
+
+      /**
+       * Labels, which are the user's own vocabulary for their wallet.
+       *
+       * The name is ciphertext under the owner's data key: "Vigo trips", "work", "Ana's
+       * birthday" are as much about a person as the events they group. The colour is not — it
+       * is one of a closed set and it ends up in a class name.
+       */
+      await db.schema
+        .createTable('tags')
+        .addColumn('id', sql.raw(t.varchar(36)), (column) => column.primaryKey())
+        .addColumn('owner_user_id', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('users.id'),
+        )
+        .addColumn('name_cipher', sql.raw(t.binary), (column) => column.notNull())
+        .addColumn('colour', sql.raw(t.varchar(16)), (column) => column.notNull())
+        .addColumn('created_at', sql.raw(t.varchar(32)), (column) => column.notNull())
+        .execute()
+      await db.schema.createIndex('idx_tags_owner').on('tags').column('owner_user_id').execute()
+
+      // Which events carry which label. A row per pair rather than a list in a column, because
+      // "show me everything tagged Vigo" is a query and a comma-separated column is not.
+      await db.schema
+        .createTable('event_tags')
+        .addColumn('event_id', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('events.id'),
+        )
+        .addColumn('tag_id', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('tags.id'),
+        )
+        .addColumn('created_at', sql.raw(t.varchar(32)), (column) => column.notNull())
+        .addPrimaryKeyConstraint('pk_event_tags', ['event_id', 'tag_id'])
+        .execute()
+
+      /**
+       * An invitation to an event, and the answer to it.
+       *
+       * Sharing used to grant access outright: an event appeared in somebody's wallet without
+       * their having agreed to hold it, which is the wrong default for a thing that carries
+       * somebody else's name and seat. Now a share creates an invitation, and access begins when
+       * it is accepted.
+       *
+       * The subject is a person even when the invitation came through a group, because a group
+       * cannot answer a question. One row per person is also what makes "who has not answered"
+       * a query rather than a guess.
+       */
+      await db.schema
+        .createTable('event_invitations')
+        .addColumn('id', sql.raw(t.varchar(36)), (column) => column.primaryKey())
+        .addColumn('event_id', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('events.id'),
+        )
+        .addColumn('user_id', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('users.id'),
+        )
+        .addColumn('invited_by', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('users.id'),
+        )
+        // Which group carried it, when one did, so revoking the group can withdraw what it
+        // brought without touching an invitation somebody sent by hand.
+        .addColumn('via_group_id', sql.raw(t.varchar(36)), (column) => column.references('groups.id'))
+        .addColumn('state', sql.raw(t.varchar(16)), (column) => column.notNull())
+        .addColumn('created_at', sql.raw(t.varchar(32)), (column) => column.notNull())
+        .addColumn('answered_at', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .createIndex('idx_event_invitations_user')
+        .on('event_invitations')
+        .columns(['user_id', 'state'])
+        .execute()
+      await db.schema
+        .createIndex('idx_event_invitations_event')
+        .on('event_invitations')
+        .column('event_id')
+        .execute()
+
+      /**
+       * Notices: what happened that somebody should know about.
+       *
+       * A table rather than an email, because the app and the web are where this belongs and
+       * neither can be reached by mail on a NAS behind a tunnel. The body is a message key and
+       * a JSON payload, not a sentence: the wording lives in the catalogue, in the reader's
+       * language, and a notice written today still renders in a language added tomorrow.
+       */
+      await db.schema
+        .createTable('notifications')
+        .addColumn('id', sql.raw(t.varchar(36)), (column) => column.primaryKey())
+        .addColumn('user_id', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('users.id'),
+        )
+        .addColumn('kind', sql.raw(t.varchar(40)), (column) => column.notNull())
+        // Whatever the kind needs to render and to act on: an event id, an inviter's handle.
+        // Ciphertext, because it names events and people.
+        .addColumn('payload_cipher', sql.raw(t.binary), (column) => column.notNull())
+        .addColumn('created_at', sql.raw(t.varchar(32)), (column) => column.notNull())
+        .addColumn('read_at', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .createIndex('idx_notifications_user')
+        .on('notifications')
+        .columns(['user_id', 'read_at'])
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      await db.schema.dropTable('notifications').execute()
+      await db.schema.dropTable('event_invitations').execute()
+      await db.schema.dropTable('event_tags').execute()
+      await db.schema.dropTable('tags').execute()
+      for (const column of ['label_cipher', 'last_seen_at', 'ip_address', 'user_agent']) {
+        await db.schema.alterTable('sessions').dropColumn(column).execute()
+      }
+      await db.schema.dropIndex('idx_users_handle').execute()
+      await db.schema.alterTable('users').dropColumn('handle').execute()
+    },
   }
 }
 

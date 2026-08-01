@@ -18,6 +18,8 @@ import { ApiError } from './api/client'
 import { passkeysSupported, usePasskey } from './api/webauthn'
 import { EventPage, EventsPage } from './events'
 import { GroupsPage } from './groups'
+import { NoticesPage, useUnreadCount } from './notices'
+import { TagsPage } from './tags'
 import { AccountPage } from './account'
 import { AdminPage } from './admin'
 
@@ -509,11 +511,14 @@ function NavItem({
   icon,
   label,
   end,
+  badge,
 }: {
   to: string
   icon: IconName
   label: string
   end?: boolean
+  /** A count worth interrupting for. Absent or zero draws nothing at all. */
+  badge?: number
 }) {
   return (
     <NavLink
@@ -523,6 +528,7 @@ function NavItem({
     >
       <Icon name={icon} />
       <span>{label}</span>
+      {badge ? <span className="badge-count">{badge}</span> : null}
     </NavLink>
   )
 }
@@ -538,6 +544,7 @@ function NavItem({
 function Shell() {
   const { t, locale } = useT()
   const { me, signOut, refresh } = useSession()
+  const unread = useUnreadCount()
 
   return (
     <div className="app">
@@ -552,6 +559,10 @@ function Shell() {
         <nav className="nav">
           <NavItem to="/" icon="events" label={t('nav.events')} end />
           <NavItem to="/groups" icon="users" label={t('nav.groups')} />
+          <NavItem to="/tags" icon="events" label={t('nav.tags')} />
+          {/* The count is the point of this entry: an invitation nobody notices is a share that
+              never happened, and this is the only place that can say so. */}
+          <NavItem to="/notices" icon="mail" label={t('nav.notices')} badge={unread} />
           <NavItem to="/account" icon="account" label={t('nav.account')} />
           {me?.isAdmin ? <NavItem to="/admin" icon="admin" label={t('nav.admin')} /> : null}
         </nav>
@@ -587,6 +598,8 @@ function Shell() {
               <Route path="/" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventPage />} />
               <Route path="/groups" element={<GroupsPage />} />
+              <Route path="/tags" element={<TagsPage />} />
+              <Route path="/notices" element={<NoticesPage />} />
               <Route path="/account" element={<AccountPage />} />
               <Route path="/admin" element={<AdminPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

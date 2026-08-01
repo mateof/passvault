@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   ADMIN,
   MEMBER,
+  acceptInvitations,
   bearer,
   login,
   registerFirstAdmin,
@@ -74,13 +75,28 @@ const addTickets = (
     payload: { tickets, ...(password ? { password } : {}) },
   })
 
-const grantTo = (token: string, eventId: string, userId: string) =>
-  server.app.inject({
+/**
+ * Shares an event and has the recipient accept it.
+ *
+ * Two steps now rather than one: sharing offers, accepting holds. Almost every test below is
+ * about what somebody can see once they hold an event, so the pair is written once here.
+ */
+const grantTo = async (
+  token: string,
+  eventId: string,
+  userId: string,
+  recipient = member,
+  password?: string,
+) => {
+  const response = await server.app.inject({
     method: 'POST',
     url: `/api/v1/events/${eventId}/access`,
     headers: bearer(token),
     payload: { subjectKind: 'USER', subjectId: userId },
   })
+  await acceptInvitations(server, recipient, password)
+  return response
+}
 
 const ticketsOf = (token: string, eventId: string) =>
   server.app.inject({ url: `/api/v1/events/${eventId}/tickets`, headers: bearer(token) })
@@ -153,11 +169,16 @@ describe('an event password changes who can decrypt', () => {
 
   it('refuses a member who has not supplied the event password', async () => {
     const { eventId } = (await createEvent(organiser, { password: 'entradas-2026' })).json()
-    await grantTo(organiser, eventId, memberUserId)
+    await grantTo(organiser, eventId, memberUserId, member, 'entradas-2026')
 
+    // A fresh session, because accepting the invitation opened the event for the one that
+    // answered — which is the point of asking there. The rule under test is that the password is
+    // needed once per session, so the question has to be asked from a new one.
+    const later = await login(server, MEMBER)
+    await unlock(later, MEMBER.passphrase)
     const response = await server.app.inject({
       url: `/api/v1/events/${eventId}`,
-      headers: bearer(member),
+      headers: bearer(later),
     })
 
     expect(response.json().error).toBe('event.passwordRequired')
@@ -165,7 +186,7 @@ describe('an event password changes who can decrypt', () => {
 
   it('opens for a member who supplies it', async () => {
     const { eventId } = (await createEvent(organiser, { password: 'entradas-2026' })).json()
-    await grantTo(organiser, eventId, memberUserId)
+    await grantTo(organiser, eventId, memberUserId, member, 'entradas-2026')
 
     const response = await server.app.inject({
       method: 'POST',
@@ -179,12 +200,14 @@ describe('an event password changes who can decrypt', () => {
 
   it('refuses the wrong password distinctly from a missing one', async () => {
     const { eventId } = (await createEvent(organiser, { password: 'entradas-2026' })).json()
-    await grantTo(organiser, eventId, memberUserId)
+    await grantTo(organiser, eventId, memberUserId, member, 'entradas-2026')
 
+    const later = await login(server, MEMBER)
+    await unlock(later, MEMBER.passphrase)
     const response = await server.app.inject({
       method: 'POST',
       url: `/api/v1/events/${eventId}/open`,
-      headers: bearer(member),
+      headers: bearer(later),
       payload: { password: 'wrong' },
     })
 
@@ -193,7 +216,7 @@ describe('an event password changes who can decrypt', () => {
 
   it('asks for it only once per session', async () => {
     const { eventId } = (await createEvent(organiser, { password: 'entradas-2026' })).json()
-    await grantTo(organiser, eventId, memberUserId)
+    await grantTo(organiser, eventId, memberUserId, member, 'entradas-2026')
     await server.app.inject({
       method: 'POST',
       url: `/api/v1/events/${eventId}/open`,
@@ -369,7 +392,8 @@ describe('two people claim the same ticket while offline', () => {
     ).json().userId
 
     await grantTo(organiser, eventId, memberUserId)
-    await grantTo(organiser, eventId, secondUserId)
+    // The second member answers for themselves: an invitation is one person's to accept.
+    await grantTo(organiser, eventId, secondUserId, secondMember)
   })
 
   /** `reconcile: false` is a device replaying a claim it made with no connectivity. */

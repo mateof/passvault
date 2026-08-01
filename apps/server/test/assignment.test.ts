@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   ADMIN,
   MEMBER,
+  acceptInvitations,
   bearer,
   login,
   registerFirstAdmin,
@@ -91,13 +92,17 @@ const makeEvent = async (mode: string, count = 2): Promise<string> => {
   return eventId
 }
 
-const shareWith = (eventId: string, email: string) =>
-  server.app.inject({
+/** Offers the event and has the recipient accept, which is what puts it in their wallet. */
+const shareWith = async (eventId: string, email: string) => {
+  const response = await server.app.inject({
     method: 'POST',
     url: `/api/v1/events/${eventId}/access`,
     headers: bearer(organiser),
     payload: { subjectKind: 'USER', email },
   })
+  await acceptInvitations(server, email === MEMBER.email ? member : second)
+  return response
+}
 
 const ticketsOf = async (token: string, eventId: string) =>
   (await server.app.inject({ url: `/api/v1/events/${eventId}/tickets`, headers: bearer(token) }))
