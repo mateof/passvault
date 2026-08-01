@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Checkbox,
+  DateTimeField,
   Empty,
   Field,
   FilePicker,
@@ -328,12 +329,7 @@ function CreateEventCard({
         <Field label={t('events.venue')} value={venue} onChange={setVenue} />
         {/* A local datetime rather than a bare date: an event at nine in the evening is a
             different thing from one "on the 14th", and the wallet sorts by this. */}
-        <Field
-          label={t('events.startsAt')}
-          value={startsAt}
-          onChange={setStartsAt}
-          type="datetime-local"
-        />
+        <DateTimeField label={t('events.startsAt')} value={startsAt} onChange={setStartsAt} />
         <Select
           label={t('events.assignmentMode')}
           value={mode}
@@ -880,12 +876,7 @@ function EditFactsForm({ event, onSaved }: { event: EventDetail; onSaved: () => 
     >
       <Field label={t('events.name')} value={name} onChange={setName} required />
       <Field label={t('events.venue')} value={venue} onChange={setVenue} />
-      <Field
-        label={t('events.startsAt')}
-        value={startsAt}
-        onChange={setStartsAt}
-        type="datetime-local"
-      />
+      <DateTimeField label={t('events.startsAt')} value={startsAt} onChange={setStartsAt} />
       <Select
         label={t('events.assignmentMode')}
         value={mode}

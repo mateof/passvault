@@ -390,3 +390,50 @@ export function TagChip(props: {
     </span>
   )
 }
+
+/**
+ * A date and time, editable by keyboard and pickable graphically.
+ *
+ * Built on the platform's own datetime-local input rather than a calendar library: the browser
+ * already ships one, localised, accessible and maintained by somebody else. The button exists
+ * because the input's own picker affordance is a subtle icon some browsers do not draw at all —
+ * `showPicker()` is the standard way to open it deliberately, and where a browser refuses
+ * (Firefox desktop offers only the date half) focusing the field is the honest fallback.
+ */
+export function DateTimeField(props: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+
+  return (
+    <label className="field">
+      <span className="field-label">{props.label}</span>
+      <span className="field-with-button">
+        <input
+          ref={input}
+          className="field-input"
+          type="datetime-local"
+          value={props.value}
+          onChange={(event) => props.onChange(event.target.value)}
+        />
+        <Button
+          variant="quiet"
+          icon="calendar"
+          onClick={() => {
+            const element = input.current
+            if (!element) return
+            try {
+              element.showPicker()
+            } catch {
+              element.focus()
+            }
+          }}
+        >
+          {''}
+        </Button>
+      </span>
+    </label>
+  )
+}

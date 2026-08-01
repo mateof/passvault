@@ -107,7 +107,9 @@ describe('creating an event', () => {
 
     const response = await createEvent(fresh)
 
-    expect(response.statusCode).toBe(401)
+    // 423, not 401: the session is valid, the server merely lacks the one secret the user
+    // holds. The distinction is what keeps a locked vault from looking like being signed out.
+    expect(response.statusCode).toBe(423)
   })
 
   it('returns the new event', async () => {

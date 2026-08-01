@@ -27,6 +27,19 @@ export const unauthorized = (key: MessageKey, values?: MessageValues): AppError 
 
 export const forbidden = (key: MessageKey = 'error.forbidden'): AppError => new AppError(403, key)
 
+/**
+ * 423: it exists and there is a key that opens it.
+ *
+ * Distinct from 401 on purpose, and the distinction is what two clients were tripping over. A
+ * 401 means the session is not valid — the person has to prove who they are again. A locked
+ * vault or a password-protected event is the opposite situation: the session is fine, the
+ * server merely lacks a decryption secret only the user holds. Both clients treated any 401 as
+ * "signed out", so every server restart (which empties the in-memory vault cache, by design)
+ * looked like being logged out of everything.
+ */
+export const locked = (key: MessageKey, values?: MessageValues): AppError =>
+  new AppError(423, key, values)
+
 export const notFound = (key: MessageKey = 'error.notFound'): AppError => new AppError(404, key)
 
 export const conflict = (key: MessageKey, values?: MessageValues): AppError =>

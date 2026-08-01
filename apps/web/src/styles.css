@@ -276,24 +276,50 @@ a {
   }
 
   .brand,
-  .sidebar-footer,
-  .nav-spacer {
+  .nav-spacer,
+  .nav-section,
+  .sidebar-account {
+    /* Section headings and the account id have no room in a strip. The footer, though, stays:
+       hiding it was hiding the lock and the sign-out on every phone. */
     display: none;
   }
 
   .nav {
     flex-direction: row;
-    justify-content: space-around;
-    width: 100%;
+    justify-content: flex-start;
+    width: auto;
+    min-width: 0;
+    flex: 1;
     gap: 0.15rem;
+    /* The strip scrolls sideways rather than cramming. Six entries fitted by shrinking is how
+       the last one — admin — ended up unreachable. */
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar-footer {
+    display: flex;
+    flex-direction: row;
+    flex: 0 0 auto;
+    gap: 0.15rem;
+    margin: 0;
+    padding: 0;
+    border: none;
   }
 
   .nav-link {
+    flex: 0 0 auto;
     flex-direction: column;
     gap: 0.2rem;
     font-size: 0.7rem;
-    padding: 0.4rem 0.3rem;
+    padding: 0.4rem 0.45rem;
     text-align: center;
+    white-space: nowrap;
   }
 
   .content {
@@ -1053,4 +1079,16 @@ button.link {
   color: var(--text-muted);
   margin: 1rem 0 0.25rem;
   padding: 0 0.75rem;
+}
+
+/* A field with its opener beside it, sharing the row. */
+.field-with-button {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.field-with-button .field-input {
+  flex: 1;
+  min-width: 0;
 }

@@ -415,7 +415,9 @@ describe('importing a received file', () => {
 
     const response = await importArchive(locked, archive, EXPORT_PASSWORD)
 
-    expect(response.statusCode).toBe(401)
+    // 423, not 401: the session is valid, the server merely lacks the one secret the user
+    // holds. The distinction is what keeps a locked vault from looking like being signed out.
+    expect(response.statusCode).toBe(423)
   })
 
   it('does not fold somebody else’s tickets into an event the importer already has', async () => {

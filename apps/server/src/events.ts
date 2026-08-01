@@ -18,7 +18,7 @@ import { newId, toInstant, type DatabaseHandle } from '@passvault/db'
 import type { AssignmentMode } from '@passvault/tkpak'
 import { mediaTypeOf } from './blobs.js'
 import type { CryptoContext } from './crypto-context.js'
-import { badRequest, forbidden, notFound, unauthorized } from './errors.js'
+import { badRequest, forbidden, locked, notFound, unauthorized } from './errors.js'
 import * as repo from './repository.js'
 import type { VaultCache } from './vault.js'
 
@@ -631,7 +631,9 @@ export async function openEventKey(deps: EventDeps, input: OpenEventInput): Prom
 
   if (event.password_protected === 1) {
     if (!input.password) {
-      throw unauthorized('event.passwordRequired')
+      // 423, not 401: the session is fine, the server merely lacks a secret only the user
+      // holds. A 401 here made clients treat "type the event password" as "sign in again".
+      throw locked('event.passwordRequired')
     }
     try {
       const key = await unlockWithPassword(envelope, SLOT_EVENT_PASSWORD, input.password)

@@ -13,7 +13,7 @@ import {
   type Argon2Params,
   type KeyEnvelope,
 } from '@passvault/crypto'
-import { unauthorized } from './errors.js'
+import { locked, unauthorized } from './errors.js'
 
 /**
  * Unwrapped data keys, held in memory for the life of a session.
@@ -101,7 +101,7 @@ export class VaultCache {
   require(sessionId: string): VaultSession {
     const session = this.get(sessionId)
     if (!session) {
-      throw unauthorized('vault.passphraseRequired')
+      throw locked('vault.passphraseRequired')
     }
     return session
   }
