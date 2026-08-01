@@ -331,6 +331,8 @@ export async function readRegistrationSettings(
     mode: 'CLOSED' as const,
     allow_password_login: 1 as const,
     require_second_factor: 0 as const,
+    // Null follows the deployment default; an administrator sets a number of days to override it.
+    session_days: null,
     updated_at: toInstant(),
     updated_by: null,
   }
@@ -344,6 +346,8 @@ export async function writeRegistrationSettings(
     mode?: RegistrationSettingsRow['mode']
     allowPasswordLogin?: boolean
     requireSecondFactor?: boolean
+    /** Days a session lasts, or null to hand it back to the deployment's own default. */
+    sessionDays?: number | null
     /** Null when the deployment file wrote it at boot and there is no administrator to blame. */
     updatedBy: string | null
   },
@@ -359,6 +363,7 @@ export async function writeRegistrationSettings(
       ...(changes.requireSecondFactor === undefined
         ? {}
         : { require_second_factor: changes.requireSecondFactor ? 1 : 0 }),
+      ...(changes.sessionDays === undefined ? {} : { session_days: changes.sessionDays }),
       updated_at: toInstant(),
       updated_by: changes.updatedBy,
     })

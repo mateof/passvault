@@ -51,6 +51,9 @@ export interface RegistrationSettings {
   acceptingFirstAdmin: boolean
   /** Set when the deployment file rewrites these settings on every restart. */
   enforcedByEnvironment?: boolean
+  /** Days a session lasts, or null to follow the deployment default. Admin-only, so it is
+   *  present on the admin read and absent from the public one. */
+  sessionDays?: number | null
 }
 
 /**
@@ -156,6 +159,11 @@ export interface AccessEntry {
   /** The group's name or the person's address, so a share can be read rather than decoded. */
   label: string
   grantedAt: string
+  /** Offered and unanswered: a share the recipient has not accepted yet. */
+  pending?: boolean
+  /** True once this person has pulled the event to a device. After it, revoking cannot recall
+   *  the tickets — they are already downloaded — which is what the revoke prompt has to say. */
+  downloaded?: boolean
 }
 
 export interface EventSummary {
@@ -224,6 +232,12 @@ export type PaymentVisibility = 'ALL' | 'HOLDER_ONLY' | 'CREATOR_ONLY'
  * `barcode` is null rather than absent when the viewer is not entitled to it: an assigned ticket
  * belonging to somebody else is a ticket you can see and a code you cannot.
  */
+/** What a member can do about claiming, since their filtered list no longer shows free tickets. */
+export interface ClaimSummary {
+  freeToClaim: number
+  alreadyHolds: boolean
+}
+
 export interface TicketSummary {
   id: string
   label?: string | null
@@ -235,6 +249,8 @@ export interface TicketSummary {
   assignmentState: string
   holderUserId?: string | null
   holderLabel?: string | null
+  /** The holder's public name, present only in the creator's view. */
+  holderHandle?: string | null
   status: string
   payment?: {
     state: PaymentState
@@ -261,6 +277,10 @@ export const api = {
 
   registrationSettings: (locale: string) =>
     request<RegistrationSettings>('/api/v1/registration/settings', json(locale)),
+
+  /** The settings only an administrator sees, session lifetime among them. */
+  adminRegistration: (locale: string) =>
+    request<RegistrationSettings>('/api/v1/admin/registration', json(locale)),
 
   providers: (locale: string) =>
     request<{ providers: { id: string; name: string }[]; passkeys: boolean }>(
@@ -397,7 +417,7 @@ export const api = {
     request<EventDetail>(`/api/v1/events/${encodeURIComponent(id)}`, json(locale)),
 
   tickets: (locale: string, eventId: string) =>
-    request<{ tickets: TicketSummary[] }>(
+    request<{ tickets: TicketSummary[]; claim: ClaimSummary }>(
       `/api/v1/events/${encodeURIComponent(eventId)}/tickets`,
       json(locale),
     ),

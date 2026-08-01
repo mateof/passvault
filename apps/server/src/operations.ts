@@ -3,7 +3,7 @@ import { domainSeparated, fromBase64Url, toBase64Url, verifyBytes } from '@passv
 import { newId, toInstant } from '@passvault/db'
 import { badRequest, forbidden, notFound } from './errors.js'
 import { ensureServerDevice, serverDeviceFrom, signAsServer } from './server-device.js'
-import { createEvent, findEvent, hasAccess, type EventDeps } from './events.js'
+import { createEvent, findEvent, hasAccess, markDownloaded, type EventDeps } from './events.js'
 import * as repo from './repository.js'
 import { addTickets, reconcileTicket, setPayment, submitClaim } from './tickets.js'
 import type { AssignmentMode, BarcodeFormat } from '@passvault/tkpak'
@@ -770,6 +770,10 @@ export async function pullOperations(
   if (!(await hasAccess(deps, input.eventId, input.actorUserId))) {
     throw forbidden()
   }
+  // The first pull is the moment "shared with" becomes "downloaded by": from here the tickets
+  // are on their device and revoking access can no longer recall them. Stamped once, on the
+  // member's own access row, so the creator's revoke screen can tell the two states apart.
+  await markDownloaded(deps, input.eventId, input.actorUserId)
   const limit = Math.min(input.limit ?? 200, 500)
   const cursor = input.cursor ?? ''
 

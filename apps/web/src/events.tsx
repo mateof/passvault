@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   api,
   type AccessEntry,
+  type ClaimSummary,
   type EventDetail,
   type Group,
   type Tag,
@@ -16,7 +17,6 @@ import { ApiError } from './api/client'
 import { useT } from './i18n'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
-import { useSession } from './session'
 import { EventMark, Icon } from './icons'
 import {
   Banner,
@@ -469,6 +469,7 @@ export function EventPage() {
   const { t, locale } = useT()
   const [event, setEvent] = useState<EventDetail>()
   const [tickets, setTickets] = useState<TicketSummary[]>([])
+  const [claim, setClaim] = useState<ClaimSummary>()
   const [openDialog, setOpenDialog] = useState<
     'edit' | 'appearance' | 'tags' | 'share' | 'password' | 'add' | 'export' | 'delete'
   >()
@@ -481,6 +482,7 @@ export function EventPage() {
       const [detail, listed] = await Promise.all([api.event(locale, id), api.tickets(locale, id)])
       setEvent(detail)
       setTickets(listed.tickets ?? [])
+      setClaim(listed.claim)
       setNeedsPassword(false)
     } catch (cause) {
       if (cause instanceof ApiError && (cause.status === 403 || cause.status === 423)) {
@@ -599,7 +601,11 @@ export function EventPage() {
         </div>
       ) : null}
 
-      <ClaimCard eventId={id} tickets={tickets} onClaimed={load} />
+      {/* Only for somebody the event was shared with. The creator makes the tickets; they do
+          not queue for a random one of their own. */}
+      {event.isCreator === false ? (
+        <ClaimCard eventId={id} claim={claim} onClaimed={load} />
+      ) : null}
 
       <Modal
         open={openDialog === 'edit'}
@@ -743,10 +749,25 @@ function SharingCard({ eventId }: { eventId: string }) {
               <span>
                 <Icon name={entry.subjectKind === 'GROUP' ? 'users' : 'account'} size={16} />{' '}
                 {entry.label || entry.subjectId.slice(0, 8)}
+                {/* The state that decides what revoking can promise, said on the row itself:
+                    offered-not-answered, downloaded, or shared-and-idle. */}
+                {entry.pending ? (
+                  <span className="muted"> · {t('sharing.state.pending')}</span>
+                ) : entry.downloaded ? (
+                  <span className="muted"> · {t('sharing.state.downloaded')}</span>
+                ) : (
+                  <span className="muted"> · {t('sharing.state.notDownloaded')}</span>
+                )}
               </span>
               <Button
                 variant="quiet"
                 onClick={async () => {
+                  // The confirmation tells the truth for this person: a clean removal when they
+                  // have not pulled it yet, an honest "cannot take it back" when they have.
+                  const warning = entry.downloaded
+                    ? t('sharing.revokeConfirm.downloaded')
+                    : t('sharing.revokeConfirm.clean')
+                  if (!window.confirm(warning)) return
                   await api.revokeEventAccess(locale, eventId, {
                     subjectKind: entry.subjectKind,
                     subjectId: entry.subjectId,
@@ -823,26 +844,24 @@ function SharingCard({ eventId }: { eventId: string }) {
  */
 function ClaimCard({
   eventId,
-  tickets,
+  claim,
   onClaimed,
 }: {
   eventId: string
-  tickets: TicketSummary[]
+  claim: ClaimSummary | undefined
   onClaimed: () => Promise<void>
 }) {
   const { t, locale } = useT()
-  const { me } = useSession()
   const [failure, setFailure] = useState<string>()
 
-  const free = tickets.filter(
-    (ticket) => ticket.assignmentMode === 'SELF_CLAIM' && ticket.assignmentState === 'FREE',
-  )
-  const alreadyMine = tickets.some((ticket) => ticket.holderUserId === me?.userId)
-  if (free.length === 0 || alreadyMine) return null
+  // Read from the server's summary rather than counted from the ticket list, which a member no
+  // longer sees: the free self-claim tickets are hidden from them on purpose, so the button that
+  // grabs one has to be told there is one to grab. Nothing to take, or one already held, no card.
+  if (!claim || claim.freeToClaim === 0 || claim.alreadyHolds) return null
 
   return (
     <Card title={t('claim.title')} icon="ticket">
-      <p className="muted">{t('claim.explain', { count: free.length })}</p>
+      <p className="muted">{t('claim.explain', { count: claim.freeToClaim })}</p>
       {failure ? <Banner kind="error">{failure}</Banner> : null}
       <div className="button-row">
         <Button

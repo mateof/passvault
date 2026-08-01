@@ -135,6 +135,7 @@ import {
   addTickets,
   assignTicket,
   claimFreeTicket,
+  claimSummary,
   ensureDevice,
   issueClaimCoupons,
   projectTickets,
@@ -377,7 +378,15 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (!session) {
       throw unauthorized('auth.error.invalidCredentials')
     }
-    await repo.touchSession(db, session.id, config.session.idleMinutes)
+    // The sliding renewal has to use the same window the session was minted with, or a
+    // year-long session set by an administrator would quietly shrink back to the deployment's
+    // thirty minutes on its first authenticated request.
+    const settings = await repo.readRegistrationSettings(db)
+    const idleMinutes =
+      settings.session_days != null
+        ? settings.session_days * 24 * 60
+        : config.session.idleMinutes
+    await repo.touchSession(db, session.id, idleMinutes)
     request.session = session
     return session
   }
@@ -624,6 +633,9 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     mode: z.enum(['OPEN', 'WHITELIST', 'INVITATION', 'CLOSED']).optional(),
     allowPasswordLogin: z.boolean().optional(),
     requireSecondFactor: z.boolean().optional(),
+    // Days a session lasts, or null to follow the deployment default. Bounded at a year: a
+    // wallet is worth keeping signed in, but a session that never ends is not a convenience.
+    sessionDays: z.number().int().min(1).max(365).nullable().optional(),
   })
 
   app.put('/api/v1/admin/registration', async (request) => {
@@ -635,9 +647,28 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       mode: settings.mode,
       allowPasswordLogin: settings.allow_password_login === 1,
       requireSecondFactor: settings.require_second_factor === 1,
+      sessionDays: settings.session_days,
       // Whether the environment will overwrite this on the next restart is part of the answer:
       // an administrator who changes a setting that a deployment file re-applies at boot needs
       // to know that now, not after the container is next recreated.
+      enforcedByEnvironment: config.bootstrap.enforce,
+    }
+  })
+
+  /**
+   * The settings only an administrator should see, session lifetime among them.
+   *
+   * Separate from the public GET, which every client hits before signing in to know whether it
+   * may register: the session length is an operator's concern, not a login screen's.
+   */
+  app.get('/api/v1/admin/registration', async (request) => {
+    await adminOf(request)
+    const settings = await repo.readRegistrationSettings(db)
+    return {
+      mode: settings.mode,
+      allowPasswordLogin: settings.allow_password_login === 1,
+      requireSecondFactor: settings.require_second_factor === 1,
+      sessionDays: settings.session_days,
       enforcedByEnvironment: config.bootstrap.enforce,
     }
   })
@@ -1999,6 +2030,9 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         viewerUserId: session.user_id,
         eventKey,
       }),
+      // What the member can do about claiming, since their filtered list no longer shows the
+      // free tickets. The button reads this rather than counting rows it can no longer see.
+      claim: await claimSummary(eventDeps, { eventId: id, viewerUserId: session.user_id }),
     }
   })
 

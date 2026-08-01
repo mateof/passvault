@@ -607,12 +607,24 @@ export async function issueSessionFor(
   origin?: SessionOrigin,
 ): Promise<LoginOutcome> {
   const token = toBase64Url(new Uint8Array(randomBytes(32)))
+  // The administrator's chosen lifetime wins over the deployment default. Days rather than the
+  // config's minutes/hours because the point of the setting is months: a personal ticket wallet
+  // logged out every day is a wallet that asks for a password at the turnstile. When a long
+  // lifetime is chosen the idle window is widened to match, so "lasts a year" is not quietly
+  // undone by a thirty-minute inactivity timeout — the session slides forward as it is used.
+  const settings = await repo.readRegistrationSettings(deps.db)
+  const idleMinutes =
+    settings.session_days != null
+      ? settings.session_days * 24 * 60
+      : deps.config.session.idleMinutes
+  const hardHours =
+    settings.session_days != null ? settings.session_days * 24 : deps.config.session.hardHours
   const session = await repo.insertSession(deps.db, {
     userId,
     token,
     deviceId: deviceId ?? null,
-    idleMinutes: deps.config.session.idleMinutes,
-    hardHours: deps.config.session.hardHours,
+    idleMinutes,
+    hardHours,
     // What opened the session and from where. The columns sat empty for a version because no
     // login path passed them, and every session listed as an unknown client from nowhere.
     userAgent: origin?.userAgent ?? null,

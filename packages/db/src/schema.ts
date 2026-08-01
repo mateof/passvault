@@ -147,6 +147,9 @@ export interface RegistrationSettingsTable {
   mode: 'OPEN' | 'WHITELIST' | 'INVITATION' | 'CLOSED'
   allow_password_login: Flag
   require_second_factor: Flag
+  /** How many days a session lasts, or null to follow the deployment's own default. Kept here
+   *  so "stay signed in for a year" is a switch an administrator flips, not a redeploy. */
+  session_days: number | null
   updated_at: Instant
   updated_by: string | null
 }
@@ -232,6 +235,9 @@ export interface EventAccessTable {
   granted_by: string
   granted_at: Instant
   revoked_at: Instant | null
+  /** When this member first pulled the event's log. Null until they have, which is the whole
+   *  signal: after it is set, revoking cannot recall what is already on their device. */
+  downloaded_at: Instant | null
 }
 
 export interface BlobsTable {

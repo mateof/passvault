@@ -147,6 +147,25 @@ export class VaultCache {
     }
   }
 
+  /**
+   * Forgets one event's key for one person, across every session they have open.
+   *
+   * What a revoke needs and no more: the person stays signed in and keeps every other event,
+   * but the one they lost access to stops opening this instant rather than at the end of their
+   * session. Without this a revoke is a promise the cache quietly breaks — the key was already
+   * in memory, so the next request served it as if nothing had changed.
+   */
+  evictEventForUser(userId: string, eventId: string): void {
+    for (const [sessionId, session] of this.sessions) {
+      if (session.userId !== userId) {
+        continue
+      }
+      const key = `${sessionId}:${eventId}`
+      this.eventKeys.get(key)?.fill(0)
+      this.eventKeys.delete(key)
+    }
+  }
+
   /** Drops everything expired. Called on a timer so idle keys do not sit around until reuse. */
   sweep(): number {
     const at = this.now()

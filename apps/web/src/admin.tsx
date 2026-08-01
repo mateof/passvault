@@ -62,6 +62,11 @@ function RegistrationCard({
   const [mode, setMode] = useState<RegistrationMode>(settings.mode)
   const [allowPasswordLogin, setAllowPasswordLogin] = useState(settings.allowPasswordLogin)
   const [requireSecondFactor, setRequireSecondFactor] = useState(settings.requireSecondFactor)
+  // Kept as a string so the "follow the deployment default" option has a value of its own rather
+  // than being an awkward empty number. Mapped back to a number, or null, at the moment of saving.
+  const [sessionDays, setSessionDays] = useState<string>(
+    settings.sessionDays != null ? String(settings.sessionDays) : 'default',
+  )
   const [saved, setSaved] = useState(false)
 
   return (
@@ -76,6 +81,7 @@ function RegistrationCard({
             mode,
             allowPasswordLogin,
             requireSecondFactor,
+            sessionDays: sessionDays === 'default' ? null : Number(sessionDays),
           })
           onSaved({ ...settings, ...next })
           setSaved(true)
@@ -111,6 +117,25 @@ function RegistrationCard({
           <span>{t('admin.requireSecondFactor')}</span>
         </label>
         <p className="muted">{t('admin.requireSecondFactorHelp')}</p>
+
+        <Select<string>
+          label={t('admin.sessionLength')}
+          value={sessionDays}
+          options={[
+            { value: 'default', label: t('admin.sessionLength.default') },
+            { value: '30', label: t('admin.sessionLength.30') },
+            { value: '90', label: t('admin.sessionLength.90') },
+            { value: '180', label: t('admin.sessionLength.180') },
+            { value: '365', label: t('admin.sessionLength.365') },
+          ]}
+          onChange={(value) => {
+            setSessionDays(value)
+            setSaved(false)
+          }}
+        />
+        {/* Said plainly, because "how long you stay signed in" is a trade the operator is making
+            on everyone's behalf: convenience against how long a stolen token keeps working. */}
+        <p className="muted">{t('admin.sessionLengthHelp')}</p>
       </Form>
       {saved ? <Banner kind="success">{t('admin.saved')}</Banner> : null}
     </Card>
@@ -417,7 +442,7 @@ export function AdminPage() {
 
   useEffect(() => {
     api
-      .registrationSettings(locale)
+      .adminRegistration(locale)
       .then(setSettings)
       .catch(() => undefined)
   }, [locale])

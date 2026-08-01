@@ -24,6 +24,43 @@ export function migrations(engine: Engine): Record<string, Migration> {
     '0003_ticket_source_batch': ticketSourceBatch(engine),
     '0004_handles_tags_and_notices': handlesTagsAndNotices(engine),
     '0005_event_password_keeper': eventPasswordKeeper(engine),
+    '0006_download_marks_and_session_length': downloadMarksAndSessionLength(engine),
+  }
+}
+
+/**
+ * Two facts the server had no place to keep: whether a shared person has pulled an event, and
+ * how long a session should last.
+ *
+ * `event_access.downloaded_at` is stamped the first time a member pulls the event's log. It is
+ * the difference between the two honest sentences an interface can say when access is revoked:
+ * before it is set, revoking cleanly stops them ever seeing the event; after, the tickets are
+ * already on their device and revoking only stops what comes next. Nullable, because it is the
+ * absence that carries the meaning.
+ *
+ * `registration_settings.session_days` moves the session lifetime out of the environment and
+ * into a row an administrator can change. Null keeps the deploy-time default; a number is a
+ * hard lifetime in days, which is what makes "stay signed in for a year" a setting rather than
+ * a redeploy.
+ */
+function downloadMarksAndSessionLength(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .alterTable('event_access')
+        .addColumn('downloaded_at', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .alterTable('registration_settings')
+        .addColumn('session_days', 'integer')
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      await db.schema.alterTable('event_access').dropColumn('downloaded_at').execute()
+      await db.schema.alterTable('registration_settings').dropColumn('session_days').execute()
+    },
   }
 }
 

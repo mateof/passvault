@@ -431,6 +431,8 @@ export async function grantAccess(
         granted_by: input.actorUserId,
         granted_at: toInstant(),
         revoked_at: null,
+        // Set the first time they pull the event, never here: a grant is not a download.
+        downloaded_at: null,
       })
       .execute()
   }
@@ -459,6 +461,9 @@ export interface EventAccessEntry {
   grantedAt: string
   /** Offered and unanswered. Holding an event is the recipient's decision, so this is a state. */
   pending: boolean
+  /** True once this person has pulled the event to a device. After it, revoking cannot recall
+   *  the tickets — they are already downloaded — which is what the revoke screen has to warn. */
+  downloaded: boolean
 }
 
 export async function listAccess(
@@ -477,7 +482,7 @@ export async function listAccess(
 
   const rows = await deps.db.db
     .selectFrom('event_access')
-    .select(['subject_kind', 'subject_id', 'role', 'granted_at'])
+    .select(['subject_kind', 'subject_id', 'role', 'granted_at', 'downloaded_at'])
     .where('event_id', '=', input.eventId)
     .where('revoked_at', 'is', null)
     .orderBy('granted_at', 'asc')
@@ -495,6 +500,9 @@ export async function listAccess(
           : await userEmailFor(deps, row.subject_id),
       grantedAt: row.granted_at,
       pending: false,
+      // A group never downloads — its members do, each on their own row — so a group entry is
+      // never "downloaded". Only a person's USER row carries the mark.
+      downloaded: row.downloaded_at !== null,
     })
   }
 
@@ -519,6 +527,8 @@ export async function listAccess(
       label: await userEmailFor(deps, row.user_id),
       grantedAt: row.created_at,
       pending: true,
+      // Nothing to download until they have accepted, so a pending invitation is never it.
+      downloaded: false,
     })
   }
 
@@ -565,6 +575,29 @@ async function userEmailFor(deps: EventDeps, userId: string): Promise<string> {
 }
 
 /**
+ * Records that a member has pulled this event at least once.
+ *
+ * Only the member's own USER access row, and only the first time — a second pull does not move
+ * the mark, because "when did they first have it" is the question a revoke has to answer. The
+ * creator has no access row (they own the event), so their pulls stamp nothing, which is right:
+ * you cannot revoke your own event from yourself.
+ */
+export async function markDownloaded(
+  deps: EventDeps,
+  eventId: string,
+  userId: string,
+): Promise<void> {
+  await deps.db.db
+    .updateTable('event_access')
+    .set({ downloaded_at: toInstant() })
+    .where('event_id', '=', eventId)
+    .where('subject_kind', '=', 'USER')
+    .where('subject_id', '=', userId)
+    .where('downloaded_at', 'is', null)
+    .execute()
+}
+
+/**
  * Revokes access.
  *
  * Worth being precise about what this does, because the name promises more than it can deliver:
@@ -589,6 +622,23 @@ export async function revokeAccess(
     .where('subject_kind', '=', input.subjectKind)
     .where('subject_id', '=', input.subjectId)
     .execute()
+
+  // A revoke that leaves the key cached is a revoke the next request ignores. For a person, drop
+  // it from their sessions now; for a group, drop it from every active member, since access to
+  // the event was flowing to each of them through the one row just revoked.
+  if (input.subjectKind === 'USER') {
+    deps.vaults.evictEventForUser(input.subjectId, input.eventId)
+  } else {
+    const members = await deps.db.db
+      .selectFrom('group_members')
+      .select('user_id')
+      .where('group_id', '=', input.subjectId)
+      .where('status', '=', 'ACTIVE')
+      .execute()
+    for (const member of members) {
+      deps.vaults.evictEventForUser(member.user_id, input.eventId)
+    }
+  }
 }
 
 export interface OpenEventInput {

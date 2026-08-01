@@ -208,6 +208,26 @@ function SecondFactorCard() {
 
 
 /**
+ * Turns whatever someone types into a handle the server will accept.
+ *
+ * The server's rule is narrow on purpose — lower case, digits, dot, dash, underscore — and a
+ * Spanish or Galician name walks straight into it: "Mateo Fernández" has a capital, a space and
+ * an accent, all three forbidden, and the old field let it be submitted and then showed a red
+ * error. Sanitising as they type means a real name becomes `mateo-fernandez` in front of them
+ * instead of a rejection after the fact. The accents go by decomposing to base letters and
+ * dropping the marks; spaces and everything else outside the set collapse to a single dash.
+ */
+function slugifyHandle(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[._-]+/, '')
+    .slice(0, 32)
+}
+
+/**
  * The name people can find you by.
  *
  * Everything else this account knows about somebody is encrypted; a handle deliberately is not,
@@ -288,7 +308,9 @@ function HandleCard() {
           label={t('handle.field')}
           value={handle}
           onChange={(value) => {
-            setHandle(value)
+            // Sanitised in place, so the field only ever holds something the server accepts and
+            // the "save" below cannot fail on a character the person could not have known about.
+            setHandle(slugifyHandle(value))
             setSaved(false)
           }}
           autoComplete="off"

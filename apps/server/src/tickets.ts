@@ -199,19 +199,25 @@ export async function claimFreeTicket(
     throw badRequest('claim.rejected.overAllowance', { allowance: 1 })
   }
 
-  const free = await deps.db.db
-    .selectFrom('tickets')
-    .select(['id', 'assignment_mode'])
-    .where('event_id', '=', input.eventId)
-    .where('status', '=', 'ACTIVE')
-    .where('assignment_state', '=', 'FREE')
-    .orderBy('created_at', 'asc')
-    .execute()
+  const free = (
+    await deps.db.db
+      .selectFrom('tickets')
+      .select(['id', 'assignment_mode'])
+      .where('event_id', '=', input.eventId)
+      .where('status', '=', 'ACTIVE')
+      .where('assignment_state', '=', 'FREE')
+      .execute()
+  ).filter((ticket) => ticket.assignment_mode === 'SELF_CLAIM')
 
-  const claimable = free.find((ticket) => ticket.assignment_mode === 'SELF_CLAIM')
-  if (!claimable) {
+  if (free.length === 0) {
     throw badRequest('claim.error.notClaimable')
   }
+
+  // At random, which is what the request is: everybody grabbing the first-created ticket turns a
+  // fair draw into a queue, and two people claiming at once would fight over the same row every
+  // time. A uniform pick from cryptographic bytes spreads the contention and honours "al azar".
+  const pick = (randomBytes(1)[0] ?? 0) % free.length
+  const claimable = free[pick] as { id: string; assignment_mode: string }
 
   const result = await deps.db.db
     .updateTable('tickets')
@@ -610,6 +616,42 @@ export async function setPayment(
     .execute()
 }
 
+/**
+ * What a viewer can do about claiming, since they no longer see the free tickets themselves.
+ *
+ * A member's ticket list is filtered to what is theirs, which means the free self-claim tickets
+ * are invisible to them — correct for privacy, but then how do they know there is one to grab?
+ * This is the answer the button reads: how many are claimable, and whether they already hold one.
+ */
+export interface ClaimSummary {
+  /** Free self-claim tickets left in the event. */
+  freeToClaim: number
+  /** True once this viewer holds a ticket here, so the button becomes "you already have one". */
+  alreadyHolds: boolean
+}
+
+export async function claimSummary(
+  deps: EventDeps,
+  input: { eventId: string; viewerUserId: string },
+): Promise<ClaimSummary> {
+  const free = await deps.db.db
+    .selectFrom('tickets')
+    .select((eb) => eb.fn.countAll<number>().as('count'))
+    .where('event_id', '=', input.eventId)
+    .where('status', '=', 'ACTIVE')
+    .where('assignment_mode', '=', 'SELF_CLAIM')
+    .where('assignment_state', '=', 'FREE')
+    .executeTakeFirst()
+  const held = await deps.db.db
+    .selectFrom('tickets')
+    .select('id')
+    .where('event_id', '=', input.eventId)
+    .where('status', '=', 'ACTIVE')
+    .where('holder_user_id', '=', input.viewerUserId)
+    .executeTakeFirst()
+  return { freeToClaim: Number(free?.count ?? 0), alreadyHolds: held !== undefined }
+}
+
 export interface TicketProjection {
   id: string
   label: string | null
@@ -621,6 +663,8 @@ export interface TicketProjection {
   assignmentState: string
   holderUserId: string | null
   holderLabel: string | null
+  /** The holder's public name, resolved for the creator so a claim reads as a person, not an id. */
+  holderHandle: string | null
   status: string
   payment?: {
     state: string
@@ -677,7 +721,24 @@ export async function projectTickets(
     .orderBy('tickets.created_at', 'asc')
     .execute()
 
-  return rows.map((row) => {
+  // Who holds each ticket, by handle, resolved once for the creator. A claim they cannot put a
+  // name to is a list of ticket ids and user ids — true, and useless for "who got which".
+  const handles = new Map<string, string | null>()
+  if (isCreator) {
+    const holderIds = [...new Set(rows.map((r) => r.holder_user_id).filter(Boolean))] as string[]
+    if (holderIds.length > 0) {
+      const found = await deps.db.db
+        .selectFrom('users')
+        .select(['id', 'handle'])
+        .where('id', 'in', holderIds)
+        .execute()
+      for (const user of found) {
+        handles.set(user.id, user.handle)
+      }
+    }
+  }
+
+  const projected = rows.map((row) => {
     const isHolder = row.holder_user_id === input.viewerUserId
     const maySeeBarcode = isCreator || row.assignment_mode === 'OPEN' || isHolder
 
@@ -707,6 +768,7 @@ export async function projectTickets(
         row.holder_label_cipher,
         field(row.id, 'holder_label_cipher'),
       ),
+      holderHandle: row.holder_user_id ? (handles.get(row.holder_user_id) ?? null) : null,
       status: row.status,
     }
 
@@ -729,6 +791,19 @@ export async function projectTickets(
 
     return projection
   })
+
+  // Under self-claim a member sees only the ticket they took — "vea só a súa entrada". The free
+  // ones and those other people grabbed are not on their screen at all; the claim button, which
+  // reads the count separately, is how they know there is one to take. Open and assigned events
+  // are left as they were: a shared wallet shows everything, an assigned one shows the list with
+  // barcodes gated, and only the creator sees the whole self-claim draw and who won each seat.
+  if (isCreator) {
+    return projected
+  }
+  return projected.filter(
+    (ticket) =>
+      ticket.assignmentMode !== 'SELF_CLAIM' || ticket.holderUserId === input.viewerUserId,
+  )
 }
 
 function decrypt(
