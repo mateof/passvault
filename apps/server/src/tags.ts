@@ -39,10 +39,25 @@ export interface Tag {
   eventCount: number
 }
 
+/**
+ * Creates a label — or returns the one that already says the same thing.
+ *
+ * "Vigo" and "vigo" are one word to the person typing, and the fastest way to end up with two
+ * identical chips in every list is a create button that takes the request literally. Names are
+ * ciphertext, so the comparison happens here, where the caller's key is: decrypt what they have,
+ * compare casefolded, and hand back the existing identifier when it matches.
+ */
 export async function createTag(
   deps: EventDeps,
   input: { ownerUserId: string; dataKey: Uint8Array; name: string; colour: string },
-): Promise<{ tagId: string }> {
+): Promise<{ tagId: string; existed?: boolean }> {
+  const wanted = input.name.trim().toLowerCase()
+  const mine = await listTags(deps, { ownerUserId: input.ownerUserId, dataKey: input.dataKey })
+  const existing = mine.find((tag) => tag.name.trim().toLowerCase() === wanted)
+  if (existing) {
+    return { tagId: existing.id, existed: true }
+  }
+
   const id = newId()
   await deps.db.db
     .insertInto('tags')

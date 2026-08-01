@@ -418,6 +418,17 @@ describe('labels', () => {
     expect((await tags()).json().tags).toMatchObject([{ name: 'Vigo', colour: 'teal' }])
   })
 
+  it('do not duplicate on a second create, whatever the capitalisation', async () => {
+    // "Vigo" and "vigo" are one word to the person typing. A create button that takes the
+    // request literally is how every list ends up with two identical chips.
+    const first = (await createTag('Vigo')).json()
+
+    const again = (await createTag('vigo', 'red')).json()
+
+    expect(again.tagId).toBe(first.tagId)
+    expect((await tags()).json().tags).toHaveLength(1)
+  })
+
   it('are renamed and recoloured without being remade', async () => {
     const { tagId } = (await createTag('Vigo')).json()
 
