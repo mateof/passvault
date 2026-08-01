@@ -48,4 +48,15 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-function': 'off',
     },
   },
+  {
+    // The scripts run under Node, where `console` and `process` exist. Without the globals
+    // the linter reports the runtime's own vocabulary as undefined.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
 )

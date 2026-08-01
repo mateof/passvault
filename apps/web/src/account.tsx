@@ -231,7 +231,8 @@ function HandleCard() {
     // The session can arrive after the first render; the field follows it once, and never
     // overwrites something being typed.
     if (me?.handle && handle === '') setHandle(me.handle)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `handle` is deliberately not a dependency: the effect must fire when the session
+    // arrives, never while somebody is typing.
   }, [me?.handle])
 
   useEffect(() => {
