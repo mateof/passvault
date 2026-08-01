@@ -195,7 +195,7 @@ export async function deleteAccount(deps: DeletionDeps, userId: string): Promise
  * the second; files are removed as their rows go, and a file already missing is not an error —
  * this function has to be re-runnable over a half-deleted event.
  */
-async function deleteEvent(deps: DeletionDeps, eventId: string): Promise<void> {
+export async function deleteEvent(deps: DeletionDeps, eventId: string): Promise<void> {
   const tickets = await deps.db.db
     .selectFrom('tickets')
     .select('id')

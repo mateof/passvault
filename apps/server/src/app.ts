@@ -72,7 +72,7 @@ const INGEST_MESSAGE_KEYS: Record<IngestErrorCode, MessageKey> = {
 }
 import { readBlob, storeBlob } from './blobs.js'
 import { assertHandle, findPerson, requirePerson, setHandle } from './directory.js'
-import { deleteAccount, deleteOwnAccount } from './deletion.js'
+import { deleteAccount, deleteEvent, deleteOwnAccount } from './deletion.js'
 import {
   acceptInvitation,
   declineInvitation,
@@ -1232,6 +1232,37 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   })
 
   /**
+   * Deletes one event outright: tickets, operations, files on disk.
+   *
+   * Only its creator, or an administrator. Different from withdrawing tickets, which is a
+   * tombstone in a log that keeps telling the story — this is for the event that should never
+   * have existed, and it takes the story with it. Phones that hold a copy keep their copy;
+   * nothing can reach into them, and the next synchronisation simply finds nothing here.
+   */
+  app.delete('/api/v1/events/:id', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    const isAdmin = (
+      await db.db.selectFrom('users').select('is_admin').where('id', '=', session.user_id).executeTakeFirst()
+    )?.is_admin === 1
+    if (event.creator_user_id !== session.user_id && !isAdmin) {
+      throw forbidden('event.error.notCreator')
+    }
+    await deleteEvent(deletionDeps, id)
+    await repo.recordAudit(db, {
+      actorUserId: session.user_id,
+      action: 'event.deleted',
+      subjectKind: 'event',
+      subjectId: id,
+    })
+    return reply.send({ deleted: true })
+  })
+
+  /**
    * The event password: seen, set, changed or removed by its creator.
    *
    * Reading it back exists because the password's job is social as well as cryptographic — the
@@ -2098,8 +2129,26 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
 
   app.post('/api/v1/tickets/:id/withdraw', async (request) => {
     const { id } = ticketParams.parse(request.params)
-    const session = await sessionOf(request)
+    const ticket = await db.db
+      .selectFrom('tickets')
+      .select('event_id')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!ticket) {
+      throw notFound()
+    }
+    // Through openEvent for the key: the withdrawal goes into the log as well as the row,
+    // because a row updated behind the log's back is a phone that still shows the ticket at
+    // its next synchronisation — the exact bug tombstones exist to prevent.
+    const { session, eventKey } = await openEvent(request, ticket.event_id)
     await withdrawTicket(eventDeps, { ticketId: id, actorUserId: session.user_id })
+    await recordOperation(eventDeps, {
+      eventId: ticket.event_id,
+      eventKey,
+      actorUserId: session.user_id,
+      type: 'ticket.remove',
+      body: { ticketId: id },
+    })
     return { withdrawn: true, recallsDeliveredTickets: false }
   })
 

@@ -520,6 +520,13 @@ export const api = {
       binary: { file },
     }),
 
+  /** Removes the event outright: tickets, log, files. Creator only; there is no undo. */
+  deleteEvent: (locale: string, id: string) =>
+    request<{ deleted: boolean }>(`/api/v1/events/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
   deleteEventImage: (locale: string, id: string) =>
     request<void>(`/api/v1/events/${encodeURIComponent(id)}/image`, {
       ...json(locale),

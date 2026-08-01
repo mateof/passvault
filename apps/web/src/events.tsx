@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   api,
   type AccessEntry,
@@ -470,7 +470,7 @@ export function EventPage() {
   const [event, setEvent] = useState<EventDetail>()
   const [tickets, setTickets] = useState<TicketSummary[]>([])
   const [openDialog, setOpenDialog] = useState<
-    'edit' | 'appearance' | 'tags' | 'share' | 'password' | 'add' | 'export'
+    'edit' | 'appearance' | 'tags' | 'share' | 'password' | 'add' | 'export' | 'delete'
   >()
   const [needsPassword, setNeedsPassword] = useState(false)
   const [password, setPassword] = useState('')
@@ -593,6 +593,9 @@ export function EventPage() {
           <Button variant="quiet" icon="download" onClick={() => setOpenDialog('export')}>
             {t('export.title')}
           </Button>
+          <Button variant="quiet" icon="warning" onClick={() => setOpenDialog('delete')}>
+            {t('events.delete')}
+          </Button>
         </div>
       ) : null}
 
@@ -660,6 +663,15 @@ export function EventPage() {
         onClose={closeAndReload}
       >
         <ExportCard eventId={id} />
+      </Modal>
+
+      <Modal
+        open={openDialog === 'delete'}
+        title={t('events.delete')}
+        icon="warning"
+        onClose={() => setOpenDialog(undefined)}
+      >
+        <DeleteEventForm eventId={id} eventName={event.name} />
       </Modal>
 
       <DocumentsCard eventId={id} tickets={tickets} onChanged={load} />
@@ -1617,5 +1629,39 @@ function QuarantineCard({ eventId }: { eventId: string }) {
         ))}
       </ul>
     </Card>
+  )
+}
+
+
+/**
+ * The end of an event, said before it happens.
+ *
+ * Different from withdrawing a ticket, which is a tombstone in a log that keeps telling the
+ * story: this removes the story — tickets, history, files — for everyone the event was shared
+ * with. Phones that already hold a copy keep it; nothing can reach into them.
+ */
+function DeleteEventForm({ eventId, eventName }: { eventId: string; eventName: string }) {
+  const { t, locale } = useT()
+  const navigate = useNavigate()
+  const [failure, setFailure] = useState<string>()
+
+  return (
+    <>
+      <Banner kind="warning">{t('events.deleteWarning', { name: eventName })}</Banner>
+      {failure ? <Banner kind="error">{failure}</Banner> : null}
+      <Button
+        variant="danger"
+        onClick={async () => {
+          try {
+            await api.deleteEvent(locale, eventId)
+            navigate('/')
+          } catch (cause) {
+            setFailure(cause instanceof ApiError ? cause.message : t('error.unexpected'))
+          }
+        }}
+      >
+        {t('events.deleteConfirm')}
+      </Button>
+    </>
   )
 }

@@ -255,6 +255,9 @@ export const gl = {
   'tickets.holder': 'Portador',
   'tickets.assign': 'Asignar',
   'tickets.claim': 'Reclamar',
+  'events.delete': 'Eliminar',
+  'events.deleteWarning': 'Borra «{name}» por completo: as entradas, o historial e os ficheiros, tamen para todos con quen se compartiu. Non se pode desfacer.',
+  'events.deleteConfirm': 'Eliminar o evento definitivamente',
   'tickets.withdraw': 'Retirar',
   'tickets.reconcile': 'Resolver reclamos',
   // "Retirar", never "revogar". Quen xa importou o ficheiro ten o código.
@@ -641,6 +644,9 @@ export const es: Record<WebMessageKey, string> = {
   'tickets.holder': 'Portador',
   'tickets.assign': 'Asignar',
   'tickets.claim': 'Reclamar',
+  'events.delete': 'Eliminar',
+  'events.deleteWarning': 'Borra «{name}» por completo: las entradas, el historial y los archivos, tambien para todos con quienes se compartio. No se puede deshacer.',
+  'events.deleteConfirm': 'Eliminar el evento definitivamente',
   'tickets.withdraw': 'Retirar',
   'tickets.reconcile': 'Resolver reclamaciones',
   'tickets.withdrawWarning':
@@ -1021,6 +1027,9 @@ export const en: Record<WebMessageKey, string> = {
   'tickets.holder': 'Holder',
   'tickets.assign': 'Assign',
   'tickets.claim': 'Claim',
+  'events.delete': 'Delete',
+  'events.deleteWarning': 'Removes “{name}” entirely: the tickets, the history and the files, for everyone it was shared with too. This cannot be undone.',
+  'events.deleteConfirm': 'Delete the event for good',
   'tickets.withdraw': 'Withdraw',
   'tickets.reconcile': 'Resolve claims',
   'tickets.withdrawWarning':

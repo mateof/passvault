@@ -231,3 +231,95 @@ describe('deleting your own account', () => {
     expect(operations.length).toBeGreaterThan(0)
   })
 })
+
+describe('deleting one event', () => {
+  it('removes it whole, files included, for its creator', async () => {
+    const eventId = (
+      await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/events',
+        headers: bearer(member),
+        payload: { name: 'Un erro' },
+      })
+    ).json().eventId
+    const pdf = await ticketPdf([{ codes: [{ text: '8412-DEL-0002' }] }])
+    const proposal = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/ingest`,
+      headers: { ...bearer(member), 'content-type': 'application/pdf' },
+      payload: Buffer.from(pdf),
+    })
+    await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/ingest/${proposal.json().ingestId}/confirm`,
+      headers: bearer(member),
+      payload: { include: [0] },
+    })
+    const stored = await server.db.db.selectFrom('blobs').select('storage_path').execute()
+
+    const response = await server.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/events/${eventId}`,
+      headers: bearer(member),
+    })
+
+    expect(response.json()).toMatchObject({ deleted: true })
+    expect(await server.db.db.selectFrom('events').selectAll().execute()).toEqual([])
+    expect(await server.db.db.selectFrom('tickets').selectAll().execute()).toEqual([])
+    expect(await server.db.db.selectFrom('operations').selectAll().execute()).toEqual([])
+    for (const blob of stored) {
+      expect(existsSync(join(server.config.blobDir, blob.storage_path))).toBe(false)
+    }
+  })
+
+  it('is refused to anybody who is not its creator nor an administrator', async () => {
+    const eventId = (
+      await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/events',
+        headers: bearer(admin),
+        payload: { name: 'Festival' },
+      })
+    ).json().eventId
+
+    const response = await server.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/events/${eventId}`,
+      headers: bearer(member),
+    })
+
+    expect(response.statusCode).toBe(403)
+    expect(await server.db.db.selectFrom('events').selectAll().execute()).toHaveLength(1)
+  })
+})
+
+describe('withdrawing a ticket', () => {
+  it('writes the tombstone into the log, so phones learn at the next synchronisation', async () => {
+    const eventId = (
+      await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/events',
+        headers: bearer(admin),
+        payload: { name: 'Festival' },
+      })
+    ).json().eventId
+    const ticketId = (
+      await server.app.inject({
+        method: 'POST',
+        url: `/api/v1/events/${eventId}/tickets`,
+        headers: bearer(admin),
+        payload: { tickets: [{ label: 'Un' }] },
+      })
+    ).json().ticketIds[0]
+
+    const response = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/tickets/${ticketId}/withdraw`,
+      headers: bearer(admin),
+    })
+
+    expect(response.json()).toMatchObject({ withdrawn: true })
+    const kinds = await server.db.db.selectFrom('operations').select('type').execute()
+    expect(kinds.map((row) => row.type)).toContain('ticket.remove')
+  })
+})
