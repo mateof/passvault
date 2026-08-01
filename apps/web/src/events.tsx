@@ -159,9 +159,16 @@ export function EventsPage() {
         title={t('events.title')}
         subtitle={t('events.subtitle', { count: events.length })}
         action={
-          <Button icon="plus" onClick={() => setCreating(true)}>
-            {t('events.create')}
-          </Button>
+          <span className="button-row">
+            {/* The browser's own reload does the same job, but a button beside the list says the
+                data can be stale and names the cure — which a URL bar does not. */}
+            <Button variant="quiet" icon="chevron" onClick={() => void load()}>
+              {t('events.refresh')}
+            </Button>
+            <Button icon="plus" onClick={() => setCreating(true)}>
+              {t('events.create')}
+            </Button>
+          </span>
         }
       />
 

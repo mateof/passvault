@@ -17,6 +17,7 @@ export const gl = {
   'nav.account': 'Conta',
   'nav.admin': 'Administración',
   'nav.signOut': 'Saír',
+  'events.refresh': 'Actualizar',
   'admin.clearHandle': 'Liberar o nome',
 
   // --- Editing an event, its password, and who you are ---
@@ -395,6 +396,7 @@ export const es: Record<WebMessageKey, string> = {
   'nav.account': 'Cuenta',
   'nav.admin': 'Administración',
   'nav.signOut': 'Salir',
+  'events.refresh': 'Actualizar',
   'admin.clearHandle': 'Liberar el nombre',
 
   // --- Editar un evento, su contrasena y quien eres ---
@@ -768,6 +770,7 @@ export const en: Record<WebMessageKey, string> = {
   'nav.account': 'Account',
   'nav.admin': 'Administration',
   'nav.signOut': 'Sign out',
+  'events.refresh': 'Refresh',
   'admin.clearHandle': 'Free the name',
 
   // --- Editing an event, its password, and who you are ---
