@@ -110,6 +110,12 @@ export interface CreatedEvent {
   passwordProtected: boolean
 }
 
+const passwordKeeperAad = (eventId: string) => ({
+  table: 'events',
+  column: 'password_keeper_cipher',
+  rowId: eventId,
+})
+
 export async function createEvent(deps: EventDeps, input: CreateEventInput): Promise<CreatedEvent> {
   const eventId = input.eventId ?? newId()
   const eventKey = createDataKey()
@@ -162,6 +168,17 @@ export async function createEvent(deps: EventDeps, input: CreateEventInput): Pro
       icon: allowed(EVENT_ICONS, input.icon),
       colour: allowed(EVENT_COLOURS, input.colour),
       image_blob_id: null,
+      // The creator's readable copy, from day one: a password that can be seen and copied is
+      // the difference between telling your friends and guessing what you typed in March.
+      password_keeper_cipher: input.password
+        ? Buffer.from(
+            deps.crypto.encryptField(
+              input.creatorDataKey,
+              input.password,
+              passwordKeeperAad(eventId),
+            ),
+          )
+        : null,
       sealed_key_envelope: Buffer.from(sealEnvelope(envelope, deps.crypto.masterKey)),
       authority_device_id: null,
       status: 'ACTIVE',
@@ -211,6 +228,8 @@ export interface EventRow {
   icon: string | null
   colour: string | null
   image_blob_id: string | null
+  /** The creator's readable copy of the password. See migration 0005. */
+  password_keeper_cipher: Uint8Array | null
 }
 
 export async function findEvent(deps: EventDeps, eventId: string): Promise<EventRow | undefined> {
@@ -228,6 +247,9 @@ export async function findEvent(deps: EventDeps, eventId: string): Promise<Event
     name_cipher: new Uint8Array(row.name_cipher),
     venue_cipher: row.venue_cipher ? new Uint8Array(row.venue_cipher) : null,
     notes_cipher: row.notes_cipher ? new Uint8Array(row.notes_cipher) : null,
+    password_keeper_cipher: row.password_keeper_cipher
+      ? new Uint8Array(row.password_keeper_cipher)
+      : null,
   }
 }
 
@@ -719,6 +741,172 @@ export async function setEventAppearance(
   }
   if (input.imageBlobId !== undefined) {
     changes.image_blob_id = input.imageBlobId
+  }
+  if (Object.keys(changes).length === 0) {
+    return
+  }
+
+  await deps.db.db
+    .updateTable('events')
+    .set({ ...changes, updated_at: toInstant() })
+    .where('id', '=', input.eventId)
+    .execute()
+}
+
+/**
+ * Sets or changes the event password, after the fact.
+ *
+ * A password could only ever be chosen at creation, which made a typo permanent and a password
+ * chosen in a hurry unchangeable. What it actually is is a slot in the key envelope, and slots
+ * can be rebuilt by anyone who holds the event key — which the creator does.
+ *
+ * The rules the envelope encodes are preserved exactly: with a password there is no server slot,
+ * so the operator loses the ability to decrypt at the moment one is set; removing the password
+ * puts the server slot back, because members with no secret must still be able to open it.
+ *
+ * The creator's own copy is stored under their data key so they can read it back to tell their
+ * friends — see migration 0005. Members who already opened the event this session keep their
+ * cached key; new openings need the new password, which is what changing it means.
+ */
+export async function setEventPassword(
+  deps: EventDeps,
+  input: {
+    eventId: string
+    actorUserId: string
+    actorDataKey: Uint8Array
+    eventKey: Uint8Array
+    /** Null removes the password and hands the event back to the server slot. */
+    password: string | null
+  },
+): Promise<void> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event) {
+    throw notFound()
+  }
+  if (event.creator_user_id !== input.actorUserId) {
+    throw forbidden('event.error.notCreator')
+  }
+
+  let envelope: KeyEnvelope = addKeySlot(
+    emptyEnvelope(),
+    SLOT_CREATOR,
+    input.eventKey,
+    input.actorDataKey,
+  )
+  if (input.password) {
+    envelope = await addPasswordSlot(
+      envelope,
+      SLOT_EVENT_PASSWORD,
+      input.eventKey,
+      input.password,
+      deps.argon2Params,
+    )
+  } else {
+    envelope = addKeySlot(envelope, SLOT_SERVER, input.eventKey, serverEventKey(deps, input.eventId))
+  }
+
+  await deps.db.db
+    .updateTable('events')
+    .set({
+      sealed_key_envelope: Buffer.from(sealEnvelope(envelope, deps.crypto.masterKey)),
+      password_protected: input.password ? 1 : 0,
+      password_keeper_cipher: input.password
+        ? Buffer.from(
+            deps.crypto.encryptField(input.actorDataKey, input.password, passwordKeeperAad(input.eventId)),
+          )
+        : null,
+      updated_at: toInstant(),
+    })
+    .where('id', '=', input.eventId)
+    .execute()
+
+  await repo.recordAudit(deps.db, {
+    actorUserId: input.actorUserId,
+    action: input.password ? 'event.password.set' : 'event.password.removed',
+    subjectKind: 'event',
+    subjectId: input.eventId,
+  })
+}
+
+/**
+ * The password, read back by the one person entitled to it.
+ *
+ * Null for an event with none, and null for one whose password predates the keeper column: the
+ * envelope never stored a readable copy, so those passwords are genuinely unrecoverable — which
+ * is worth saying to the caller rather than failing.
+ */
+export async function readEventPassword(
+  deps: EventDeps,
+  input: { eventId: string; actorUserId: string; actorDataKey: Uint8Array },
+): Promise<string | null> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event) {
+    throw notFound()
+  }
+  if (event.creator_user_id !== input.actorUserId) {
+    // The password is what the creator tells people by another route. Reading it here would
+    // make the sharing route the other route.
+    throw forbidden('event.error.notCreator')
+  }
+  if (!event.password_keeper_cipher) {
+    return null
+  }
+  try {
+    return deps.crypto.decryptField(
+      input.actorDataKey,
+      new Uint8Array(event.password_keeper_cipher),
+      passwordKeeperAad(input.eventId),
+    )
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Edits the facts of an event: name, venue, when it is, how tickets are handed out.
+ *
+ * Only the creator, and always through the operation log as well as the row — the log is what
+ * carries the change to every phone, and a row updated behind the log's back is a wallet that
+ * disagrees with itself at the next synchronisation.
+ */
+export async function updateEventFacts(
+  deps: EventDeps,
+  input: {
+    eventId: string
+    actorUserId: string
+    eventKey: Uint8Array
+    name?: string
+    venue?: string | null
+    startsAt?: string | null
+    defaultAssignmentMode?: AssignmentMode
+  },
+): Promise<void> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event) {
+    throw notFound()
+  }
+  if (event.creator_user_id !== input.actorUserId) {
+    throw forbidden('event.error.notCreator')
+  }
+
+  const changes: Record<string, Buffer | string | null> = {}
+  if (input.name !== undefined) {
+    changes.name_cipher = Buffer.from(
+      deps.crypto.encryptField(input.eventKey, input.name, field(input.eventId, 'name_cipher')),
+    )
+  }
+  if (input.venue !== undefined) {
+    changes.venue_cipher = input.venue
+      ? Buffer.from(
+          deps.crypto.encryptField(input.eventKey, input.venue, field(input.eventId, 'venue_cipher')),
+        )
+      : null
+  }
+  if (input.startsAt !== undefined) {
+    changes.starts_at = input.startsAt
+  }
+  if (input.defaultAssignmentMode !== undefined) {
+    changes.default_assignment_mode = input.defaultAssignmentMode
   }
   if (Object.keys(changes).length === 0) {
     return

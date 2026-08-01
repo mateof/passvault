@@ -124,6 +124,208 @@ describe('a handle', () => {
   })
 })
 
+describe('what /me says about you', () => {
+  it('carries the handle once one is chosen, and null before', async () => {
+    // Without this a client cannot tell "you have no name" from "we never asked", which is
+    // exactly the confusion that makes somebody set the same handle three times.
+    const before = (await server.app.inject({ url: '/api/v1/me', headers: bearer(owner) })).json()
+    expect(before.handle).toBeNull()
+
+    await setHandle(owner, 'mateo')
+
+    const after = (await server.app.inject({ url: '/api/v1/me', headers: bearer(owner) })).json()
+    expect(after.handle).toBe('mateo')
+  })
+
+  it('lets a handle be changed, freeing the old one', async () => {
+    await setHandle(owner, 'mateo')
+    await setHandle(owner, 'mateof')
+
+    expect(
+      (await server.app.inject({ url: '/api/v1/me', headers: bearer(owner) })).json().handle,
+    ).toBe('mateof')
+    expect(
+      (
+        await server.app.inject({
+          url: '/api/v1/directory/handle?handle=mateo',
+          headers: bearer(member),
+        })
+      ).json().taken,
+    ).toBe(false)
+  })
+})
+
+describe('the event password, after creation', () => {
+  const makeEvent = async (payload: Record<string, unknown> = {}) =>
+    (
+      await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/events',
+        headers: bearer(owner),
+        payload: { name: 'Festival', ...payload },
+      })
+    ).json().eventId as string
+
+  const password = (eventId: string, token = owner) =>
+    server.app.inject({ url: `/api/v1/events/${eventId}/password`, headers: bearer(token) })
+
+  it('is readable back by its creator, to be told to friends', async () => {
+    const eventId = await makeEvent({ password: 'entradas-2026' })
+
+    expect((await password(eventId)).json().password).toBe('entradas-2026')
+  })
+
+  it('is nobody else’s to read, even somebody the event is shared with', async () => {
+    const eventId = await makeEvent({ password: 'entradas-2026' })
+
+    expect((await password(eventId, member)).statusCode).toBe(403)
+  })
+
+  it('can be set later, which locks the operator out from that moment', async () => {
+    const eventId = await makeEvent()
+    expect(
+      (await server.app.inject({ url: `/api/v1/events/${eventId}`, headers: bearer(owner) })).json()
+        .readableByServer,
+    ).toBe(true)
+
+    const response = await server.app.inject({
+      method: 'PUT',
+      url: `/api/v1/events/${eventId}/password`,
+      headers: bearer(owner),
+      payload: { password: 'agora-si-2026' },
+    })
+
+    expect(response.json()).toMatchObject({ passwordProtected: true })
+    expect((await password(eventId)).json().password).toBe('agora-si-2026')
+    expect(
+      (await server.app.inject({ url: `/api/v1/events/${eventId}`, headers: bearer(owner) })).json()
+        .readableByServer,
+    ).toBe(false)
+  })
+
+  it('can be changed, and the old one stops opening the event', async () => {
+    const eventId = await makeEvent({ password: 'vella-2026' })
+    await server.app.inject({
+      method: 'PUT',
+      url: `/api/v1/events/${eventId}/password`,
+      headers: bearer(owner),
+      payload: { password: 'nova-2026' },
+    })
+    await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/access`,
+      headers: bearer(owner),
+      payload: { subjectKind: 'USER', email: MEMBER.email },
+    })
+    const invitation = (
+      await server.app.inject({ url: '/api/v1/invitations', headers: bearer(member) })
+    ).json().invitations[0]
+
+    const stale = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/invitations/${invitation.id}/accept`,
+      headers: bearer(member),
+      payload: { password: 'vella-2026' },
+    })
+    expect(stale.statusCode).toBeGreaterThanOrEqual(400)
+
+    const fresh = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/invitations/${invitation.id}/accept`,
+      headers: bearer(member),
+      payload: { password: 'nova-2026' },
+    })
+    expect(fresh.statusCode).toBe(200)
+  })
+
+  it('can be removed, which hands the event back to the server slot', async () => {
+    const eventId = await makeEvent({ password: 'entradas-2026' })
+
+    await server.app.inject({
+      method: 'PUT',
+      url: `/api/v1/events/${eventId}/password`,
+      headers: bearer(owner),
+      payload: { password: null },
+    })
+
+    expect((await password(eventId)).json().password).toBeNull()
+    expect(
+      (await server.app.inject({ url: `/api/v1/events/${eventId}`, headers: bearer(owner) })).json()
+        .readableByServer,
+    ).toBe(true)
+  })
+})
+
+describe('editing the facts of an event', () => {
+  it('changes venue, date and mode in one request, and the change reaches the log', async () => {
+    const eventId = (
+      await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/events',
+        headers: bearer(owner),
+        payload: { name: 'Festival' },
+      })
+    ).json().eventId
+
+    const response = await server.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/events/${eventId}/facts`,
+      headers: bearer(owner),
+      payload: {
+        venue: 'Recinto Ferial',
+        startsAt: '2026-08-14T19:00:00.000Z',
+        defaultAssignmentMode: 'SELF_CLAIM',
+      },
+    })
+
+    expect(response.json()).toMatchObject({
+      venue: 'Recinto Ferial',
+      startsAt: '2026-08-14T19:00:00.000Z',
+      defaultAssignmentMode: 'SELF_CLAIM',
+    })
+  })
+
+  it('clears a date with an explicit null rather than by omission', async () => {
+    const eventId = (
+      await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/events',
+        headers: bearer(owner),
+        payload: { name: 'Festival', startsAt: '2026-08-14T19:00:00.000Z' },
+      })
+    ).json().eventId
+
+    const response = await server.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/events/${eventId}/facts`,
+      headers: bearer(owner),
+      payload: { startsAt: null },
+    })
+
+    expect(response.json().startsAt).toBeNull()
+  })
+
+  it('is the creator’s to do and nobody else’s', async () => {
+    const eventId = (
+      await server.app.inject({
+        method: 'POST',
+        url: '/api/v1/events',
+        headers: bearer(owner),
+        payload: { name: 'Festival' },
+      })
+    ).json().eventId
+
+    const response = await server.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/events/${eventId}/facts`,
+      headers: bearer(member),
+      payload: { venue: 'Outro sitio' },
+    })
+
+    expect(response.statusCode).toBeGreaterThanOrEqual(403)
+  })
+})
+
 describe('labels', () => {
   const tags = (token = owner) =>
     server.app.inject({ url: '/api/v1/tags', headers: bearer(token) })

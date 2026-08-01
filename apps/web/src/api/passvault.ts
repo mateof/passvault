@@ -22,6 +22,8 @@ export interface Me {
   locale: string
   isAdmin: boolean
   status: string
+  /** The name people find this account by. Null until one is chosen. */
+  handle?: string | null
   /** Almost every other endpoint depends on this, so it travels with the session. */
   vaultUnlocked: boolean
   /**
@@ -613,6 +615,32 @@ export const api = {
       ...json(locale),
       method: 'POST',
     }),
+
+  /**
+   * Edits the facts of an event: venue, when it is, how tickets are handed out.
+   *
+   * Facts rather than appearance: these travel through the operation log to every phone,
+   * where an icon or a colour is served by this installation alone.
+   */
+  updateEventFacts: (locale: string, eventId: string, body: Record<string, unknown>) =>
+    request<EventDetail>(`/api/v1/events/${encodeURIComponent(eventId)}/facts`, {
+      ...json(locale),
+      method: 'PATCH',
+      body,
+    }),
+
+  /** The creator's readable copy, for telling friends weeks later. Null when there is none. */
+  eventPassword: (locale: string, eventId: string) =>
+    request<{ password: string | null }>(
+      `/api/v1/events/${encodeURIComponent(eventId)}/password`,
+      json(locale),
+    ),
+
+  setEventPassword: (locale: string, eventId: string, password: string | null) =>
+    request<{ passwordProtected: boolean }>(
+      `/api/v1/events/${encodeURIComponent(eventId)}/password`,
+      { ...json(locale), method: 'PUT', body: { password } },
+    ),
 
   setHandle: (locale: string, handle: string) =>
     request<{ handle: string }>('/api/v1/me/handle', {

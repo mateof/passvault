@@ -15,6 +15,7 @@ import {
 import { ApiError } from './api/client'
 import { useT } from './i18n'
 import { useKnownAddress } from './groups'
+import { TagForm } from './tags'
 import { useSession } from './session'
 import { EventMark, Icon } from './icons'
 import {
@@ -465,6 +466,9 @@ export function EventPage() {
   const { t, locale } = useT()
   const [event, setEvent] = useState<EventDetail>()
   const [tickets, setTickets] = useState<TicketSummary[]>([])
+  const [openDialog, setOpenDialog] = useState<
+    'edit' | 'appearance' | 'tags' | 'share' | 'password' | 'add' | 'export'
+  >()
   const [needsPassword, setNeedsPassword] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string>()
@@ -489,6 +493,11 @@ export function EventPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const closeAndReload = () => {
+    setOpenDialog(undefined)
+    void load()
+  }
 
   if (needsPassword) {
     return (
@@ -555,11 +564,100 @@ export function EventPage() {
         ) : null}
       </Card>
 
-      <SharingCard eventId={id} />
+      {/* The acts, each behind a button. The page itself keeps what a visit is usually for:
+          the tickets and the original documents. Everything here reloads the event on close,
+          because a dialog that edits and a page that does not notice is worse than either. */}
+      {event.isCreator !== false ? (
+        <div className="toolbar">
+          <Button variant="quiet" icon="calendar" onClick={() => setOpenDialog('edit')}>
+            {t('events.edit')}
+          </Button>
+          <Button variant="quiet" icon="image" onClick={() => setOpenDialog('appearance')}>
+            {t('events.appearance')}
+          </Button>
+          <Button variant="quiet" icon="events" onClick={() => setOpenDialog('tags')}>
+            {t('nav.tags')}
+          </Button>
+          <Button variant="quiet" icon="users" onClick={() => setOpenDialog('share')}>
+            {t('sharing.title')}
+          </Button>
+          <Button variant="quiet" icon="lock" onClick={() => setOpenDialog('password')}>
+            {t('events.password')}
+          </Button>
+          <Button variant="quiet" icon="plus" onClick={() => setOpenDialog('add')}>
+            {t('tickets.add')}
+          </Button>
+          <Button variant="quiet" icon="download" onClick={() => setOpenDialog('export')}>
+            {t('export.title')}
+          </Button>
+        </div>
+      ) : null}
 
       <ClaimCard eventId={id} tickets={tickets} onClaimed={load} />
 
-      <EventAppearanceCard event={event} onChanged={load} />
+      <Modal
+        open={openDialog === 'edit'}
+        title={t('events.edit')}
+        icon="calendar"
+        onClose={closeAndReload}
+      >
+        <EditFactsForm event={event} onSaved={closeAndReload} />
+      </Modal>
+
+      <Modal
+        open={openDialog === 'appearance'}
+        title={t('events.appearance')}
+        icon="image"
+        onClose={closeAndReload}
+      >
+        <EventAppearanceCard event={event} onChanged={load} />
+      </Modal>
+
+      <Modal
+        open={openDialog === 'tags'}
+        title={t('nav.tags')}
+        icon="events"
+        onClose={closeAndReload}
+      >
+        <EventTagsForm eventId={id} onSaved={closeAndReload} />
+      </Modal>
+
+      <Modal
+        open={openDialog === 'share'}
+        title={t('sharing.title')}
+        icon="users"
+        onClose={closeAndReload}
+      >
+        <SharingCard eventId={id} />
+      </Modal>
+
+      <Modal
+        open={openDialog === 'password'}
+        title={t('events.password')}
+        icon="lock"
+        onClose={closeAndReload}
+      >
+        <PasswordForm eventId={id} onChanged={closeAndReload} />
+      </Modal>
+
+      <Modal
+        open={openDialog === 'add'}
+        title={t('tickets.add')}
+        icon="plus"
+        onClose={closeAndReload}
+      >
+        <AddTicketCard eventId={id} onAdded={load} />
+        <IngestCard eventId={id} onIngested={load} />
+      </Modal>
+
+      <Modal
+        open={openDialog === 'export'}
+        title={t('export.title')}
+        icon="download"
+        onClose={closeAndReload}
+      >
+        <ExportCard eventId={id} />
+      </Modal>
 
       <DocumentsCard eventId={id} tickets={tickets} onChanged={load} />
 
@@ -572,9 +670,6 @@ export function EventPage() {
         </ul>
       </Card>
 
-      <AddTicketCard eventId={id} onAdded={load} />
-      <IngestCard eventId={id} onIngested={load} />
-      <ExportCard eventId={id} />
       <QuarantineCard eventId={id} />
     </>
   )
@@ -751,6 +846,230 @@ function ClaimCard({
         </Button>
       </div>
     </Card>
+  )
+}
+
+/**
+ * Editing the facts of an event: where, when, how tickets are handed out.
+ *
+ * Facts rather than appearance — these travel through the operation log to every phone that
+ * holds the event, where an icon is served by this installation alone. That is also why the
+ * form is explicit about clearing: a date removed here is removed everywhere.
+ */
+function EditFactsForm({ event, onSaved }: { event: EventDetail; onSaved: () => void }) {
+  const { t, locale } = useT()
+  const [name, setName] = useState(event.name ?? '')
+  const [venue, setVenue] = useState(event.venue ?? '')
+  const [startsAt, setStartsAt] = useState(toLocalInput(event.startsAt))
+  const [mode, setMode] = useState(event.defaultAssignmentMode ?? 'OPEN')
+
+  return (
+    <Form
+      submitLabel={t('action.save')}
+      submitIcon="check"
+      disabled={name.trim() === ''}
+      onSubmit={async () => {
+        await api.updateEventFacts(locale, event.id, {
+          name: name.trim(),
+          venue: venue.trim() === '' ? null : venue.trim(),
+          startsAt: startsAt === '' ? null : new Date(startsAt).toISOString(),
+          defaultAssignmentMode: mode,
+        })
+        onSaved()
+      }}
+    >
+      <Field label={t('events.name')} value={name} onChange={setName} required />
+      <Field label={t('events.venue')} value={venue} onChange={setVenue} />
+      <Field
+        label={t('events.startsAt')}
+        value={startsAt}
+        onChange={setStartsAt}
+        type="datetime-local"
+      />
+      <Select
+        label={t('events.assignmentMode')}
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: 'OPEN', label: t('events.assignmentMode.OPEN') },
+          { value: 'ASSIGNED', label: t('events.assignmentMode.ASSIGNED') },
+          { value: 'SELF_CLAIM', label: t('events.assignmentMode.SELF_CLAIM') },
+        ]}
+      />
+    </Form>
+  )
+}
+
+/** A stored instant as the local value a datetime-local input edits. Empty for none. */
+function toLocalInput(value: string | null | undefined): string {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
+}
+
+/**
+ * The labels this event carries, with a way to make one without leaving.
+ *
+ * Inline creation is the difference between labelling an event and abandoning the attempt: the
+ * moment somebody wants "Vigo" on this event is the moment the label does not exist yet, and a
+ * round trip through another screen loses them.
+ */
+function EventTagsForm({ eventId, onSaved }: { eventId: string; onSaved: () => void }) {
+  const { t, locale } = useT()
+  const [tags, setTags] = useState<Tag[]>()
+  const [chosen, setChosen] = useState<Set<string>>(new Set())
+  const [makingNew, setMakingNew] = useState(false)
+
+  const load = useCallback(async () => {
+    const [mine, detail] = await Promise.all([api.tags(locale), api.event(locale, eventId)])
+    setTags(mine.tags)
+    setChosen(new Set(detail.tagIds ?? []))
+  }, [eventId, locale])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  if (!tags) return <Loading />
+
+  return (
+    <>
+      {tags.length === 0 && !makingNew ? <p className="muted">{t('tags.empty')}</p> : null}
+      <div className="toolbar">
+        {tags.map((tag) => (
+          <TagChip
+            key={tag.id}
+            name={tag.name}
+            colour={tag.colour}
+            on={chosen.has(tag.id)}
+            onClick={() =>
+              setChosen((current) => {
+                const next = new Set(current)
+                if (next.has(tag.id)) next.delete(tag.id)
+                else next.add(tag.id)
+                return next
+              })
+            }
+          />
+        ))}
+      </div>
+
+      {makingNew ? (
+        <TagForm
+          onSubmit={async (name, colour) => {
+            const created = await api.createTag(locale, name, colour)
+            setMakingNew(false)
+            await load()
+            // The label somebody just made is the one they wanted on this event.
+            setChosen((current) => new Set(current).add(created.tagId))
+          }}
+        />
+      ) : (
+        <Button variant="quiet" icon="plus" onClick={() => setMakingNew(true)}>
+          {t('tags.create')}
+        </Button>
+      )}
+
+      <div className="button-row">
+        <Button
+          icon="check"
+          onClick={async () => {
+            await api.setEventTags(locale, eventId, [...chosen])
+            onSaved()
+          }}
+        >
+          {t('action.save')}
+        </Button>
+      </div>
+    </>
+  )
+}
+
+/**
+ * The event password: seen, copied, changed, set or removed.
+ *
+ * Seen and copied because its job is social as well as cryptographic — whoever set it has to
+ * tell it to their friends, usually weeks later, and "I chose it in March" is not a password.
+ * The warnings around removal are the ones the security model requires: with no password the
+ * operator of this installation can read the tickets, and that is said in words.
+ */
+function PasswordForm({ eventId, onChanged }: { eventId: string; onChanged: () => void }) {
+  const { t, locale } = useT()
+  const [current, setCurrent] = useState<string | null>()
+  const [next, setNext] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    api
+      .eventPassword(locale, eventId)
+      .then((result) => setCurrent(result.password))
+      .catch(() => setCurrent(null))
+  }, [eventId, locale])
+
+  if (current === undefined) return <Loading />
+
+  return (
+    <>
+      {current ? (
+        <>
+          <p className="muted">{t('password.current')}</p>
+          <p className="barcode">
+            {current}
+            <Button
+              variant="quiet"
+              icon="copy"
+              onClick={() => {
+                void navigator.clipboard?.writeText(current).catch(() => undefined)
+                setCopied(true)
+              }}
+            >
+              {t('password.copy')}
+            </Button>
+          </p>
+          {copied ? <Banner kind="success">{t('password.copied')}</Banner> : null}
+        </>
+      ) : (
+        <Banner kind="info">{t('password.none')}</Banner>
+      )}
+
+      <Form
+        submitLabel={current ? t('password.change') : t('password.set')}
+        submitIcon="lock"
+        disabled={next.length < 4}
+        onSubmit={async () => {
+          await api.setEventPassword(locale, eventId, next)
+          onChanged()
+        }}
+      >
+        <Field
+          label={t('password.new')}
+          value={next}
+          onChange={setNext}
+          type="password"
+          autoComplete="new-password"
+          help={t('password.changeExplain')}
+        />
+      </Form>
+
+      {current ? (
+        <>
+          <Banner kind="warning">{t('password.removeWarning')}</Banner>
+          <div className="button-row">
+            <Button
+              variant="danger"
+              onClick={async () => {
+                await api.setEventPassword(locale, eventId, null)
+                onChanged()
+              }}
+            >
+              {t('password.remove')}
+            </Button>
+          </div>
+        </>
+      ) : null}
+    </>
   )
 }
 

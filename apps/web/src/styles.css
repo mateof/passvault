@@ -1043,3 +1043,14 @@ button.link {
 .list-row:last-child {
   border-bottom: none;
 }
+
+/* The heading over a group of navigation entries. Small and quiet: it labels, it does not compete. */
+.nav-section {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 1rem 0 0.25rem;
+  padding: 0 0.75rem;
+}

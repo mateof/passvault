@@ -23,6 +23,33 @@ export function migrations(engine: Engine): Record<string, Migration> {
     '0002_event_appearance': eventAppearance(engine),
     '0003_ticket_source_batch': ticketSourceBatch(engine),
     '0004_handles_tags_and_notices': handlesTagsAndNotices(engine),
+    '0005_event_password_keeper': eventPasswordKeeper(engine),
+  }
+}
+
+/**
+ * The event password, kept where its creator can read it back.
+ *
+ * The password's cryptographic job is done by the envelope: it derives the key that unwraps the
+ * event, and no plaintext is needed for that. But the person who set it also has to *tell* it to
+ * their friends, usually weeks later over a messaging app, and "I set it in March" is not a
+ * password. So the creator's copy is stored encrypted under their own data key — readable by
+ * exactly one person, and only while their vault is open. The operator cannot read it, which is
+ * the whole point of a password-protected event.
+ */
+function eventPasswordKeeper(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .alterTable('events')
+        .addColumn('password_keeper_cipher', sql.raw(t.binary))
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      await db.schema.alterTable('events').dropColumn('password_keeper_cipher').execute()
+    },
   }
 }
 

@@ -218,9 +218,19 @@ function SecondFactorCard() {
  */
 function HandleCard() {
   const { t, locale } = useT()
-  const [handle, setHandle] = useState('')
+  const { me, refresh } = useSession()
+  // Prefilled with the name you already have, which is the difference between "change my name"
+  // and staring at an empty field wondering whether you ever chose one.
+  const [handle, setHandle] = useState(me?.handle ?? '')
   const [taken, setTaken] = useState<boolean>()
   const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    // The session can arrive after the first render; the field follows it once, and never
+    // overwrites something being typed.
+    if (me?.handle && handle === '') setHandle(me.handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.handle])
 
   useEffect(() => {
     const trimmed = handle.trim()
@@ -249,13 +259,24 @@ function HandleCard() {
   return (
     <Card title={t('handle.title')} icon="account">
       <p className="muted">{t('handle.explain')}</p>
+      {me?.handle ? (
+        <p className="muted">
+          {t('handle.current')} <strong>@{me.handle}</strong>
+        </p>
+      ) : (
+        <p className="muted">{t('handle.none')}</p>
+      )}
       <Form
         submitLabel={t('handle.save')}
         submitIcon="check"
-        disabled={handle.trim().length < 3 || taken === true}
+        disabled={
+          handle.trim().length < 3 || (taken === true && handle.trim() !== (me?.handle ?? ''))
+        }
         onSubmit={async () => {
           await api.setHandle(locale, handle.trim())
           setSaved(true)
+          // The session is where every screen reads the handle from, so it has to learn too.
+          await refresh()
         }}
       >
         <Field
@@ -270,7 +291,7 @@ function HandleCard() {
           {...(taken === false ? { help: t('handle.free') } : {})}
         />
       </Form>
-      {saved ? <Banner kind="success">{t('handle.free')}</Banner> : null}
+      {saved ? <Banner kind="success">{t('handle.saved')}</Banner> : null}
     </Card>
   )
 }

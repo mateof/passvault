@@ -217,6 +217,8 @@ export interface EventsTable {
   colour: string | null
   /** A picture of the event's own, encrypted under the event key like every other blob. */
   image_blob_id: string | null
+  /** The creator's own copy of the event password, under their data key. See migration 0005. */
+  password_keeper_cipher: Bytes | null
   created_at: Instant
   updated_at: Instant
 }

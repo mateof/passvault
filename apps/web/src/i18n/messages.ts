@@ -18,6 +18,27 @@ export const gl = {
   'nav.admin': 'Administración',
   'nav.signOut': 'Saír',
 
+  // --- Editing an event, its password, and who you are ---
+  'events.edit': 'Editar o evento',
+  'events.appearance': 'Aparencia',
+  'export.title': 'Exportar',
+  'tickets.add': 'Engadir entradas',
+  'password.current': 'O contrasinal deste evento:',
+  'password.copy': 'Copiar',
+  'password.copied': 'Copiado.',
+  'password.none': 'Este evento non ten contrasinal: o servidor pode ler as suas entradas.',
+  'password.new': 'Contrasinal novo',
+  'password.set': 'Poñer contrasinal',
+  'password.change': 'Cambiar o contrasinal',
+  'password.changeExplain': 'Quen xa o abrira nesta sesion segue dentro; as proximas aperturas piden o novo.',
+  'password.remove': 'Quitar o contrasinal',
+  'password.removeWarning': 'Sen contrasinal, quen administra este servidor pode ler as entradas deste evento.',
+  'handle.current': 'O teu nome agora mesmo:',
+  'handle.none': 'Ainda non tes nome de usuario.',
+  'handle.saved': 'Nome gardado.',
+  'nav.personal': 'Persoal',
+  'nav.administration': 'Administracion',
+
   // --- Labels, notices, sessions, and finding events ---
   'nav.notices': 'Avisos',
   'nav.tags': 'Etiquetas',
@@ -182,7 +203,6 @@ export const gl = {
   'events.icon.museum': 'Museo',
   'events.icon.party': 'Festa',
   'events.icon.other': 'Outro',
-  'events.appearance': 'Cambiar a imaxe do evento',
   'events.imageChoose': 'Escoller unha imaxe (PNG ou JPG)',
   'events.imageHelp':
     'Gárdase cifrada coa clave do evento, coma calquera outro documento. Se importas un PDF e non escolles ningunha, úsase a súa primeira páxina.',
@@ -218,7 +238,6 @@ export const gl = {
   'events.open': 'Abrir',
 
   'tickets.title': 'Entradas',
-  'tickets.add': 'Engadir entrada',
   'tickets.label': 'Etiqueta',
   'tickets.seat': 'Asento',
   'tickets.barcode': 'Código',
@@ -375,6 +394,27 @@ export const es: Record<WebMessageKey, string> = {
   'nav.account': 'Cuenta',
   'nav.admin': 'Administración',
   'nav.signOut': 'Salir',
+
+  // --- Editar un evento, su contrasena y quien eres ---
+  'events.edit': 'Editar el evento',
+  'events.appearance': 'Apariencia',
+  'export.title': 'Exportar',
+  'tickets.add': 'Anadir entradas',
+  'password.current': 'La contrasena de este evento:',
+  'password.copy': 'Copiar',
+  'password.copied': 'Copiado.',
+  'password.none': 'Este evento no tiene contrasena: el servidor puede leer sus entradas.',
+  'password.new': 'Contrasena nueva',
+  'password.set': 'Poner contrasena',
+  'password.change': 'Cambiar la contrasena',
+  'password.changeExplain': 'Quien ya lo abriera en esta sesion sigue dentro; las proximas aperturas piden la nueva.',
+  'password.remove': 'Quitar la contrasena',
+  'password.removeWarning': 'Sin contrasena, quien administra este servidor puede leer las entradas de este evento.',
+  'handle.current': 'Tu nombre ahora mismo:',
+  'handle.none': 'Todavia no tienes nombre de usuario.',
+  'handle.saved': 'Nombre guardado.',
+  'nav.personal': 'Personal',
+  'nav.administration': 'Administracion',
 
   // --- Etiquetas, avisos, sesiones y busqueda de eventos ---
   'nav.notices': 'Avisos',
@@ -539,7 +579,6 @@ export const es: Record<WebMessageKey, string> = {
   'events.icon.museum': 'Museo',
   'events.icon.party': 'Fiesta',
   'events.icon.other': 'Otro',
-  'events.appearance': 'Cambiar la imagen del evento',
   'events.imageChoose': 'Elegir una imagen (PNG o JPG)',
   'events.imageHelp':
     'Se guarda cifrada con la clave del evento, como cualquier otro documento. Si importas un PDF y no eliges ninguna, se usa su primera página.',
@@ -575,7 +614,6 @@ export const es: Record<WebMessageKey, string> = {
   'events.open': 'Abrir',
 
   'tickets.title': 'Entradas',
-  'tickets.add': 'Añadir entrada',
   'tickets.label': 'Etiqueta',
   'tickets.seat': 'Asiento',
   'tickets.barcode': 'Código',
@@ -728,6 +766,27 @@ export const en: Record<WebMessageKey, string> = {
   'nav.account': 'Account',
   'nav.admin': 'Administration',
   'nav.signOut': 'Sign out',
+
+  // --- Editing an event, its password, and who you are ---
+  'events.edit': 'Edit the event',
+  'events.appearance': 'Appearance',
+  'export.title': 'Export',
+  'tickets.add': 'Add tickets',
+  'password.current': 'This event\u2019s password:',
+  'password.copy': 'Copy',
+  'password.copied': 'Copied.',
+  'password.none': 'This event has no password: the server can read its tickets.',
+  'password.new': 'New password',
+  'password.set': 'Set a password',
+  'password.change': 'Change the password',
+  'password.changeExplain': 'Anyone who already opened it this session stays in; new openings ask for the new one.',
+  'password.remove': 'Remove the password',
+  'password.removeWarning': 'Without a password, whoever runs this server can read this event\u2019s tickets.',
+  'handle.current': 'Your name right now:',
+  'handle.none': 'You have no username yet.',
+  'handle.saved': 'Name saved.',
+  'nav.personal': 'Personal',
+  'nav.administration': 'Administration',
 
   // --- Labels, notices, sessions, and finding events ---
   'nav.notices': 'Notices',
@@ -890,7 +949,6 @@ export const en: Record<WebMessageKey, string> = {
   'events.icon.museum': 'Museum',
   'events.icon.party': 'Party',
   'events.icon.other': 'Other',
-  'events.appearance': 'Change how this event looks',
   'events.imageChoose': 'Choose a picture (PNG or JPG)',
   'events.imageHelp':
     'Stored encrypted under the event key, like every other document. Import a PDF and choose nothing, and its first page is used.',
@@ -926,7 +984,6 @@ export const en: Record<WebMessageKey, string> = {
   'events.open': 'Open',
 
   'tickets.title': 'Tickets',
-  'tickets.add': 'Add a ticket',
   'tickets.label': 'Label',
   'tickets.seat': 'Seat',
   'tickets.barcode': 'Barcode',

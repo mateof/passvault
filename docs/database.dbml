@@ -331,6 +331,7 @@ Table events {
   icon varchar(32) [null, note: 'Plaintext: a category from a closed set, so a list can be drawn before any key is open.']
   colour varchar(16) [null]
   image_blob_id varchar(36) [null, note: 'A picture of the event, encrypted under the event key like every other blob.']
+  password_keeper_cipher varbinary [null, note: 'The creators own copy of the event password, encrypted under their data key. The operator cannot read it; the person who has to tell it to their friends can.']
   created_at varchar(24) [not null]
   updated_at varchar(24) [not null]
 

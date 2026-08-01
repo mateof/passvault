@@ -557,6 +557,11 @@ function Shell() {
         </Link>
 
         <nav className="nav">
+          {/* Two worlds, named. Everything under "personal" is somebody's own wallet — the same
+              set of things the phone app has. Administration is a different job with a different
+              audience, and mixing the two in one flat list is how a family member ends up on the
+              registration-mode screen wondering what they broke. */}
+          <p className="nav-section">{t('nav.personal')}</p>
           <NavItem to="/" icon="events" label={t('nav.events')} end />
           <NavItem to="/groups" icon="users" label={t('nav.groups')} />
           <NavItem to="/tags" icon="events" label={t('nav.tags')} />
@@ -564,7 +569,12 @@ function Shell() {
               never happened, and this is the only place that can say so. */}
           <NavItem to="/notices" icon="mail" label={t('nav.notices')} badge={unread} />
           <NavItem to="/account" icon="account" label={t('nav.account')} />
-          {me?.isAdmin ? <NavItem to="/admin" icon="admin" label={t('nav.admin')} /> : null}
+          {me?.isAdmin ? (
+            <>
+              <p className="nav-section">{t('nav.administration')}</p>
+              <NavItem to="/admin" icon="admin" label={t('nav.admin')} />
+            </>
+          ) : null}
         </nav>
 
         <div className="nav-spacer" />

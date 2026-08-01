@@ -113,7 +113,10 @@ import {
   openEventKey,
   projectEvent,
   revokeAccess,
+  readEventPassword,
   setEventAppearance,
+  setEventPassword,
+  updateEventFacts,
   suggestEventCover,
   type EventDeps,
 } from './events.js'
@@ -537,6 +540,10 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       locale: user.locale,
       isAdmin: user.is_admin === 1,
       status: user.status,
+      // The name people find this account by. Null until one is chosen — and a client that
+      // cannot see it cannot tell "you have none" from "we never asked", which is exactly the
+      // confusion this field removes.
+      handle: user.handle,
       // Whether the vault is open is part of the session state a client needs, since almost
       // every other endpoint depends on it.
       vaultUnlocked: vault !== undefined,
@@ -1102,6 +1109,90 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       throw notFound()
     }
     return projectEvent(eventDeps, event, eventKey, session.user_id)
+  })
+
+  /**
+   * Edits the facts of an event, and tells the log.
+   *
+   * The row is what this server serves; the operation is what other phones replay. Writing one
+   * without the other is how a wallet ends up disagreeing with itself at the next
+   * synchronisation, so both happen here or neither does.
+   */
+  const factsBody = z.object({
+    name: z.string().min(1).max(200).optional(),
+    venue: z.string().max(200).nullable().optional(),
+    startsAt: z.string().datetime().nullable().optional(),
+    defaultAssignmentMode: z.enum(['OPEN', 'ASSIGNED', 'SELF_CLAIM']).optional(),
+  })
+
+  app.patch('/api/v1/events/:id/facts', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    const body = factsBody.parse(request.body ?? {})
+    await updateEventFacts(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      eventKey,
+      ...(body.name === undefined ? {} : { name: body.name }),
+      ...(body.venue === undefined ? {} : { venue: body.venue }),
+      ...(body.startsAt === undefined ? {} : { startsAt: body.startsAt }),
+      ...(body.defaultAssignmentMode === undefined
+        ? {}
+        : { defaultAssignmentMode: body.defaultAssignmentMode }),
+    })
+    await recordOperation(eventDeps, {
+      eventId: id,
+      eventKey,
+      actorUserId: session.user_id,
+      type: 'event.update',
+      body: {
+        ...(body.name === undefined ? {} : { name: body.name }),
+        ...(body.venue === undefined ? {} : { venue: body.venue ?? '' }),
+        // An empty string is the log's way of saying "no date any more": every field of an
+        // update is optional, so absence means unchanged and clearing has to be said out loud.
+        ...(body.startsAt === undefined ? {} : { startsAt: body.startsAt ?? '' }),
+      },
+    })
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    return projectEvent(eventDeps, event, eventKey, session.user_id)
+  })
+
+  /**
+   * The event password: seen, set, changed or removed by its creator.
+   *
+   * Reading it back exists because the password's job is social as well as cryptographic — the
+   * person who set it has to tell it to their friends, usually weeks later. It is stored under
+   * the creator's own data key, so the operator still cannot read it.
+   */
+  app.get('/api/v1/events/:id/password', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    const vault = vaults.require(session.id)
+    return {
+      password: await readEventPassword(eventDeps, {
+        eventId: id,
+        actorUserId: session.user_id,
+        actorDataKey: vault.dataKey,
+      }),
+    }
+  })
+
+  app.put('/api/v1/events/:id/password', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    const vault = vaults.require(session.id)
+    const body = z.object({ password: z.string().min(4).nullable() }).parse(request.body)
+    await setEventPassword(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      actorDataKey: vault.dataKey,
+      eventKey,
+      password: body.password,
+    })
+    return { passwordProtected: body.password !== null }
   })
 
   /**
