@@ -554,7 +554,10 @@ async function applyOperation(
         )
       }
       if (typeof body.startsAt === 'string') {
-        changes.starts_at = body.startsAt
+        // An empty string is how a client says "there is no date any more". Storing it verbatim
+        // would leave a column that is neither a date nor absent, and every reader would have to
+        // know that "" is a third state.
+        changes.starts_at = body.startsAt === '' ? null : body.startsAt
       }
       if (Object.keys(changes).length > 0) {
         await deps.db.db
