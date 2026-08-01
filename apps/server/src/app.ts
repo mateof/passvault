@@ -32,6 +32,7 @@ import {
 } from './accounts.js'
 import {
   addWhitelistEntry,
+  clearUserHandle,
   changeUser,
   listInvitations,
   listUsers,
@@ -625,6 +626,14 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   app.get('/api/v1/admin/users', async (request) => {
     await adminOf(request)
     return { users: await listUsers(deps) }
+  })
+
+  /** Frees a user's handle. The account keeps working; the name becomes claimable again. */
+  app.delete('/api/v1/admin/users/:id/handle', async (request) => {
+    await adminOf(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await clearUserHandle(deps, { userId: id })
+    return { cleared: true }
   })
 
   const userChangeBody = z.object({
@@ -1411,11 +1420,19 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
 
   /** Whether a handle is free, so the field can say so before anybody presses anything. */
   app.get('/api/v1/directory/handle', async (request) => {
-    await sessionOf(request)
+    const session = await sessionOf(request)
     const { handle } = z.object({ handle: z.string().min(1).max(32) }).parse(request.query)
     const normalised = assertHandle(handle)
     const found = await findPerson(directoryDeps, { handle: normalised })
-    return { handle: normalised, taken: found !== undefined, userId: found?.userId }
+    return {
+      handle: normalised,
+      taken: found !== undefined,
+      // Whether it is taken *by the caller*. A form has to treat "that is already your name"
+      // as fine, and a bare boolean cannot say so — which is how somebody gets told their own
+      // handle is unavailable.
+      mine: found?.userId === session.user_id,
+      userId: found?.userId,
+    }
   })
 
   // ── Labels ───────────────────────────────────────────────────────────────────

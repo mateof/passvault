@@ -70,6 +70,8 @@ export interface AuthResult {
 }
 
 export interface AdminUser {
+  /** The public name, when one was claimed. */
+  handle?: string | null
   userId: string
   email?: string
   isAdmin: boolean
@@ -650,7 +652,7 @@ export const api = {
     }),
 
   handleAvailable: (locale: string, handle: string) =>
-    request<{ handle: string; taken: boolean }>(
+    request<{ handle: string; taken: boolean; mine: boolean }>(
       `/api/v1/directory/handle?handle=${encodeURIComponent(handle)}`,
       json(locale),
     ),
@@ -738,6 +740,12 @@ export const api = {
       method: 'PUT',
       body,
     }),
+
+  adminClearHandle: (locale: string, userId: string) =>
+    request<{ cleared: boolean }>(
+      `/api/v1/admin/users/${encodeURIComponent(userId)}/handle`,
+      { ...json(locale), method: 'DELETE' },
+    ),
 
   adminUsers: (locale: string) =>
     request<{ users: AdminUser[] }>('/api/v1/admin/users', json(locale)),

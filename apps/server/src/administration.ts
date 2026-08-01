@@ -22,6 +22,8 @@ const WHITELIST_FIELD = (rowId: string) => ({
 export interface AdminUserView {
   userId: string
   email?: string
+  /** The public name, if one was claimed. Plaintext by design; see the users schema. */
+  handle: string | null
   isAdmin: boolean
   status: string
   locale: string
@@ -58,6 +60,7 @@ export async function listUsers(deps: AccountsDeps): Promise<AdminUserView[]> {
     ...(row.email_cipher.length > 0
       ? { email: readEmail(deps, row.id, new Uint8Array(row.email_cipher)) }
       : {}),
+    handle: row.handle,
     isAdmin: row.is_admin === 1,
     status: row.status,
     locale: row.locale,
@@ -65,6 +68,31 @@ export async function listUsers(deps: AccountsDeps): Promise<AdminUserView[]> {
     hasVault: row.passphrase_set_at !== null && row.passphrase_set_at !== undefined,
     createdAt: row.created_at,
   }))
+}
+
+/**
+ * Frees a handle an administrator was asked to free.
+ *
+ * The ordinary case is a person who wants their own name back after a mistake, or an abandoned
+ * account squatting on a name somebody active wants. The account keeps working — a handle is a
+ * convenience for being found, never a requirement — and its owner can claim a new one whenever
+ * they like.
+ */
+export async function clearUserHandle(
+  deps: AccountsDeps,
+  input: { userId: string },
+): Promise<void> {
+  await deps.db.db
+    .updateTable('users')
+    .set({ handle: null, updated_at: toInstant() })
+    .where('id', '=', input.userId)
+    .execute()
+  await repo.recordAudit(deps.db, {
+    actorUserId: null,
+    action: 'admin.handle.cleared',
+    subjectKind: 'user',
+    subjectId: input.userId,
+  })
 }
 
 /**

@@ -155,6 +155,80 @@ describe('what /me says about you', () => {
   })
 })
 
+describe('a handle you already hold', () => {
+  it('is reported as yours, not merely as taken', async () => {
+    // The bug this pins: the availability check answered "taken" for the caller's own name, so
+    // a form disabled saving exactly the handle its owner already had — and with nothing
+    // displaying the current name, it looked orphaned rather than owned.
+    await setHandle(owner, 'mateo')
+
+    const response = await server.app.inject({
+      url: '/api/v1/directory/handle?handle=mateo',
+      headers: bearer(owner),
+    })
+
+    expect(response.json()).toMatchObject({ taken: true, mine: true })
+  })
+
+  it('is somebody else’s from where they stand', async () => {
+    await setHandle(owner, 'mateo')
+
+    const response = await server.app.inject({
+      url: '/api/v1/directory/handle?handle=mateo',
+      headers: bearer(member),
+    })
+
+    expect(response.json()).toMatchObject({ taken: true, mine: false })
+  })
+
+  it('can be re-saved by its owner without complaint', async () => {
+    await setHandle(owner, 'mateo')
+
+    expect((await setHandle(owner, 'mateo')).statusCode).toBe(200)
+  })
+})
+
+describe('an administrator freeing a name', () => {
+  it('clears it, lists it as gone, and leaves the account working', async () => {
+    await setHandle(member, 'brais')
+    const memberId = (
+      await server.app.inject({ url: '/api/v1/me', headers: bearer(member) })
+    ).json().userId
+
+    const response = await server.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/users/${memberId}/handle`,
+      headers: bearer(owner),
+    })
+
+    expect(response.json()).toMatchObject({ cleared: true })
+    const users = (
+      await server.app.inject({ url: '/api/v1/admin/users', headers: bearer(owner) })
+    ).json().users
+    expect(users.find((row: { userId: string }) => row.userId === memberId).handle).toBeNull()
+    // The name is claimable again, which is the point of freeing it.
+    expect((await setHandle(owner, 'brais')).statusCode).toBe(200)
+    // And the account it was taken from still answers.
+    expect(
+      (await server.app.inject({ url: '/api/v1/me', headers: bearer(member) })).statusCode,
+    ).toBe(200)
+  })
+
+  it('is an administrator’s act and nobody else’s', async () => {
+    const ownerId = (
+      await server.app.inject({ url: '/api/v1/me', headers: bearer(owner) })
+    ).json().userId
+
+    const response = await server.app.inject({
+      method: 'DELETE',
+      url: `/api/v1/admin/users/${ownerId}/handle`,
+      headers: bearer(member),
+    })
+
+    expect(response.statusCode).toBe(403)
+  })
+})
+
 describe('the event password, after creation', () => {
   const makeEvent = async (payload: Record<string, unknown> = {}) =>
     (

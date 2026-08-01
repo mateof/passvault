@@ -79,6 +79,7 @@ export async function listUsers(handle: DatabaseHandle) {
     .select([
       'users.id',
       'users.email_cipher',
+      'users.handle',
       'users.status',
       'users.locale',
       'users.is_admin',

@@ -244,7 +244,9 @@ function HandleCard() {
       api
         .handleAvailable(locale, trimmed)
         .then((result) => {
-          if (!cancelled) setTaken(result.taken)
+          // Your own name is never "taken" from where you stand. Without this a person who
+          // typed exactly the handle they already hold was told it was unavailable.
+          if (!cancelled) setTaken(result.taken && !result.mine)
         })
         .catch(() => {
           if (!cancelled) setTaken(undefined)

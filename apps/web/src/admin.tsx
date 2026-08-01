@@ -160,6 +160,9 @@ function UsersCard({ mode }: { mode: RegistrationMode }) {
                 <strong>{user.email ?? user.userId.slice(0, 8)}</strong>
                 <span className="muted">
                   {[
+                    // The handle first: it is the name people actually refer to each other by,
+                    // and the row an administrator is asked to find is "the one that is @mateo".
+                    user.handle ? `@${user.handle}` : undefined,
                     user.isAdmin ? t('admin.role.admin') : t('admin.role.member'),
                     t(`admin.status.${user.status}` as never),
                     user.hasVault ? undefined : t('admin.noVault'),
@@ -180,6 +183,18 @@ function UsersCard({ mode }: { mode: RegistrationMode }) {
                 >
                   {user.isAdmin ? t('admin.demote') : t('admin.promote')}
                 </Button>
+                {user.handle ? (
+                  // Freeing a name is the administrator's answer to "an abandoned account is
+                  // squatting on my name". The account keeps working; the name becomes claimable.
+                  <Button
+                    variant="quiet"
+                    onClick={() =>
+                      void act(() => api.adminClearHandle(locale, user.userId))
+                    }
+                  >
+                    {t('admin.clearHandle')}
+                  </Button>
+                ) : null}
                 <Button
                   variant={user.status === 'SUSPENDED' ? 'quiet' : 'danger'}
                   disabled={user.userId === me?.userId || user.status === 'INVITED'}
