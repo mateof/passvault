@@ -72,6 +72,7 @@ const INGEST_MESSAGE_KEYS: Record<IngestErrorCode, MessageKey> = {
 }
 import { readBlob, storeBlob } from './blobs.js'
 import { assertHandle, findPerson, requirePerson, setHandle } from './directory.js'
+import { deleteAccount, deleteOwnAccount } from './deletion.js'
 import {
   acceptInvitation,
   declineInvitation,
@@ -646,6 +647,43 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     return { users: await listUsers(deps) }
   })
 
+  /**
+   * Deletes your own account, with everything that was only ever yours.
+   *
+   * Confirmed with the password when there is one — not as cryptography, the session already
+   * proves possession, but because this is the one button whose misclick cannot be repaired.
+   * Accounts with no password (provider or passkey) confirm by typing their address.
+   */
+  app.delete('/api/v1/me', async (request, reply) => {
+    const session = await sessionOf(request)
+    const body = z
+      .object({ password: z.string().optional(), emailConfirmation: z.string().optional() })
+      .parse(request.body ?? {})
+    await deleteOwnAccount(deletionDeps, {
+      userId: session.user_id,
+      ...(body.password ? { password: body.password } : {}),
+      ...(body.emailConfirmation ? { emailConfirmation: body.emailConfirmation } : {}),
+    })
+    clearSessionCookie(reply)
+    return { deleted: true }
+  })
+
+  /**
+   * Deletes somebody else's account, as an administrator.
+   *
+   * Not their own through this route: self-deletion is /me's, with its own confirmation. The
+   * distinction stops an administrator fat-fingering their own row in a user list.
+   */
+  app.delete('/api/v1/admin/users/:id', async (request) => {
+    const admin = await adminOf(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    if (id === admin.user_id) {
+      throw badRequest('admin.error.selfSuspend')
+    }
+    await deleteAccount(deletionDeps, id)
+    return { deleted: true }
+  })
+
   /** Frees a user's handle. The account keeps working; the name becomes claimable again. */
   app.delete('/api/v1/admin/users/:id/handle', async (request) => {
     await adminOf(request)
@@ -990,6 +1028,10 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   // makes an encrypted address searchable. Passed in rather than reached for, so the module
   // never has to know how an address is indexed.
   const directoryDeps = { ...eventDeps, emailIndex: (email: string) => crypto.emailIndex(email) }
+
+  // Deletion reaches the encrypted files as well as the rows: an account whose blobs stay on
+  // disk has not been deleted.
+  const deletionDeps = { ...eventDeps, blobDir: config.blobDir }
 
   /** Every ticket operation needs the event key, which needs an unlocked vault first. */
   const openEvent = async (

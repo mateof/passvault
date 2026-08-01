@@ -741,6 +741,16 @@ export const api = {
       body,
     }),
 
+  /** Deletes your own account. The password is the confirmation; there is no undo to offer. */
+  deleteMyAccount: (locale: string, body: Record<string, unknown>) =>
+    request<{ deleted: boolean }>('/api/v1/me', { ...json(locale), method: 'DELETE', body }),
+
+  adminDeleteUser: (locale: string, userId: string) =>
+    request<{ deleted: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
   adminClearHandle: (locale: string, userId: string) =>
     request<{ cleared: boolean }>(
       `/api/v1/admin/users/${encodeURIComponent(userId)}/handle`,

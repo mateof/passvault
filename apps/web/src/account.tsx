@@ -48,6 +48,8 @@ export function AccountPage() {
 
       <SessionsCard />
 
+      <DeleteAccountCard />
+
       <Card title={t('vault.setTitle')}>
         <Banner kind="warning">{t('vault.setWarning')}</Banner>
         <Form
@@ -366,6 +368,71 @@ function SessionsCard() {
           </Button>
         </div>
       ) : null}
+    </Card>
+  )
+}
+
+
+/**
+ * The way out that has no way back.
+ *
+ * The password is the confirmation — not as cryptography, the session already proves
+ * possession, but because this is the one button whose misclick cannot be repaired, and a
+ * password prompt is the strongest "are you sure" an interface can ask. Accounts that sign in
+ * without one type their address instead. The warning says what actually happens: events shared
+ * with others disappear from their wallets too, because those events were this account's.
+ */
+function DeleteAccountCard() {
+  const { t, locale } = useT()
+  const { signOut } = useSession()
+  const [open, setOpen] = useState(false)
+  const [secret, setSecret] = useState('')
+  const [failure, setFailure] = useState<string>()
+
+  return (
+    <Card title={t('deleteAccount.title')} icon="warning">
+      <p className="muted">{t('deleteAccount.explain')}</p>
+      {!open ? (
+        <Button variant="danger" onClick={() => setOpen(true)}>
+          {t('deleteAccount.start')}
+        </Button>
+      ) : (
+        <>
+          <Banner kind="warning">{t('deleteAccount.warning')}</Banner>
+          {failure ? <Banner kind="error">{failure}</Banner> : null}
+          <Field
+            label={t('deleteAccount.confirmField')}
+            value={secret}
+            onChange={setSecret}
+            type="password"
+            autoComplete="current-password"
+          />
+          <div className="button-row">
+            <Button
+              variant="danger"
+              disabled={secret === ''}
+              onClick={async () => {
+                try {
+                  // Whichever the account has: a password confirms a password account, and a
+                  // typed address confirms one that signs in through a provider or a passkey.
+                  await api.deleteMyAccount(locale, {
+                    password: secret,
+                    emailConfirmation: secret,
+                  })
+                  await signOut()
+                } catch (cause) {
+                  setFailure(cause instanceof ApiError ? cause.message : t('error.unexpected'))
+                }
+              }}
+            >
+              {t('deleteAccount.confirm')}
+            </Button>
+            <Button variant="quiet" onClick={() => setOpen(false)}>
+              {t('action.cancel')}
+            </Button>
+          </div>
+        </>
+      )}
     </Card>
   )
 }

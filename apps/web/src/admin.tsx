@@ -183,6 +183,19 @@ function UsersCard({ mode }: { mode: RegistrationMode }) {
                 >
                   {user.isAdmin ? t('admin.demote') : t('admin.promote')}
                 </Button>
+                <Button
+                  variant="danger"
+                  disabled={user.userId === me?.userId}
+                  onClick={() => {
+                    // A browser confirm rather than a silent click-through: this removes the
+                    // account, its events, and every file they kept — from everyone's wallets.
+                    if (window.confirm(t('admin.deleteUserWarning'))) {
+                      void act(() => api.adminDeleteUser(locale, user.userId))
+                    }
+                  }}
+                >
+                  {t('admin.deleteUser')}
+                </Button>
                 {user.handle ? (
                   // Freeing a name is the administrator's answer to "an abandoned account is
                   // squatting on my name". The account keeps working; the name becomes claimable.
