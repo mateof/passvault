@@ -7,18 +7,57 @@ on:
   workflow_dispatch:
 
 concurrency:
+  # Never cancelled part way through. This workflow writes a version back to the branch, and a
+  # run killed between the commit and the push would leave a version claimed by no image.
   group: image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # To write the version bump back to main. The rest of the repository is untouched.
+      contents: write
       packages: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The branch rather than the detached commit, so the bump below has somewhere to push.
+          ref: ${{ github.ref_name }}
+
+      # Every merge to main becomes a new patch version, so an image can always be pinned to the
+      # exact build it came from — `latest` is a moving target and a commit hash is not a version
+      # anybody can read.
+      #
+      # Pushed with the workflow's own token, which by GitHub's own rule does not start another
+      # run: without that this would rebuild itself forever. `[skip ci]` says the same thing to a
+      # reader, who has no reason to know the rule.
+      #
+      # Skipped for a tag build. A tag names the version it publishes, and inventing a different
+      # one would publish something nobody asked for.
+      - name: Raise the version
+        if: github.ref_type == 'branch'
+        run: |
+          # A script in the repository rather than a program inside a YAML string, so it can be
+          # read, reviewed and run by hand — which is how this one was checked against npm ci
+          # before it ever ran here.
+          VERSION=$(node scripts/bump-version.mjs)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $VERSION [skip ci]"
+          # Rebased and retried rather than failed. Two merges landing close together would
+          # otherwise leave the second run unable to push its bump, and a workflow that fails
+          # after building a good image is a worse outcome than one that waits its turn.
+          for attempt in 1 2 3; do
+            if git push origin HEAD:${{ github.ref_name }}; then exit 0; fi
+            git pull --rebase origin ${{ github.ref_name }}
+          done
+          echo "::error::could not write the version back to ${{ github.ref_name }}"
+          exit 1
+
+      - id: version
+        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -29,41 +68,88 @@ jobs:
           # The token the workflow already has. No secret to create and none to rotate.
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Two images from one Dockerfile. The default one carries SQLite alone, which is what a
+      # single-box deployment uses; the other keeps every engine the server supports, for
+      # somebody pointing it at Postgres or SQL Server. They differ by one build argument, and
+      # the second build reuses the first's layers up to the step that prunes the drivers.
       - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          # `latest` follows main and a tag publishes its own version, so a NAS pinned to a
-          # version stays where it is and one following latest gets every merge.
+          # `latest` follows main; the version tag is the one to pin a NAS to, and it now exists
+          # for every merge rather than only for a hand-made git tag.
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.value }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=short
 
-      # Built and started before it is published, because the image is pruned hard — build
+      - id: meta-all
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=alldatabases,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.value }}-alldatabases
+            type=semver,pattern={{version}}-alldatabases
+            type=sha,format=short,suffix=-alldatabases
+
+      # Built and loaded before either is published, because the image is pruned hard — build
       # leftovers, source maps, drivers no default installation loads — and the way that goes
       # wrong is a file missing at import time, which no Dockerfile syntax check would notice.
       # A container that answers its own health endpoint has resolved every module it needs.
-      - name: Build and smoke test
+      - name: Build for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: passvault:smoke
+          build-args: DATABASE_DRIVERS=sqlite
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build the all-databases variant for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: passvault:smoke-all
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Both variants, because the difference between them is which files were deleted, and a
+      # deletion is exactly the kind of change that breaks one image and not the other.
+      - name: Smoke test both
         run: |
-          docker build -t passvault:smoke .
-          docker run -d --name smoke -e MASTER_KEY="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')" \
-            -e BLIND_INDEX_KEY="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')" \
-            -p 8080:8080 passvault:smoke
-          for attempt in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8080/api/v1/health; then ready=1; break; fi
-            sleep 2
-          done
-          docker logs smoke
-          docker rm -f smoke
-          test -n "${ready:-}" || { echo "::error::the image did not answer /api/v1/health"; exit 1; }
-          echo "image size: $(docker image inspect passvault:smoke --format '{{.Size}}' | awk '{printf "%.0f MB\n", $1/1048576}')"
+          smoke() {
+            name=$1; image=$2; port=$3
+            docker run -d --name "$name" -p "$port:8080" \
+              -e MASTER_KEY="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')" \
+              -e BLIND_INDEX_KEY="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')" \
+              "$image"
+            ready=""
+            for attempt in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:$port/api/v1/health"; then ready=1; break; fi
+              sleep 2
+            done
+            docker logs "$name"
+            docker rm -f "$name"
+            test -n "$ready" || { echo "::error::$image did not answer /api/v1/health"; exit 1; }
+            echo "$image: $(docker image inspect "$image" --format '{{.Size}}' | awk '{printf "%.0f MB\n", $1/1048576}')"
+          }
+          smoke smoke passvault:smoke 8080
+          smoke smoke-all passvault:smoke-all 8081
 
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          build-args: DATABASE_DRIVERS=sqlite
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # linux/amd64 only. A Synology on an Intel or AMD processor is what this is for, and
@@ -71,4 +157,12 @@ jobs:
           # compiled from source in the image, so a second architecture is not free.
           platforms: linux/amd64
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta-all.outputs.tags }}
+          labels: ${{ steps.meta-all.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha

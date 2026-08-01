@@ -51,10 +51,14 @@ RUN npm run build --workspace @passvault/web
 # are the ones that ship — a fresh `npm ci --omit=dev` would rebuild them.
 RUN npm prune --omit=dev
 
-# Which database drivers to keep. `sqlite` is the default because it is what a single-box
-# deployment uses and what this image is for; `all` keeps every engine the server supports, for
-# somebody pointing it at Postgres or SQL Server.
-ARG DATABASE_DRIVERS=sqlite
+# Which database drivers to keep. `all` is the default, so building this by hand — or through
+# the compose file's postgres, mysql and mssql profiles — gives a server that can reach the
+# database it is pointed at. The published default image is built with `sqlite` explicitly,
+# because a single box uses one engine and the other three drivers are tens of megabytes each.
+#
+# The other way round was a trap: the slim default was invisible in a compose file that offers
+# a Postgres profile, and the failure would arrive as a missing module at connection time.
+ARG DATABASE_DRIVERS=all
 
 # Everything the runtime does not need, removed before it can be copied into the next stage.
 #

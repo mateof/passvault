@@ -99,6 +99,20 @@ docker compose up
 [.env.example](.env.example) documents every environment variable and what
 happens when it is left empty.
 
+Or without the source, from the published image:
+
+| Tag | What it is |
+| --- | --- |
+| `ghcr.io/mateof/passvault:latest` | every merge to main |
+| `ghcr.io/mateof/passvault:0.2.1` | one build, pinned; the number rises with every merge |
+| `ghcr.io/mateof/passvault:alldatabases` | the same build, keeping every database driver |
+| `ghcr.io/mateof/passvault:0.2.1-alldatabases` | both of the above |
+
+The default image carries SQLite alone, because a single box uses one engine and
+the Postgres, MySQL and SQL Server drivers are tens of megabytes each. Pointing
+the server at one of those needs the `-alldatabases` variant; building from this
+checkout keeps all four either way.
+
 ## Administering an installation
 
 A fresh instance is closed and has no accounts. The first account to register

@@ -27,8 +27,15 @@ name: passvault
 services:
   server:
     # Built from this checkout, which is what somebody who cloned the repository wants.
-    # To run it without the source, replace this with the published image:
-    #   image: ghcr.io/mateof/passvault:latest
+    # To run it without the source, replace this with a published image:
+    #
+    #   image: ghcr.io/mateof/passvault:latest          every merge to main
+    #   image: ghcr.io/mateof/passvault:0.2.1           a version that never moves
+    #   image: ghcr.io/mateof/passvault:alldatabases    the same build, keeping every driver
+    #
+    # The default image carries SQLite alone, because that is what a single box uses and the
+    # other three drivers are tens of megabytes each. The postgres, mysql and mssql profiles
+    # below need the -alldatabases variant.
     build:
       context: .
     ports:
