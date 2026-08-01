@@ -31,8 +31,12 @@ jobs:
       # anybody can read.
       #
       # Pushed with the workflow's own token, which by GitHub's own rule does not start another
-      # run: without that this would rebuild itself forever. `[skip ci]` says the same thing to a
-      # reader, who has no reason to know the rule.
+      # run: without that this would rebuild itself forever. The marker in the message below says
+      # the same thing to a reader, who has no reason to know the rule.
+      #
+      # That marker is read anywhere in a commit message, including the body. Writing it in a
+      # commit that talks *about* this workflow silently skips the build — which is how the
+      # commit that introduced this file failed to publish anything at all.
       #
       # Skipped for a tag build. A tag names the version it publishes, and inventing a different
       # one would publish something nobody asked for.
