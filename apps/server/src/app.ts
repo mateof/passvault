@@ -350,6 +350,18 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     reply.clearCookie(SESSION_COOKIE, { path: '/' })
   }
 
+  /**
+   * What a request says about itself, for the session it opens.
+   *
+   * Neither field is proof of anything — a user agent is a string the client chooses and the
+   * address behind a tunnel is the tunnel's — so they are recorded as what they are: enough for
+   * the account's owner to recognise which session is the phone in their pocket.
+   */
+  const originOf = (request: FastifyRequest) => ({
+    userAgent: (request.headers['user-agent'] ?? '').slice(0, 200) || null,
+    ipAddress: request.ip || null,
+  })
+
   const sessionOf = async (request: FastifyRequest): Promise<repo.SessionRow> => {
     const header = request.headers.authorization
     // The header first, because that is what the Android app sends and it is explicit. The cookie
@@ -495,7 +507,10 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   })
 
   app.post('/api/v1/auth/login', async (request, reply) => {
-    const outcome = await loginWithPassword(deps, loginBody.parse(request.body))
+    const outcome = await loginWithPassword(deps, {
+      ...loginBody.parse(request.body),
+      origin: originOf(request),
+    })
     if (outcome.status !== 'complete') {
       return { status: outcome.status, challenge: outcome.challenge, methods: outcome.methods }
     }
@@ -511,7 +526,10 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   })
 
   app.post('/api/v1/auth/second-factor', async (request, reply) => {
-    const outcome = await completeSecondFactor(deps, secondFactorBody.parse(request.body))
+    const outcome = await completeSecondFactor(deps, {
+      ...secondFactorBody.parse(request.body),
+      origin: originOf(request),
+    })
     if (outcome.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
     }
@@ -845,6 +863,7 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       ...(claims.name ? { displayName: claims.name } : {}),
       ...(flow.invitationCode ? { invitationCode: flow.invitationCode } : {}),
       ...(body.deviceId ? { deviceId: body.deviceId } : {}),
+      origin: originOf(request),
     })
     if (outcome.login.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
@@ -920,6 +939,7 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     const outcome = await finishPasskeyLogin(webAuthnDeps, {
       response: body.response,
       ...(body.deviceId ? { deviceId: body.deviceId } : {}),
+      origin: originOf(request),
     })
     if (outcome.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')

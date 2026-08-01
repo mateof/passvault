@@ -179,7 +179,11 @@ export async function beginPasskeyLogin(
 
 export async function finishPasskeyLogin(
   deps: WebAuthnDeps & { challenges: WebAuthnChallenges },
-  input: { response: unknown; deviceId?: string },
+  input: {
+    response: unknown
+    deviceId?: string
+    origin?: import('./accounts.js').SessionOrigin
+  },
 ): Promise<LoginOutcome & { needsPassphrase: boolean }> {
   const response = input.response as Parameters<typeof verifyAuthenticationResponse>[0]['response']
   const challenge = challengeOf(response)
@@ -236,7 +240,7 @@ export async function finishPasskeyLogin(
     .where('id', '=', stored.id)
     .execute()
 
-  const login = await issueSessionFor(deps, stored.user_id, input.deviceId)
+  const login = await issueSessionFor(deps, stored.user_id, input.deviceId, input.origin)
   return {
     ...login,
     // A passkey says who you are. It cannot decrypt anything, so the vault is still locked.

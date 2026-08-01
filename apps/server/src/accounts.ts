@@ -414,7 +414,7 @@ export type LoginOutcome =
 
 export async function loginWithPassword(
   deps: AccountsDeps & { pending: PendingLogins },
-  input: { email: string; password: string; deviceId?: string },
+  input: { email: string; password: string; deviceId?: string; origin?: SessionOrigin },
 ): Promise<LoginOutcome> {
   const settings = await repo.readRegistrationSettings(deps.db)
   if (settings.allow_password_login === 0) {
@@ -461,7 +461,7 @@ export async function loginWithPassword(
     return { status: 'second-factor', challenge, methods }
   }
 
-  return issueSessionFor(deps, user.id, input.deviceId)
+  return issueSessionFor(deps, user.id, input.deviceId, input.origin)
 }
 
 export async function sendEmailOtp(deps: AccountsDeps, userId: string): Promise<string> {
@@ -490,7 +490,13 @@ export async function sendEmailOtp(deps: AccountsDeps, userId: string): Promise<
 
 export async function completeSecondFactor(
   deps: AccountsDeps & { pending: PendingLogins },
-  input: { challenge: string; code: string; method: 'totp' | 'email'; deviceId?: string },
+  input: {
+    challenge: string
+    code: string
+    method: 'totp' | 'email'
+    deviceId?: string
+    origin?: SessionOrigin
+  },
 ): Promise<LoginOutcome> {
   const pending = deps.pending.take(input.challenge)
   if (!pending) {
@@ -529,7 +535,7 @@ export async function completeSecondFactor(
   }
 
   deps.pending.consume(input.challenge)
-  return issueSessionFor(deps, pending.userId, input.deviceId)
+  return issueSessionFor(deps, pending.userId, input.deviceId, input.origin)
 }
 
 /**
@@ -589,10 +595,16 @@ export async function confirmTotpEnrolment(
  * Exported so the passkey and provider flows end the same way a password login does. Three code
  * paths that each built their own session row is how one of them ends up missing the audit entry.
  */
+export interface SessionOrigin {
+  userAgent?: string | null
+  ipAddress?: string | null
+}
+
 export async function issueSessionFor(
   deps: AccountsDeps,
   userId: string,
   deviceId?: string,
+  origin?: SessionOrigin,
 ): Promise<LoginOutcome> {
   const token = toBase64Url(new Uint8Array(randomBytes(32)))
   const session = await repo.insertSession(deps.db, {
@@ -601,6 +613,10 @@ export async function issueSessionFor(
     deviceId: deviceId ?? null,
     idleMinutes: deps.config.session.idleMinutes,
     hardHours: deps.config.session.hardHours,
+    // What opened the session and from where. The columns sat empty for a version because no
+    // login path passed them, and every session listed as an unknown client from nowhere.
+    userAgent: origin?.userAgent ?? null,
+    ipAddress: origin?.ipAddress ?? null,
   })
   await repo.recordAudit(deps.db, {
     actorUserId: userId,
@@ -642,6 +658,7 @@ export async function loginWithOidc(
     emailVerified?: boolean
     displayName?: string
     invitationCode?: string
+    origin?: SessionOrigin
     deviceId?: string
   },
 ): Promise<OidcLoginOutcome> {
@@ -661,7 +678,7 @@ export async function loginWithOidc(
       throw forbidden('auth.error.accountSuspended')
     }
     return {
-      login: await issueSessionFor(deps, user.id, input.deviceId),
+      login: await issueSessionFor(deps, user.id, input.deviceId, input.origin),
       createdAccount: false,
       needsPassphrase: (await repo.findUserKeys(deps.db, user.id)) === undefined,
     }
@@ -687,7 +704,7 @@ export async function loginWithOidc(
       await repo.activateUser(deps.db, byEmail.id)
     }
     return {
-      login: await issueSessionFor(deps, byEmail.id, input.deviceId),
+      login: await issueSessionFor(deps, byEmail.id, input.deviceId, input.origin),
       createdAccount: false,
       needsPassphrase: (await repo.findUserKeys(deps.db, byEmail.id)) === undefined,
     }
@@ -738,7 +755,7 @@ export async function loginWithOidc(
   })
 
   return {
-    login: await issueSessionFor(deps, userId, input.deviceId),
+    login: await issueSessionFor(deps, userId, input.deviceId, input.origin),
     createdAccount: true,
     needsPassphrase: true,
   }
