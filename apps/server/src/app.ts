@@ -22,10 +22,13 @@ import {
   completeSecondFactor,
   completeSetup,
   confirmTotpEnrolment,
+  listTotpAuthenticators,
   loginWithOidc,
   loginWithPassword,
   readEmail,
+  refreshSession,
   register,
+  removeTotpAuthenticator,
   setVaultPassphrase,
   unlockSessionVault,
   type AccountsDeps,
@@ -334,7 +337,12 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
    * http://nas.local — which is the ordinary case on a home network.
    */
   const SESSION_COOKIE = 'passvault_session'
+  const REFRESH_COOKIE = 'passvault_refresh'
   const secureCookies = config.publicUrl.startsWith('https://')
+  // Long enough to outlast any configured session, because the server row is what actually
+  // decides validity now: an expired access cookie is not a problem, it is the signal to
+  // refresh, and the browser retrying with a stale cookie is handled rather than a bug.
+  const COOKIE_MAX_AGE = 365 * 24 * 3600
 
   const setSessionCookie = (reply: FastifyReply, token: string): void => {
     reply.setCookie(SESSION_COOKIE, token, {
@@ -342,14 +350,39 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       secure: secureCookies,
       sameSite: 'lax',
       path: '/',
-      // Matched to the session's own hard expiry. A cookie that outlives the row it names is a
-      // browser that thinks it is signed in and a server that disagrees on every request.
-      maxAge: config.session.hardHours * 3600,
+      maxAge: COOKIE_MAX_AGE,
     })
+  }
+
+  /**
+   * The refresh token's cookie, scoped to the one endpoint that reads it.
+   *
+   * A refresh token is the long-lived credential, so it travels as little as possible: the path
+   * restriction means the browser sends it only to the refresh endpoint and never on an ordinary
+   * request, which is the whole security gain of splitting it from the access token.
+   */
+  const setRefreshCookie = (reply: FastifyReply, token: string): void => {
+    reply.setCookie(REFRESH_COOKIE, token, {
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: 'lax',
+      path: '/api/v1/auth/refresh',
+      maxAge: COOKIE_MAX_AGE,
+    })
+  }
+
+  /** Sets both cookies and returns the body a login route sends back. One place, so no path forgets. */
+  const completeLogin = (
+    reply: FastifyReply,
+    outcome: { token: string; refreshToken: string },
+  ): void => {
+    setSessionCookie(reply, outcome.token)
+    setRefreshCookie(reply, outcome.refreshToken)
   }
 
   const clearSessionCookie = (reply: FastifyReply): void => {
     reply.clearCookie(SESSION_COOKIE, { path: '/' })
+    reply.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth/refresh' })
   }
 
   /**
@@ -378,15 +411,9 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (!session) {
       throw unauthorized('auth.error.invalidCredentials')
     }
-    // The sliding renewal has to use the same window the session was minted with, or a
-    // year-long session set by an administrator would quietly shrink back to the deployment's
-    // thirty minutes on its first authenticated request.
-    const settings = await repo.readRegistrationSettings(db)
-    const idleMinutes =
-      settings.session_days != null
-        ? settings.session_days * 24 * 60
-        : config.session.idleMinutes
-    await repo.touchSession(db, session.id, idleMinutes)
+    // Only the last-seen mark: the access token has a fixed short life and refreshing is what
+    // extends a session, so a plain request lengthens nothing.
+    await repo.touchSession(db, session.id)
     request.session = session
     return session
   }
@@ -524,8 +551,13 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (outcome.status !== 'complete') {
       return { status: outcome.status, challenge: outcome.challenge, methods: outcome.methods }
     }
-    setSessionCookie(reply, outcome.token)
-    return { status: outcome.status, token: outcome.token, userId: outcome.userId }
+    completeLogin(reply, outcome)
+    return {
+      status: outcome.status,
+      token: outcome.token,
+      refreshToken: outcome.refreshToken,
+      userId: outcome.userId,
+    }
   })
 
   const secondFactorBody = z.object({
@@ -543,8 +575,36 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (outcome.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
     }
-    setSessionCookie(reply, outcome.token)
-    return { status: outcome.status, token: outcome.token, userId: outcome.userId }
+    completeLogin(reply, outcome)
+    return {
+      status: outcome.status,
+      token: outcome.token,
+      refreshToken: outcome.refreshToken,
+      userId: outcome.userId,
+    }
+  })
+
+  /**
+   * Exchanges a refresh token for a fresh access-and-refresh pair.
+   *
+   * The refresh token comes from the body (the app holds it) or the cookie the browser sends only
+   * here. Rotating it means the previous one is spent: reuse past a short grace is simply not a
+   * session, and the client signs in again. No `sessionOf` — the access token may already be dead,
+   * which is the whole reason this endpoint exists.
+   */
+  app.post('/api/v1/auth/refresh', async (request, reply) => {
+    const body = z.object({ refreshToken: z.string().min(1).optional() }).parse(request.body ?? {})
+    const presented = body.refreshToken ?? request.cookies[REFRESH_COOKIE]
+    if (!presented) {
+      throw unauthorized('auth.error.invalidCredentials')
+    }
+    const outcome = await refreshSession(deps, presented)
+    completeLogin(reply, outcome)
+    return {
+      token: outcome.token,
+      refreshToken: outcome.refreshToken,
+      userId: outcome.userId,
+    }
   })
 
   app.post('/api/v1/auth/logout', async (request, reply) => {
@@ -581,6 +641,10 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       // has none until its owner chooses a passphrase, and asking such a user to "unlock" is
       // asking for a secret that does not exist yet.
       vaultConfigured: (await repo.findUserKeys(db, user.id)) !== undefined,
+      // How many authenticators are enrolled, so the account screen can say "you already have
+      // two-factor on" and list them rather than only ever offering to turn it on — which is
+      // what it did when it had no way to know one already existed.
+      totpCount: (await repo.findConfirmedTotpAuthenticators(db, user.id)).length,
     }
   })
 
@@ -621,12 +685,30 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     )
   })
 
-  const totpConfirmBody = z.object({ code: z.string().min(6).max(8) })
+  const totpConfirmBody = z.object({
+    code: z.string().min(6).max(8),
+    // What to call this authenticator in the list, so "phone" and "backup" are told apart.
+    label: z.string().max(64).optional(),
+  })
 
   app.post('/api/v1/totp/confirm', async (request) => {
     const session = await sessionOf(request)
-    await confirmTotpEnrolment(deps, session.user_id, totpConfirmBody.parse(request.body).code)
+    const body = totpConfirmBody.parse(request.body)
+    await confirmTotpEnrolment(deps, session.user_id, body.code, body.label)
     return { confirmed: true }
+  })
+
+  /** The authenticators on this account, so the screen can show what is already there. */
+  app.get('/api/v1/totp', async (request) => {
+    const session = await sessionOf(request)
+    return { authenticators: await listTotpAuthenticators(deps, session.user_id) }
+  })
+
+  app.delete('/api/v1/totp/:id', async (request) => {
+    const session = await sessionOf(request)
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params)
+    await removeTotpAuthenticator(deps, session.user_id, id)
+    return { removed: true }
   })
 
   const settingsBody = z.object({
@@ -937,10 +1019,11 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (outcome.login.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
     }
-    setSessionCookie(reply, outcome.login.token)
+    completeLogin(reply, outcome.login)
     return {
       status: 'complete',
       token: outcome.login.token,
+      refreshToken: outcome.login.refreshToken,
       userId: outcome.login.userId,
       createdAccount: outcome.createdAccount,
       // Signing in through a provider proves who you are and decrypts nothing. The client has to
@@ -1013,10 +1096,11 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (outcome.status !== 'complete') {
       throw unauthorized('auth.error.secondFactorRequired')
     }
-    setSessionCookie(reply, outcome.token)
+    completeLogin(reply, outcome)
     return {
       status: outcome.status,
       token: outcome.token,
+      refreshToken: outcome.refreshToken,
       userId: outcome.userId,
       needsPassphrase: outcome.needsPassphrase,
     }

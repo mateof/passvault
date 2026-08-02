@@ -157,7 +157,7 @@ export async function deleteAccount(deps: DeletionDeps, userId: string): Promise
   }
   await deps.db.db.deleteFrom('sessions').where('user_id', '=', userId).execute()
   await deps.db.db.deleteFrom('webauthn_credentials').where('user_id', '=', userId).execute()
-  await deps.db.db.deleteFrom('totp_secrets').where('user_id', '=', userId).execute()
+  await deps.db.db.deleteFrom('totp_authenticators').where('user_id', '=', userId).execute()
   await deps.db.db.deleteFrom('oidc_identities').where('user_id', '=', userId).execute()
   await deps.db.db.deleteFrom('email_otp_challenges').where('user_id', '=', userId).execute()
   await deps.db.db.deleteFrom('password_setup_tokens').where('user_id', '=', userId).execute()

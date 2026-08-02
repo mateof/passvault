@@ -55,9 +55,10 @@ export async function listSessions(
     ipAddress: row.ip_address,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
-    // The sooner of the two, because that is when it actually stops working.
-    expiresAt:
-      row.idle_expires_at < row.hard_expires_at ? row.idle_expires_at : row.hard_expires_at,
+    // When the session actually ends, not when the access token next rotates. The access token
+    // is short by design and refreshes itself; showing its thirty minutes here would tell every
+    // signed-in person their session dies within the hour, which is exactly wrong.
+    expiresAt: row.hard_expires_at,
   }))
 }
 

@@ -73,9 +73,17 @@ export interface WebauthnCredentialsTable {
   last_used_at: Instant | null
 }
 
-export interface TotpSecretsTable {
+/**
+ * One authenticator app. An account may hold several — a phone and a backup — so this is keyed by
+ * its own id rather than by the user, which is what the single-row `totp_secrets` could never be.
+ */
+export interface TotpAuthenticatorsTable {
+  id: string
   user_id: string
+  /** What the person called it, in the clear: "Phone", "Backup". A name is not a secret. */
+  label: string | null
   secret_cipher: Bytes
+  /** Null while enrolment is unconfirmed. An unconfirmed secret must never satisfy a factor. */
   confirmed_at: Instant | null
   created_at: Instant
 }
@@ -94,12 +102,23 @@ export interface EmailOtpChallengesTable {
 export interface SessionsTable {
   id: string
   user_id: string
+  /** Hash of the short-lived access token. Replaced on every refresh, so a captured access
+   *  token is worth minutes, not the whole session. */
   token_hash: string
   device_id: string | null
   created_at: Instant
+  /** When the current access token dies. The refresh token outlives it and mints the next one. */
   idle_expires_at: Instant
   hard_expires_at: Instant
   revoked_at: Instant | null
+  /** Hash of the long-lived refresh token, sent only to the refresh endpoint and rotated on each
+   *  use. Null on legacy sessions minted before refresh existed; those simply expire. */
+  refresh_hash: string | null
+  refresh_expires_at: Instant | null
+  /** The just-rotated refresh hash, honoured for a short grace so a lost refresh response does
+   *  not strand the client. Cleared once the grace passes. */
+  refresh_prev_hash: string | null
+  refresh_rotated_at: Instant | null
   /** What opened it and from where, so a list of sessions is recognisable rather than a list of ids. */
   user_agent: string | null
   ip_address: string | null
@@ -360,7 +379,7 @@ export interface Database {
   devices: DevicesTable
   oidc_identities: OidcIdentitiesTable
   webauthn_credentials: WebauthnCredentialsTable
-  totp_secrets: TotpSecretsTable
+  totp_authenticators: TotpAuthenticatorsTable
   email_otp_challenges: EmailOtpChallengesTable
   sessions: SessionsTable
   registration_settings: RegistrationSettingsTable
@@ -392,7 +411,7 @@ export const TABLES_IN_DEPENDENCY_ORDER = [
   'devices',
   'oidc_identities',
   'webauthn_credentials',
-  'totp_secrets',
+  'totp_authenticators',
   'email_otp_challenges',
   'sessions',
   'registration_settings',

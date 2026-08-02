@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { sql, type Kysely, type Migration, type MigrationProvider } from 'kysely'
 import { columnTypes, treatsNullsAsEqualInUniqueIndex, type Engine } from './engine.js'
 
@@ -25,6 +26,93 @@ export function migrations(engine: Engine): Record<string, Migration> {
     '0004_handles_tags_and_notices': handlesTagsAndNotices(engine),
     '0005_event_password_keeper': eventPasswordKeeper(engine),
     '0006_download_marks_and_session_length': downloadMarksAndSessionLength(engine),
+    '0007_refresh_tokens_and_multi_totp': refreshTokensAndMultiTotp(engine),
+  }
+}
+
+/**
+ * Two security shapes the old schema could not hold: a session that rotates its token, and an
+ * account with more than one authenticator.
+ *
+ * The session gains a refresh token beside the access one. `token_hash` becomes the short-lived
+ * access token; the new columns hold the long-lived refresh token, its expiry, and the
+ * just-rotated previous hash kept for a brief grace so a dropped refresh response does not strand
+ * a client. A session minted before this migration has null refresh columns and simply lives out
+ * its old fixed expiry — nobody is signed out by the upgrade.
+ *
+ * TOTP moves from one secret per user to a table of authenticators, each with its own id and a
+ * name, so a phone and a backup can both be enrolled. The single existing secret per user is
+ * copied across rather than dropped, because an account with two-factor turned on must still have
+ * it turned on after the upgrade — losing it would lock people out of their own accounts.
+ */
+function refreshTokensAndMultiTotp(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('refresh_hash', sql.raw(t.varchar(64)))
+        .execute()
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('refresh_expires_at', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('refresh_prev_hash', sql.raw(t.varchar(64)))
+        .execute()
+      await db.schema
+        .alterTable('sessions')
+        .addColumn('refresh_rotated_at', sql.raw(t.varchar(32)))
+        .execute()
+
+      await db.schema
+        .createTable('totp_authenticators')
+        .addColumn('id', sql.raw(t.varchar(36)), (column) => column.primaryKey())
+        .addColumn('user_id', sql.raw(t.varchar(36)), (column) =>
+          column.notNull().references('users.id'),
+        )
+        .addColumn('label', sql.raw(t.varchar(64)))
+        .addColumn('secret_cipher', sql.raw(t.binary), (column) => column.notNull())
+        .addColumn('confirmed_at', sql.raw(t.varchar(32)))
+        .addColumn('created_at', sql.raw(t.varchar(32)), (column) => column.notNull())
+        .execute()
+      await db.schema
+        .createIndex('idx_totp_authenticators_user')
+        .on('totp_authenticators')
+        .column('user_id')
+        .execute()
+
+      // Carry every existing secret over, keeping whether it was confirmed. A generated id per
+      // row, because the old table had none — its key was the user, which is exactly the limit
+      // this migration removes.
+      const existing = await db
+        .selectFrom('totp_secrets' as never)
+        .selectAll()
+        .execute()
+      for (const row of existing as Array<Record<string, unknown>>) {
+        await db
+          .insertInto('totp_authenticators' as never)
+          .values({
+            id: randomUUID(),
+            user_id: row.user_id,
+            label: null,
+            secret_cipher: row.secret_cipher,
+            confirmed_at: row.confirmed_at ?? null,
+            created_at: row.created_at,
+          } as never)
+          .execute()
+      }
+      await db.schema.dropTable('totp_secrets').execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      await db.schema.dropTable('totp_authenticators').execute()
+      await db.schema.alterTable('sessions').dropColumn('refresh_hash').execute()
+      await db.schema.alterTable('sessions').dropColumn('refresh_expires_at').execute()
+      await db.schema.alterTable('sessions').dropColumn('refresh_prev_hash').execute()
+      await db.schema.alterTable('sessions').dropColumn('refresh_rotated_at').execute()
+    },
   }
 }
 

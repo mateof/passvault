@@ -27,11 +27,42 @@ const EMAIL_FIELD = (userId: string) => ({
   rowId: userId,
 })
 
+// Deliberately still keyed by the user and named for the old table: the associated data is what
+// a migrated secret was sealed under, so changing it would make every already-enrolled
+// authenticator undecryptable. Two authenticators for one account share this context and each
+// keeps its own nonce, which is all the separation ciphertext needs.
 const TOTP_FIELD = (userId: string) => ({
   table: 'totp_secrets',
   column: 'secret_cipher',
   rowId: userId,
 })
+
+/**
+ * Whether a code matches any of an account's confirmed authenticators.
+ *
+ * Any, because a phone and a backup are both valid and the person reaches for whichever is in
+ * their hand. Each secret is decrypted under the same per-user key and checked; the first match
+ * wins and a wrong code simply matches none.
+ */
+async function verifyTotpForUser(
+  deps: AccountsDeps,
+  userId: string,
+  code: string,
+): Promise<boolean> {
+  const authenticators = await repo.findConfirmedTotpAuthenticators(deps.db, userId)
+  const now = deps.now?.() ?? Date.now()
+  for (const authenticator of authenticators) {
+    const secret = deps.crypto.decryptField(
+      deps.crypto.serverKey(userId, 'totp-secret'),
+      new Uint8Array(authenticator.secret_cipher),
+      TOTP_FIELD(userId),
+    )
+    if (verifyTotp(secret, code, now)) {
+      return true
+    }
+  }
+  return false
+}
 
 function encryptEmail(deps: AccountsDeps, userId: string, email: string): Uint8Array {
   return deps.crypto.encryptField(
@@ -409,7 +440,14 @@ export class PendingLogins {
 }
 
 export type LoginOutcome =
-  | { status: 'complete'; token: string; sessionId: string; userId: string }
+  | {
+      status: 'complete'
+      token: string
+      /** The refresh token, handed over once at sign-in and rotated thereafter. */
+      refreshToken: string
+      sessionId: string
+      userId: string
+    }
   | { status: 'second-factor'; challenge: string; methods: ('totp' | 'email')[] }
 
 export async function loginWithPassword(
@@ -444,9 +482,9 @@ export async function loginWithPassword(
     )
   }
 
-  const totp = await repo.findTotpSecret(deps.db, user.id)
+  const confirmedTotp = await repo.findConfirmedTotpAuthenticators(deps.db, user.id)
   const methods: ('totp' | 'email')[] = []
-  if (totp?.confirmed_at) {
+  if (confirmedTotp.length > 0) {
     methods.push('totp')
   }
   if (settings.require_second_factor === 1 && methods.length === 0) {
@@ -507,16 +545,7 @@ export async function completeSecondFactor(
   }
 
   if (input.method === 'totp') {
-    const secret = await repo.findTotpSecret(deps.db, pending.userId)
-    if (!secret?.confirmed_at) {
-      throw badRequest('auth.error.secondFactorRequired')
-    }
-    const plain = deps.crypto.decryptField(
-      deps.crypto.serverKey(pending.userId, 'totp-secret'),
-      new Uint8Array(secret.secret_cipher),
-      TOTP_FIELD(pending.userId),
-    )
-    if (!verifyTotp(plain, input.code, deps.now?.() ?? Date.now())) {
+    if (!(await verifyTotpForUser(deps, pending.userId, input.code))) {
       throw unauthorized('auth.error.invalidOtp')
     }
   } else {
@@ -551,7 +580,7 @@ export async function beginTotpEnrolment(
   accountName: string,
 ): Promise<{ secret: string; uri: string }> {
   const secret = generateTotpSecret()
-  await repo.saveTotpSecret(
+  await repo.beginTotpAuthenticator(
     deps.db,
     userId,
     deps.crypto.encryptField(
@@ -567,8 +596,9 @@ export async function confirmTotpEnrolment(
   deps: AccountsDeps,
   userId: string,
   code: string,
+  label?: string,
 ): Promise<void> {
-  const stored = await repo.findTotpSecret(deps.db, userId)
+  const stored = await repo.findPendingTotpAuthenticator(deps.db, userId)
   if (!stored) {
     throw badRequest('auth.error.secondFactorRequired')
   }
@@ -580,10 +610,46 @@ export async function confirmTotpEnrolment(
   if (!verifyTotp(secret, code, deps.now?.() ?? Date.now())) {
     throw unauthorized('auth.error.invalidOtp')
   }
-  await repo.confirmTotpSecret(deps.db, userId)
+  await repo.confirmTotpAuthenticator(deps.db, stored.id, label?.trim()?.slice(0, 64) || null)
   await repo.recordAudit(deps.db, {
     actorUserId: userId,
     action: 'totp.confirmed',
+    subjectKind: 'user',
+    subjectId: userId,
+  })
+}
+
+export interface TotpAuthenticatorSummary {
+  id: string
+  label: string | null
+  createdAt: string
+}
+
+/** The confirmed authenticators on an account, for the screen that manages them. */
+export async function listTotpAuthenticators(
+  deps: AccountsDeps,
+  userId: string,
+): Promise<TotpAuthenticatorSummary[]> {
+  const rows = await repo.findConfirmedTotpAuthenticators(deps.db, userId)
+  return rows.map((row) => ({ id: row.id, label: row.label, createdAt: row.created_at }))
+}
+
+/**
+ * Removes one authenticator.
+ *
+ * No special "you are about to turn off your last factor" guard here: the account keeps a
+ * password (or a passkey) and this is the person's own to manage. What it must not do is silently
+ * delete somebody else's, which is why the removal is scoped to the owner in the query.
+ */
+export async function removeTotpAuthenticator(
+  deps: AccountsDeps,
+  userId: string,
+  id: string,
+): Promise<void> {
+  await repo.deleteTotpAuthenticator(deps.db, userId, id)
+  await repo.recordAudit(deps.db, {
+    actorUserId: userId,
+    action: 'totp.removed',
     subjectKind: 'user',
     subjectId: userId,
   })
@@ -600,6 +666,21 @@ export interface SessionOrigin {
   ipAddress?: string | null
 }
 
+/**
+ * How long a whole session lasts, in seconds.
+ *
+ * The administrator's chosen length in days wins over the deployment default; the point of the
+ * setting is months, because a personal ticket wallet signed out every day asks for a password
+ * at the turnstile. This is the refresh token's life — the access token is far shorter and is
+ * re-minted from it — and rotations do not extend it, so the number is a real ceiling.
+ */
+async function sessionSecondsFor(deps: AccountsDeps): Promise<number> {
+  const settings = await repo.readRegistrationSettings(deps.db)
+  return settings.session_days != null
+    ? settings.session_days * 24 * 60 * 60
+    : deps.config.session.hardHours * 3600
+}
+
 export async function issueSessionFor(
   deps: AccountsDeps,
   userId: string,
@@ -607,24 +688,14 @@ export async function issueSessionFor(
   origin?: SessionOrigin,
 ): Promise<LoginOutcome> {
   const token = toBase64Url(new Uint8Array(randomBytes(32)))
-  // The administrator's chosen lifetime wins over the deployment default. Days rather than the
-  // config's minutes/hours because the point of the setting is months: a personal ticket wallet
-  // logged out every day is a wallet that asks for a password at the turnstile. When a long
-  // lifetime is chosen the idle window is widened to match, so "lasts a year" is not quietly
-  // undone by a thirty-minute inactivity timeout — the session slides forward as it is used.
-  const settings = await repo.readRegistrationSettings(deps.db)
-  const idleMinutes =
-    settings.session_days != null
-      ? settings.session_days * 24 * 60
-      : deps.config.session.idleMinutes
-  const hardHours =
-    settings.session_days != null ? settings.session_days * 24 : deps.config.session.hardHours
+  const refreshToken = toBase64Url(new Uint8Array(randomBytes(32)))
   const session = await repo.insertSession(deps.db, {
     userId,
     token,
+    refreshToken,
     deviceId: deviceId ?? null,
-    idleMinutes,
-    hardHours,
+    accessMinutes: deps.config.session.idleMinutes,
+    sessionSeconds: await sessionSecondsFor(deps),
     // What opened the session and from where. The columns sat empty for a version because no
     // login path passed them, and every session listed as an unknown client from nowhere.
     userAgent: origin?.userAgent ?? null,
@@ -636,7 +707,50 @@ export async function issueSessionFor(
     subjectKind: 'session',
     subjectId: session.id,
   })
-  return { status: 'complete', token, sessionId: session.id, userId }
+  return { status: 'complete', token, refreshToken, sessionId: session.id, userId }
+}
+
+export interface RefreshOutcome {
+  token: string
+  refreshToken: string
+  sessionId: string
+  userId: string
+}
+
+/**
+ * Exchanges a refresh token for a fresh pair, rotating both.
+ *
+ * The old refresh token is spent: its hash becomes the previous one, honoured only for a few
+ * seconds so a client whose refresh response was lost can retry, and rejected after. A token
+ * presented past that grace, or one that never was current, is simply not a session — the caller
+ * signs in again. The access token that comes back is short-lived; the refresh token that comes
+ * back is the only one that will work next time.
+ */
+export async function refreshSession(
+  deps: AccountsDeps,
+  refreshToken: string,
+): Promise<RefreshOutcome> {
+  const found = await repo.findSessionByRefresh(
+    deps.db,
+    refreshToken,
+    deps.config.session.refreshGraceSeconds,
+  )
+  if (!found) {
+    throw unauthorized('auth.error.invalidCredentials')
+  }
+  const token = toBase64Url(new Uint8Array(randomBytes(32)))
+  const nextRefresh = toBase64Url(new Uint8Array(randomBytes(32)))
+  await repo.rotateSessionTokens(deps.db, found.session, {
+    token,
+    refreshToken: nextRefresh,
+    accessMinutes: deps.config.session.idleMinutes,
+  })
+  return {
+    token,
+    refreshToken: nextRefresh,
+    sessionId: found.session.id,
+    userId: found.session.user_id,
+  }
 }
 
 export interface OidcLoginOutcome {

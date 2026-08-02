@@ -327,7 +327,13 @@ export const gl = {
   'account.secondFactorScan':
     'Engade esta clave á túa aplicación de códigos e escribe despois o que amose, para comprobar que quedou ben.',
   'account.secondFactorOpen': 'Abrir na aplicación de códigos',
-  'account.secondFactorOn': 'O segundo factor está activo nesta conta.',
+  'account.secondFactorOn':
+    'Segundo factor activo con {count, plural, one {# authenticator} other {# authenticators}}.',
+  'account.secondFactorAdd': 'Engadir outro authenticator',
+  'account.secondFactorRemove': 'Quitar',
+  'account.secondFactorRemoveConfirm': 'Quitar este authenticator? Se é o último, a conta quedará sen segundo factor.',
+  'account.secondFactorLabel': 'Nome (por exemplo, Móbil ou Copia)',
+  'account.secondFactorUnnamed': 'Authenticator',
 
   'admin.title': 'Administración',
   'admin.notAdministrator': 'Esta pantalla é só para quen administra o servidor.',
@@ -727,7 +733,13 @@ export const es: Record<WebMessageKey, string> = {
   'account.secondFactorScan':
     'Añade esta clave a tu aplicación de códigos y escribe después lo que muestre, para comprobar que ha quedado bien.',
   'account.secondFactorOpen': 'Abrir en la aplicación de códigos',
-  'account.secondFactorOn': 'El segundo factor está activo en esta cuenta.',
+  'account.secondFactorOn':
+    'Segundo factor activo con {count, plural, one {# authenticator} other {# authenticators}}.',
+  'account.secondFactorAdd': 'Añadir otro authenticator',
+  'account.secondFactorRemove': 'Quitar',
+  'account.secondFactorRemoveConfirm': '¿Quitar este authenticator? Si es el último, la cuenta quedará sin segundo factor.',
+  'account.secondFactorLabel': 'Nombre (por ejemplo, Móvil o Copia)',
+  'account.secondFactorUnnamed': 'Authenticator',
 
   'admin.title': 'Administración',
   'admin.notAdministrator': 'Esta pantalla es solo para quien administra el servidor.',
@@ -1122,7 +1134,13 @@ export const en: Record<WebMessageKey, string> = {
   'account.secondFactorScan':
     'Add this key to your authenticator app, then type what it shows, to check it went in correctly.',
   'account.secondFactorOpen': 'Open in the authenticator app',
-  'account.secondFactorOn': 'A second factor is on for this account.',
+  'account.secondFactorOn':
+    'Second factor on, with {count, plural, one {# authenticator} other {# authenticators}}.',
+  'account.secondFactorAdd': 'Add another authenticator',
+  'account.secondFactorRemove': 'Remove',
+  'account.secondFactorRemoveConfirm': 'Remove this authenticator? If it is the last one, the account will have no second factor.',
+  'account.secondFactorLabel': 'Name (for example, Phone or Backup)',
+  'account.secondFactorUnnamed': 'Authenticator',
 
   'admin.title': 'Administration',
   'admin.notAdministrator': 'This screen is only for whoever administers the server.',

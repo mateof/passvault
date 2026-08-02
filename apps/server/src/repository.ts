@@ -217,10 +217,15 @@ export async function insertSession(
   handle: DatabaseHandle,
   options: {
     userId: string
+    /** The short-lived access token, re-minted on every refresh. */
     token: string
+    /** The long-lived refresh token, rotated on each use and sent only to the refresh endpoint. */
+    refreshToken: string
     deviceId?: string | null
-    idleMinutes: number
-    hardHours: number
+    /** How long the access token lives before the client must refresh. */
+    accessMinutes: number
+    /** How long the whole session lives — the refresh token's absolute end. */
+    sessionSeconds: number
     /**
      * Where this was opened from, so somebody reading their own list of sessions can tell the
      * phone in their pocket from the laptop they left at work. Absent when a proxy strips it,
@@ -238,9 +243,13 @@ export async function insertSession(
     token_hash: hashToken(options.token),
     device_id: options.deviceId ?? null,
     created_at: now,
-    idle_expires_at: instantIn(options.idleMinutes * 60),
-    hard_expires_at: instantIn(options.hardHours * 3600),
+    idle_expires_at: instantIn(options.accessMinutes * 60),
+    hard_expires_at: instantIn(options.sessionSeconds),
     revoked_at: null,
+    refresh_hash: hashToken(options.refreshToken),
+    refresh_expires_at: instantIn(options.sessionSeconds),
+    refresh_prev_hash: null,
+    refresh_rotated_at: now,
     user_agent: options.userAgent?.slice(0, 200) ?? null,
     ip_address: options.ipAddress?.slice(0, 64) ?? null,
     last_seen_at: now,
@@ -248,6 +257,72 @@ export async function insertSession(
   }
   await handle.db.insertInto('sessions').values(row).execute()
   return row
+}
+
+/**
+ * Finds the session a refresh token belongs to, live or within its rotation grace.
+ *
+ * Two windows. The current refresh hash is the ordinary case. The previous one is honoured for a
+ * few seconds after a rotation so a client whose refresh response was lost on the wire can retry
+ * with the token it still holds rather than being forced to sign in again. Past that grace the
+ * previous hash matches nothing.
+ */
+export async function findSessionByRefresh(
+  handle: DatabaseHandle,
+  refreshToken: string,
+  graceSeconds: number,
+): Promise<{ session: SessionRow; viaPrevious: boolean } | undefined> {
+  const now = toInstant()
+  const hash = hashToken(refreshToken)
+  const current = await handle.db
+    .selectFrom('sessions')
+    .selectAll()
+    .where('refresh_hash', '=', hash)
+    .where('revoked_at', 'is', null)
+    .where('refresh_expires_at', '>', now)
+    .executeTakeFirst()
+  if (current) {
+    return { session: current, viaPrevious: false }
+  }
+  const graceCutoff = instantIn(-graceSeconds)
+  const previous = await handle.db
+    .selectFrom('sessions')
+    .selectAll()
+    .where('refresh_prev_hash', '=', hash)
+    .where('revoked_at', 'is', null)
+    .where('refresh_expires_at', '>', now)
+    .where('refresh_rotated_at', '>', graceCutoff)
+    .executeTakeFirst()
+  if (previous) {
+    return { session: previous, viaPrevious: true }
+  }
+  return undefined
+}
+
+/**
+ * Rotates a session's tokens: a fresh access token and a fresh refresh token.
+ *
+ * The old refresh hash becomes the previous one, valid only for the grace window, and the old
+ * access token stops working at once. The session's absolute end does not move — a rotation
+ * extends nothing, so the administrator's chosen length is a real ceiling.
+ */
+export async function rotateSessionTokens(
+  handle: DatabaseHandle,
+  session: SessionRow,
+  next: { token: string; refreshToken: string; accessMinutes: number },
+): Promise<void> {
+  await handle.db
+    .updateTable('sessions')
+    .set({
+      token_hash: hashToken(next.token),
+      idle_expires_at: instantIn(next.accessMinutes * 60),
+      refresh_prev_hash: session.refresh_hash,
+      refresh_hash: hashToken(next.refreshToken),
+      refresh_rotated_at: toInstant(),
+      last_seen_at: toInstant(),
+    })
+    .where('id', '=', session.id)
+    .execute()
 }
 
 export async function findLiveSession(
@@ -269,16 +344,13 @@ export async function findLiveSession(
   )
 }
 
-export async function touchSession(
-  handle: DatabaseHandle,
-  sessionId: string,
-  idleMinutes: number,
-): Promise<void> {
+export async function touchSession(handle: DatabaseHandle, sessionId: string): Promise<void> {
+  // Only the last-seen mark now: the access token has a fixed short life and does not slide, so
+  // extending the session is the refresh token's job and happens on the refresh endpoint alone.
+  // A request that merely uses a valid access token must not lengthen anything.
   await handle.db
     .updateTable('sessions')
-    // Both in one statement, since this already runs on every authenticated request and a
-    // second UPDATE for a timestamp would double the busiest write in the server.
-    .set({ idle_expires_at: instantIn(idleMinutes * 60), last_seen_at: toInstant() })
+    .set({ last_seen_at: toInstant() })
     .where('id', '=', sessionId)
     .execute()
 }
@@ -513,35 +585,82 @@ export async function consumePasswordSetupToken(handle: DatabaseHandle, id: stri
     .execute()
 }
 
-export async function saveTotpSecret(
+/**
+ * Begins one authenticator's enrolment.
+ *
+ * Any half-finished enrolment this user already had is cleared first — an unconfirmed secret is
+ * a dead end, and leaving a pile of them would let one be confirmed by accident. Confirmed
+ * authenticators are untouched: this is how a second one is added beside the first. Returns the
+ * new row's id, which the confirm step names.
+ */
+export async function beginTotpAuthenticator(
   handle: DatabaseHandle,
   userId: string,
   secretCipher: Uint8Array,
-): Promise<void> {
-  await handle.db.deleteFrom('totp_secrets').where('user_id', '=', userId).execute()
+): Promise<string> {
   await handle.db
-    .insertInto('totp_secrets')
+    .deleteFrom('totp_authenticators')
+    .where('user_id', '=', userId)
+    .where('confirmed_at', 'is', null)
+    .execute()
+  const id = newId()
+  await handle.db
+    .insertInto('totp_authenticators')
     .values({
+      id,
       user_id: userId,
+      label: null,
       secret_cipher: Buffer.from(secretCipher),
       confirmed_at: null,
       created_at: toInstant(),
     })
     .execute()
+  return id
 }
 
-export async function findTotpSecret(handle: DatabaseHandle, userId: string) {
+/** The enrolment waiting to be confirmed, if any. There is at most one — begin clears the rest. */
+export async function findPendingTotpAuthenticator(handle: DatabaseHandle, userId: string) {
   return handle.db
-    .selectFrom('totp_secrets')
+    .selectFrom('totp_authenticators')
     .selectAll()
     .where('user_id', '=', userId)
+    .where('confirmed_at', 'is', null)
+    .orderBy('created_at', 'desc')
     .executeTakeFirst()
 }
 
-export async function confirmTotpSecret(handle: DatabaseHandle, userId: string): Promise<void> {
+/** Every confirmed authenticator, the ones a second factor is actually checked against. */
+export async function findConfirmedTotpAuthenticators(handle: DatabaseHandle, userId: string) {
+  return handle.db
+    .selectFrom('totp_authenticators')
+    .selectAll()
+    .where('user_id', '=', userId)
+    .where('confirmed_at', 'is not', null)
+    .orderBy('created_at', 'asc')
+    .execute()
+}
+
+export async function confirmTotpAuthenticator(
+  handle: DatabaseHandle,
+  id: string,
+  label: string | null,
+): Promise<void> {
   await handle.db
-    .updateTable('totp_secrets')
-    .set({ confirmed_at: toInstant() })
+    .updateTable('totp_authenticators')
+    .set({ confirmed_at: toInstant(), label })
+    .where('id', '=', id)
+    .execute()
+}
+
+/** Removes one authenticator, scoped to its owner so a stray id cannot delete somebody else's. */
+export async function deleteTotpAuthenticator(
+  handle: DatabaseHandle,
+  userId: string,
+  id: string,
+): Promise<void> {
+  await handle.db
+    .deleteFrom('totp_authenticators')
+    .where('id', '=', id)
     .where('user_id', '=', userId)
     .execute()
 }

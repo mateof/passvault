@@ -1,10 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, MINIMUM_PASSPHRASE_LENGTH, type OpenSession } from './api/passvault'
+import {
+  api,
+  MINIMUM_PASSPHRASE_LENGTH,
+  type OpenSession,
+  type TotpAuthenticator,
+} from './api/passvault'
 import { ApiError } from './api/client'
 import { createPasskey, passkeysSupported } from './api/webauthn'
 import { useT, LOCALES, LOCALE_NAMES, type Locale } from './i18n'
 import { useSession } from './session'
+import { Icon } from './icons'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
+
+/** A day in the reader's language. The server stores an instant; nobody wants to read one. */
+function shortDate(value: string, locale: string): string {
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
+}
 
 /**
  * The account.
@@ -138,43 +152,87 @@ export function AccountPage() {
 }
 
 /**
- * Turning on a second factor.
+ * The second factor, and the authenticators that make it up.
  *
- * The server has had this since the beginning — a TOTP secret, a confirmation, and a setting that
- * demands one of everybody — and no client ever offered a way to enrol, so the feature existed and
- * nobody could switch it on.
+ * The card used to be write-only: it could turn a factor on and, having done so, forget — a
+ * reload showed "enable two-factor" beside an account that already had it. Now it lists what is
+ * enrolled, so the honest state is on screen, and it enrols several: a phone and a backup, each
+ * with a name, so losing one does not lock the account out of itself.
  *
- * The secret is shown as text and as an `otpauth:` link rather than as a QR code. A QR would be
- * nicer on a desktop and this application has no QR encoder on the writing side; a link opens the
+ * The secret is shown as text and as an `otpauth:` link rather than a QR code. A link opens the
  * authenticator directly on the phone, which is where most people are, and the text works
- * everywhere else. Said plainly rather than dressed up as a preference.
+ * everywhere else; this application has no QR encoder on the writing side, and saying so plainly
+ * beats a worse QR.
  *
- * Nothing is armed until a code is confirmed. An unconfirmed secret never satisfies a second
- * factor, so an enrolment abandoned halfway cannot lock somebody out with a code they never
- * successfully scanned.
+ * Nothing is armed until a code is confirmed. An unconfirmed secret never satisfies a factor, so
+ * an enrolment abandoned halfway cannot lock somebody out with a code they never scanned.
  */
 function SecondFactorCard() {
   const { t, locale } = useT()
+  const [authenticators, setAuthenticators] = useState<TotpAuthenticator[]>()
   const [enrolment, setEnrolment] = useState<{ secret: string; uri: string }>()
   const [code, setCode] = useState('')
-  const [confirmed, setConfirmed] = useState(false)
+  const [label, setLabel] = useState('')
+  const [failure, setFailure] = useState<string>()
 
-  if (confirmed) {
-    return (
-      <Card title={t('account.secondFactor')} icon="shield">
-        <Banner kind="success">{t('account.secondFactorOn')}</Banner>
-      </Card>
-    )
-  }
+  const load = useCallback(async () => {
+    setAuthenticators((await api.totpAuthenticators(locale)).authenticators)
+  }, [locale])
+
+  useEffect(() => {
+    load().catch(() => setAuthenticators([]))
+  }, [load])
+
+  const list = authenticators ?? []
 
   return (
     <Card title={t('account.secondFactor')} icon="shield">
-      <p className="muted">{t('account.secondFactorExplain')}</p>
+      {list.length > 0 ? (
+        <Banner kind="success">{t('account.secondFactorOn', { count: list.length })}</Banner>
+      ) : (
+        <p className="muted">{t('account.secondFactorExplain')}</p>
+      )}
+      {failure ? <Banner kind="error">{failure}</Banner> : null}
+
+      {list.length > 0 ? (
+        <ul className="list">
+          {list.map((authenticator) => (
+            <li key={authenticator.id} className="list-row">
+              <span>
+                <Icon name="shield" size={16} />{' '}
+                {authenticator.label || t('account.secondFactorUnnamed')}
+                <span className="muted"> · {shortDate(authenticator.createdAt, locale)}</span>
+              </span>
+              <Button
+                variant="quiet"
+                onClick={async () => {
+                  if (!window.confirm(t('account.secondFactorRemoveConfirm'))) return
+                  try {
+                    await api.totpRemove(locale, authenticator.id)
+                    await load()
+                  } catch (cause) {
+                    setFailure(cause instanceof ApiError ? cause.message : t('error.unexpected'))
+                  }
+                }}
+              >
+                {t('account.secondFactorRemove')}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {!enrolment ? (
         <div className="button-row">
-          <Button icon="shield" onClick={async () => setEnrolment(await api.totpEnrol(locale))}>
-            {t('account.secondFactorStart')}
+          <Button
+            icon="shield"
+            onClick={async () => {
+              setLabel('')
+              setCode('')
+              setEnrolment(await api.totpEnrol(locale))
+            }}
+          >
+            {list.length > 0 ? t('account.secondFactorAdd') : t('account.secondFactorStart')}
           </Button>
         </div>
       ) : (
@@ -188,10 +246,17 @@ function SecondFactorCard() {
             submitLabel={t('action.confirm')}
             submitIcon="check"
             onSubmit={async () => {
-              await api.totpConfirm(locale, code)
-              setConfirmed(true)
+              try {
+                await api.totpConfirm(locale, code, label.trim() || undefined)
+                setEnrolment(undefined)
+                await load()
+              } catch (cause) {
+                setFailure(cause instanceof ApiError ? cause.message : t('error.unexpected'))
+              }
             }}
           >
+            {/* A name, so a list of two is "Phone" and "Backup" rather than two identical rows. */}
+            <Field label={t('account.secondFactorLabel')} value={label} onChange={setLabel} />
             <Field
               label={t('login.secondFactor')}
               value={code}

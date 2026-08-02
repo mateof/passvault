@@ -67,7 +67,7 @@ export {
   type RegistrationSettingsTable,
   type SessionsTable,
   type TicketsTable,
-  type TotpSecretsTable,
+  type TotpAuthenticatorsTable,
   type UserKeysTable,
   type UsersTable,
   type WebauthnCredentialsTable,

@@ -49,7 +49,7 @@ export interface ServerConfig {
   defaultLocale: Locale
   masterKey: Uint8Array
   blindIndexKey: Uint8Array
-  session: { idleMinutes: number; hardHours: number }
+  session: { idleMinutes: number; hardHours: number; refreshGraceSeconds: number }
   otp: { length: number; ttlMinutes: number; maxAttempts: number }
   webAuthn: {
     relyingPartyId: string
@@ -134,8 +134,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     masterKey: resolved.masterKey,
     blindIndexKey: resolved.blindIndexKey,
     session: {
+      // Doubles as the access token's lifetime: a request refreshes for a new one once this
+      // passes. Short by design — a captured access token is worth minutes, not the session.
       idleMinutes: positiveInteger(env.SESSION_IDLE_MINUTES, 30, 'SESSION_IDLE_MINUTES'),
+      // The whole session's default length when no administrator has chosen one. The refresh
+      // token lives this long, and rotations do not extend it.
       hardHours: positiveInteger(env.SESSION_HARD_HOURS, 24, 'SESSION_HARD_HOURS'),
+      // How long a just-rotated refresh token is still accepted, so a dropped refresh response
+      // lets the client retry rather than forcing a fresh sign-in.
+      refreshGraceSeconds: positiveInteger(
+        env.SESSION_REFRESH_GRACE_SECONDS,
+        60,
+        'SESSION_REFRESH_GRACE_SECONDS',
+      ),
     },
     otp: {
       length: positiveInteger(env.OTP_LENGTH, 6, 'OTP_LENGTH'),

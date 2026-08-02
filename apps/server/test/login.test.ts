@@ -326,7 +326,10 @@ describe('a second factor by authenticator app', () => {
   it('keeps the secret out of the database in plaintext', async () => {
     const { secret } = (await enrol()).json()
 
-    const stored = await server.db.db.selectFrom('totp_secrets').select('secret_cipher').execute()
+    const stored = await server.db.db
+      .selectFrom('totp_authenticators')
+      .select('secret_cipher')
+      .execute()
 
     expect(Buffer.from(stored[0]!.secret_cipher).toString('utf8')).not.toContain(secret)
   })

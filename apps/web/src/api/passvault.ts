@@ -34,6 +34,15 @@ export interface Me {
    * for a secret that does not exist.
    */
   vaultConfigured: boolean
+  /** How many authenticators are enrolled, so the account can say "you already have one". */
+  totpCount?: number
+}
+
+/** One enrolled authenticator app, as the account screen lists it. */
+export interface TotpAuthenticator {
+  id: string
+  label: string | null
+  createdAt: string
 }
 
 export type RegistrationMode = 'OPEN' | 'WHITELIST' | 'INVITATION' | 'CLOSED'
@@ -345,8 +354,21 @@ export const api = {
       method: 'POST',
     }),
 
-  totpConfirm: (locale: string, code: string) =>
-    request<{ confirmed: boolean }>('/api/v1/totp/confirm', { ...json(locale), body: { code } }),
+  totpConfirm: (locale: string, code: string, label?: string) =>
+    request<{ confirmed: boolean }>('/api/v1/totp/confirm', {
+      ...json(locale),
+      body: { code, ...(label ? { label } : {}) },
+    }),
+
+  /** The authenticators already enrolled, so the account can show what is on rather than only offer. */
+  totpAuthenticators: (locale: string) =>
+    request<{ authenticators: TotpAuthenticator[] }>('/api/v1/totp', json(locale)),
+
+  totpRemove: (locale: string, id: string) =>
+    request<{ removed: boolean }>(`/api/v1/totp/${encodeURIComponent(id)}`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
 
   login: (locale: string, email: string, password: string) =>
     request<AuthResult>('/api/v1/auth/login', { ...json(locale), body: { email, password } }),
