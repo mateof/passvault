@@ -24,6 +24,8 @@ export interface Me {
   status: string
   /** The name people find this account by. Null until one is chosen. */
   handle?: string | null
+  /** This account's own address, so a client can name the person rather than a database id. */
+  email?: string | null
   /** Almost every other endpoint depends on this, so it travels with the session. */
   vaultUnlocked: boolean
   /**

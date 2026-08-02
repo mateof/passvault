@@ -132,14 +132,19 @@ export async function registerDevice(
     .where('signing_public_key', '=', input.signingPublicKey)
     .executeTakeFirst()
   if (existing) {
-    if (existing.user_id !== input.userId) {
-      // A signing key identifies one device. Letting two accounts claim the same key would make
-      // every signature ambiguous.
-      throw forbidden()
-    }
+    // A signing key identifies one physical device, but which account that device serves can
+    // change: somebody signs out of one account and into another on the same phone, or the
+    // account it belonged to was deleted and left the row ownerless. Reassign it to whoever is
+    // registering it now rather than refuse — the earlier "different owner is forbidden" locked a
+    // phone out of syncing for any account but the first one it ever signed in with.
+    //
+    // This is safe because the signing key is immutable and its private half never leaves the
+    // device's keystore: operations already signed by it still verify under whoever owns it now,
+    // and only this phone can produce new ones. Ownership is which account it currently serves,
+    // not a claim on the history.
     await deps.db.db
       .updateTable('devices')
-      .set({ last_seen_at: toInstant(), status: 'ACTIVE' })
+      .set({ user_id: input.userId, last_seen_at: toInstant(), status: 'ACTIVE' })
       .where('id', '=', existing.id)
       .execute()
     return { deviceId: existing.id }

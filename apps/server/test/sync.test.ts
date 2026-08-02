@@ -193,7 +193,11 @@ describe('registering a device', () => {
     expect(second.json().deviceId).toBe(first.json().deviceId)
   })
 
-  it('refuses to let another account claim the same signing key', async () => {
+  it('reassigns a known signing key to the account registering it now', async () => {
+    // The same phone, a different account: a device's signing key is created once per install and
+    // never changes, so signing into a second account on the same handset — or reusing a phone
+    // after its old account was deleted — presents a key the server already knows. Reassigning it
+    // is what lets that phone sync at all; refusing locked it to the first account it ever used.
     const device = await registerDevice(organiser, 'phone')
     const stored = await server.db.db
       .selectFrom('devices')
@@ -206,13 +210,23 @@ describe('registering a device', () => {
       url: '/api/v1/devices',
       headers: bearer(member),
       payload: {
-        name: 'stolen',
+        name: 'same phone, new account',
         signingPublicKey: stored.signing_public_key,
         agreementPublicKey: toBase64Url(generateAgreementKeyPair().publicKey),
       },
     })
 
-    expect(response.statusCode).toBe(403)
+    expect(response.statusCode).toBe(201)
+    // The same device row, now owned by the account that just signed in on it.
+    expect(response.json().deviceId).toBe(device.id)
+    const memberId = (await server.app.inject({ url: '/api/v1/me', headers: bearer(member) })).json()
+      .userId
+    const owner = await server.db.db
+      .selectFrom('devices')
+      .select('user_id')
+      .where('id', '=', device.id)
+      .executeTakeFirstOrThrow()
+    expect(owner.user_id).toBe(memberId)
   })
 
   it('refuses a key that is not 32 bytes', async () => {

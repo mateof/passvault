@@ -633,6 +633,14 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       // cannot see it cannot tell "you have none" from "we never asked", which is exactly the
       // confusion this field removes.
       handle: user.handle,
+      // The account's own address, returned to its own session so a client can name the person
+      // by something they recognise rather than a database id. The server holds the key that
+      // decrypts it — the same one that names an authenticator — and this is that account asking
+      // about itself, so there is nothing here it is not already entitled to see.
+      email:
+        user.email_cipher.length > 0
+          ? readEmail(deps, user.id, new Uint8Array(user.email_cipher))
+          : null,
       // Whether the vault is open is part of the session state a client needs, since almost
       // every other endpoint depends on it.
       vaultUnlocked: vault !== undefined,

@@ -288,8 +288,13 @@ function slugifyHandle(value: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
+    // Collapse runs and trim the ends: the server requires a handle to start and end with a
+    // letter or digit, so "mateo " must become "mateo", not "mateo-" \u2014 which was saved and
+    // rejected with an error the person could not have predicted.
+    .replace(/[._-]{2,}/g, '-')
     .replace(/^[._-]+/, '')
     .slice(0, 32)
+    .replace(/[._-]+$/, '')
 }
 
 /**

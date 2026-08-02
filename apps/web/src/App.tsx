@@ -582,7 +582,12 @@ function Shell() {
         <div className="sidebar-footer">
           <p className="sidebar-account">
             <Icon name="account" size={16} />
-            {me?.userId.slice(0, 8)}
+            {/* The name the person knows themselves by: their handle if they chose one, then
+                their address, and only a database id as the last resort when the vault is still
+                locked and neither has arrived yet. */}
+            <span className="sidebar-account-name">
+              {me?.handle ? `@${me.handle}` : (me?.email ?? me?.userId.slice(0, 8))}
+            </span>
           </p>
           <button
             className="nav-link"
