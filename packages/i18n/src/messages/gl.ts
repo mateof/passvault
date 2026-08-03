@@ -98,6 +98,8 @@ export const gl = {
   'claim.rejected.invalidCoupon': 'Esta entrada non estaba ofrecida para reclamar.',
   'claim.rejected.ticketWithdrawn': 'O organizador retirou esta entrada.',
   'claim.error.notClaimable': 'Esta entrada non se pode reclamar.',
+  'ticket.error.alreadyRevealed': 'O código xa se mostrou, así que xa non se pode bloquear nin devolver.',
+  'ticket.error.notHolder': 'Só quen ten esta entrada pode facer iso.',
   'claim.error.forSelfOnly': 'Só podes reclamar unha entrada para ti.',
 
   // ─── Payments ───

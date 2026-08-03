@@ -86,6 +86,8 @@ export const es: Catalogue = {
   'claim.rejected.invalidCoupon': 'Esta entrada no estaba ofrecida para reclamar.',
   'claim.rejected.ticketWithdrawn': 'El organizador ha retirado esta entrada.',
   'claim.error.notClaimable': 'Esta entrada no se puede reclamar.',
+  'ticket.error.alreadyRevealed': 'El código ya se ha mostrado, así que ya no se puede bloquear ni devolver.',
+  'ticket.error.notHolder': 'Solo quien tiene esta entrada puede hacer eso.',
   'claim.error.forSelfOnly': 'Solo puedes reclamar una entrada para ti.',
 
   'payment.state.UNPAID': 'Sin pagar',

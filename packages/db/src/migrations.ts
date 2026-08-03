@@ -27,6 +27,60 @@ export function migrations(engine: Engine): Record<string, Migration> {
     '0005_event_password_keeper': eventPasswordKeeper(engine),
     '0006_download_marks_and_session_length': downloadMarksAndSessionLength(engine),
     '0007_refresh_tokens_and_multi_totp': refreshTokensAndMultiTotp(engine),
+    '0008_ticket_visibility_and_returns': ticketVisibilityAndReturns(engine),
+  }
+}
+
+/**
+ * The controls a creator has over a shared ticket's barcode: when it may be seen, whether it is
+ * held back, whether it has been given back, and whether the holder may pass it on.
+ *
+ * All on the ticket, because they are decisions about one seat. Nothing here is encrypted — a
+ * timestamp and a flag are not the barcode — so the server can enforce them without a key, which
+ * is the point: the barcode itself stays sealed, and these say whether it is served at all.
+ */
+function ticketVisibilityAndReturns(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('visible_from', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('visible_hours_before', 'integer')
+        .execute()
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('creator_blocked', 'integer', (column) => column.notNull().defaultTo(0))
+        .execute()
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('revealed_at', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('returned_at', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('share_permitted', 'integer', (column) => column.notNull().defaultTo(0))
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      for (const column of [
+        'visible_from',
+        'visible_hours_before',
+        'creator_blocked',
+        'revealed_at',
+        'returned_at',
+        'share_permitted',
+      ]) {
+        await db.schema.alterTable('tickets').dropColumn(column).execute()
+      }
+    },
   }
 }
 

@@ -137,11 +137,16 @@ import {
 import {
   addTickets,
   assignTicket,
+  blockTicket,
   claimFreeTicket,
   claimSummary,
   ensureDevice,
   issueClaimCoupons,
   projectTickets,
+  returnTicket,
+  setSharePermission,
+  setTicketVisibility,
+  unblockTicket,
   reconcileTicket,
   setPayment,
   submitClaim,
@@ -2125,6 +2130,10 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       // What the member can do about claiming, since their filtered list no longer shows the
       // free tickets. The button reads this rather than counting rows it can no longer see.
       claim: await claimSummary(eventDeps, { eventId: id, viewerUserId: session.user_id }),
+      // The server's own clock, so a "visible in 3 hours" countdown is measured against the
+      // authority rather than a phone whose time the user could move — which is the whole point
+      // of gating the barcode here rather than trusting the device.
+      serverTime: toInstant(),
     }
   })
 
@@ -2154,6 +2163,68 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       ...assignBody.parse(request.body),
     })
     return { assigned: true }
+  })
+
+  /**
+   * The creator's controls over a shared ticket's barcode.
+   *
+   * None of these needs the event key: they touch timestamps and flags, not the sealed barcode,
+   * which is the whole design — the server can decide whether to serve a code without being able
+   * to read it. Authorisation lives inside each function: the creator for the controls, the holder
+   * for a return.
+   */
+  const visibilityBody = z.object({
+    visibleFrom: z.string().datetime().nullable().optional(),
+    hoursBeforeEvent: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 366)
+      .nullable()
+      .optional(),
+  })
+
+  app.put('/api/v1/tickets/:id/visibility', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const body = visibilityBody.parse(request.body ?? {})
+    await setTicketVisibility(eventDeps, {
+      ticketId: id,
+      actorUserId: session.user_id,
+      ...(body.visibleFrom === undefined ? {} : { visibleFrom: body.visibleFrom }),
+      ...(body.hoursBeforeEvent === undefined ? {} : { hoursBeforeEvent: body.hoursBeforeEvent }),
+    })
+    return { updated: true }
+  })
+
+  app.post('/api/v1/tickets/:id/block', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    await blockTicket(eventDeps, { ticketId: id, actorUserId: session.user_id })
+    return { blocked: true }
+  })
+
+  app.post('/api/v1/tickets/:id/unblock', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    await unblockTicket(eventDeps, { ticketId: id, actorUserId: session.user_id })
+    return { blocked: false }
+  })
+
+  app.put('/api/v1/tickets/:id/share-permission', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const { permitted } = z.object({ permitted: z.boolean() }).parse(request.body)
+    await setSharePermission(eventDeps, { ticketId: id, actorUserId: session.user_id, permitted })
+    return { sharePermitted: permitted }
+  })
+
+  /** Hands a seat back, by its holder, while the barcode is still locked to them. */
+  app.post('/api/v1/tickets/:id/return', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    await returnTicket(eventDeps, { ticketId: id, actorUserId: session.user_id })
+    return { returned: true }
   })
 
   /**

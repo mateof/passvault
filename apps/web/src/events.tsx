@@ -470,6 +470,7 @@ export function EventPage() {
   const [event, setEvent] = useState<EventDetail>()
   const [tickets, setTickets] = useState<TicketSummary[]>([])
   const [claim, setClaim] = useState<ClaimSummary>()
+  const [serverTime, setServerTime] = useState<string>()
   const [openDialog, setOpenDialog] = useState<
     'edit' | 'appearance' | 'tags' | 'share' | 'password' | 'add' | 'export' | 'delete'
   >()
@@ -483,6 +484,7 @@ export function EventPage() {
       setEvent(detail)
       setTickets(listed.tickets ?? [])
       setClaim(listed.claim)
+      setServerTime(listed.serverTime)
       setNeedsPassword(false)
     } catch (cause) {
       if (cause instanceof ApiError && (cause.status === 403 || cause.status === 423)) {
@@ -686,7 +688,13 @@ export function EventPage() {
         {tickets.length === 0 ? <Empty icon="ticket">{t('tickets.none')}</Empty> : null}
         <ul className="list">
           {tickets.map((ticket) => (
-            <TicketRow key={ticket.id} ticket={ticket} onChanged={load} />
+            <TicketRow
+              key={ticket.id}
+              ticket={ticket}
+              isCreator={event.isCreator !== false}
+              serverTime={serverTime}
+              onChanged={load}
+            />
           ))}
         </ul>
       </Card>
@@ -1267,9 +1275,13 @@ function EventAppearanceCard({
 
 function TicketRow({
   ticket,
+  isCreator,
+  serverTime,
   onChanged,
 }: {
   ticket: TicketSummary
+  isCreator: boolean
+  serverTime?: string
   onChanged: () => Promise<void>
 }) {
   const { t, locale } = useT()
@@ -1300,66 +1312,216 @@ function TicketRow({
               {ticket.barcode.value}
               <span className="muted"> ({ticket.barcode.format})</span>
             </p>
+          ) : ticket.locked ? (
+            // Why it is withheld, in the words the person can act on: pay it, wait for it, or ask
+            // the creator. The countdown is measured against the server's clock, sent with the
+            // list, so moving the phone's time does nothing.
+            <Banner kind="info">
+              {ticket.lockReason === 'unpaid'
+                ? t('tickets.lockedUnpaid')
+                : ticket.lockReason === 'blocked'
+                  ? t('tickets.lockedBlocked')
+                  : t('tickets.lockedUntil', {
+                      when: whenText(ticket.visibleFrom ?? undefined, locale) ?? '',
+                    })}
+            </Banner>
           ) : (
             <p className="muted">{t('tickets.noBarcode')}</p>
           )}
 
-          <Form
-            submitLabel={t('tickets.assign')}
-            onSubmit={async () => {
-              await api.assign(locale, ticket.id, { holderLabel: holder })
-              await onChanged()
-            }}
-          >
-            <Field label={t('tickets.holder')} value={holder} onChange={setHolder} />
-          </Form>
-
-          {/* By address, which is the difference between writing somebody's name on a ticket and
-              giving it to them: an assigned holder with an account is the only one who can see
-              the barcode of their own ticket and nobody else's. */}
-          <AssignToAccount ticketId={ticket.id} onChanged={onChanged} />
-
-          <PaymentForm ticket={ticket} onChanged={onChanged} />
-
-          {confirmWithdraw ? (
-            <>
-              <Banner kind="warning">{t('tickets.withdrawWarning')}</Banner>
-              <div className="button-row">
-                <Button
-                  variant="danger"
-                  icon="check"
-                  onClick={async () => {
-                    await api.withdraw(locale, ticket.id)
-                    setConfirmWithdraw(false)
-                    await onChanged()
-                  }}
-                >
-                  {t('action.confirm')}
-                </Button>
-                <Button variant="quiet" onClick={() => setConfirmWithdraw(false)}>
-                  {t('action.cancel')}
-                </Button>
-              </div>
-            </>
-          ) : (
+          {/* The holder's way out, while there is still nothing to keep: a locked ticket can be
+              handed back, and once the code has been seen it cannot. */}
+          {!isCreator &&
+          ticket.holderUserId &&
+          !ticket.revealed &&
+          ticket.assignmentState !== 'FREE' ? (
             <div className="button-row">
-              <Button variant="quiet" onClick={() => setConfirmWithdraw(true)}>
-                {t('tickets.withdraw')}
-              </Button>
               <Button
                 variant="quiet"
                 onClick={async () => {
-                  await api.reconcile(locale, ticket.id).catch(() => undefined)
+                  if (!window.confirm(t('tickets.returnConfirm'))) return
+                  await api.returnTicket(locale, ticket.id)
                   await onChanged()
                 }}
               >
-                {t('tickets.reconcile')}
+                {t('tickets.return')}
               </Button>
             </div>
-          )}
+          ) : null}
+
+          {isCreator ? (
+            <>
+              <Form
+                submitLabel={t('tickets.assign')}
+                onSubmit={async () => {
+                  await api.assign(locale, ticket.id, { holderLabel: holder })
+                  await onChanged()
+                }}
+              >
+                <Field label={t('tickets.holder')} value={holder} onChange={setHolder} />
+              </Form>
+
+              {/* By address, which is the difference between writing somebody's name on a ticket
+                  and giving it to them: an assigned holder with an account is the only one who
+                  can see the barcode of their own ticket and nobody else's. */}
+              <AssignToAccount ticketId={ticket.id} onChanged={onChanged} />
+
+              <PaymentForm ticket={ticket} onChanged={onChanged} />
+
+              <VisibilityControls ticket={ticket} serverTime={serverTime} onChanged={onChanged} />
+
+              {confirmWithdraw ? (
+                <>
+                  <Banner kind="warning">{t('tickets.withdrawWarning')}</Banner>
+                  <div className="button-row">
+                    <Button
+                      variant="danger"
+                      icon="check"
+                      onClick={async () => {
+                        await api.withdraw(locale, ticket.id)
+                        setConfirmWithdraw(false)
+                        await onChanged()
+                      }}
+                    >
+                      {t('action.confirm')}
+                    </Button>
+                    <Button variant="quiet" onClick={() => setConfirmWithdraw(false)}>
+                      {t('action.cancel')}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="button-row">
+                  <Button variant="quiet" onClick={() => setConfirmWithdraw(true)}>
+                    {t('tickets.withdraw')}
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    onClick={async () => {
+                      await api.reconcile(locale, ticket.id).catch(() => undefined)
+                      await onChanged()
+                    }}
+                  >
+                    {t('tickets.reconcile')}
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       ) : null}
     </li>
+  )
+}
+
+/**
+ * The creator's grip on one shared barcode: when it opens, whether it is held back, and whether
+ * the holder may pass it on.
+ *
+ * The block button disables itself the moment the code has been revealed, because from there the
+ * holder may have a photograph and a block would be a lie. The visibility is set either to an exact
+ * moment or to a span before the event — the second follows a re-dated event, which the first
+ * cannot.
+ */
+function VisibilityControls({
+  ticket,
+  serverTime,
+  onChanged,
+}: {
+  ticket: TicketSummary
+  serverTime?: string
+  onChanged: () => Promise<void>
+}) {
+  const { t, locale } = useT()
+  const [when, setWhen] = useState(toLocalInput(ticket.visibleFrom ?? undefined))
+
+  return (
+    <div className="ticket-visibility">
+      <p className="field-help">{t('tickets.visibilityExplain')}</p>
+      <DateTimeField label={t('tickets.visibleFrom')} value={when} onChange={setWhen} />
+      <div className="button-row">
+        <Button
+          variant="quiet"
+          onClick={async () => {
+            await api.setTicketVisibility(locale, ticket.id, {
+              visibleFrom: when === '' ? null : new Date(when).toISOString(),
+              hoursBeforeEvent: null,
+            })
+            await onChanged()
+          }}
+        >
+          {t('tickets.setVisibility')}
+        </Button>
+        {/* The common case as one tap: open the day before the event. */}
+        <Button
+          variant="quiet"
+          onClick={async () => {
+            await api.setTicketVisibility(locale, ticket.id, {
+              hoursBeforeEvent: 24,
+              visibleFrom: null,
+            })
+            await onChanged()
+          }}
+        >
+          {t('tickets.visibleDayBefore')}
+        </Button>
+        {when !== '' || ticket.visibleFrom ? (
+          <Button
+            variant="quiet"
+            onClick={async () => {
+              setWhen('')
+              await api.setTicketVisibility(locale, ticket.id, {
+                visibleFrom: null,
+                hoursBeforeEvent: null,
+              })
+              await onChanged()
+            }}
+          >
+            {t('tickets.visibilityClear')}
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="button-row">
+        {ticket.blocked ? (
+          <Button
+            variant="quiet"
+            onClick={async () => {
+              await api.unblockTicket(locale, ticket.id)
+              await onChanged()
+            }}
+          >
+            {t('tickets.unblock')}
+          </Button>
+        ) : (
+          <Button
+            variant="quiet"
+            // Once seen, blocking is refused by the server; the button says why it is off rather
+            // than failing when pressed.
+            disabled={ticket.revealed}
+            onClick={async () => {
+              await api.blockTicket(locale, ticket.id)
+              await onChanged()
+            }}
+          >
+            {ticket.revealed ? t('tickets.blockRevealed') : t('tickets.block')}
+          </Button>
+        )}
+      </div>
+
+      <label className="field field-check">
+        <input
+          type="checkbox"
+          checked={ticket.sharePermitted ?? false}
+          onChange={async (event) => {
+            await api.setSharePermission(locale, ticket.id, event.target.checked)
+            await onChanged()
+          }}
+        />
+        <span>{t('tickets.allowShare')}</span>
+      </label>
+      {serverTime ? <p className="field-help">{t('tickets.serverTime', { when: whenText(serverTime, locale) ?? '' })}</p> : null}
+    </div>
   )
 }
 

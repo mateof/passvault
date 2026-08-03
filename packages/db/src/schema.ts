@@ -290,6 +290,24 @@ export interface TicketsTable {
   assigned_at: Instant | null
   exported_at: Instant | null
   status: 'ACTIVE' | 'WITHDRAWN'
+  /** When the holder may first see the barcode, as an absolute instant the creator set. Null when
+   *  no absolute moment was chosen — see `visible_hours_before` for the relative alternative. */
+  visible_from: Instant | null
+  /** The same gate expressed as hours before the event starts, so it follows a re-dated event.
+   *  At most one of this and `visible_from` is set; both null means no time gate. */
+  visible_hours_before: number | null
+  /** The creator has held the barcode back. Only settable while it is still locked — once the
+   *  holder has seen it, blocking is a promise the interface cannot keep. */
+  creator_blocked: Flag
+  /** When the barcode was first served to its holder. The line past which it can no longer be
+   *  blocked, because a QR that has been on a screen may already be in a photograph. */
+  revealed_at: Instant | null
+  /** When the holder handed the seat back, for the creator's list. Cleared when it is taken up
+   *  again, so the field means "returned and still free", not "was ever returned". */
+  returned_at: Instant | null
+  /** Whether the holder may pass this ticket on. Off by default: sharing is the creator's to give,
+   *  and this is the switch that lends it for one seat. */
+  share_permitted: Flag
   created_at: Instant
   updated_at: Instant
 }

@@ -113,6 +113,14 @@ export async function addTickets(
         assigned_at: null,
         exported_at: null,
         status: 'ACTIVE',
+        // The visibility controls start neutral: seen as soon as held, never blocked, never
+        // returned, not shareable onward. Everything here is the creator's to change afterwards.
+        visible_from: null,
+        visible_hours_before: null,
+        creator_blocked: 0,
+        revealed_at: null,
+        returned_at: null,
+        share_permitted: 0,
         created_at: now,
         updated_at: now,
       })
@@ -156,6 +164,9 @@ export async function assignTicket(
           )
         : null,
       assigned_at: toInstant(),
+      // Assigning to a holder starts them locked and un-returned, like a claim.
+      returned_at: null,
+      revealed_at: null,
       updated_at: toInstant(),
     })
     .where('id', '=', input.ticketId)
@@ -225,6 +236,10 @@ export async function claimFreeTicket(
       assignment_state: 'CLAIMED',
       holder_user_id: input.userId,
       assigned_at: toInstant(),
+      // A fresh holder starts as if the seat were new: not a return any more, and locked again
+      // until the creator's gate lets it through.
+      returned_at: null,
+      revealed_at: null,
       updated_at: toInstant(),
     })
     .where('id', '=', claimable.id)
@@ -666,6 +681,20 @@ export interface TicketProjection {
   /** The holder's public name, resolved for the creator so a claim reads as a person, not an id. */
   holderHandle: string | null
   status: string
+  /** The moment the barcode may first be seen, or null for no time gate. Shown as a countdown. */
+  visibleFrom: string | null
+  /** True when this viewer is entitled to the barcode but it is currently withheld. */
+  locked: boolean
+  /** Why it is withheld: 'blocked', 'unpaid', or 'notYet'. Null when it is not locked. */
+  lockReason: 'blocked' | 'unpaid' | 'notYet' | null
+  /** Whether the creator is holding it back. Their control, shown to them and to the holder. */
+  blocked: boolean
+  /** When it was handed back and left free, for the creator's list. Null otherwise. */
+  returnedAt: string | null
+  /** Whether the barcode has ever been served to the holder — past which it cannot be blocked. */
+  revealed: boolean
+  /** Whether the holder is allowed to pass this ticket on. Off unless the creator lent it. */
+  sharePermitted: boolean
   payment?: {
     state: string
     amountCents: number | null
@@ -673,6 +702,22 @@ export interface TicketProjection {
     visibility: string
     settledAt: string | null
   }
+}
+
+/**
+ * When a ticket's barcode becomes visible, as an absolute instant, or null for no time gate.
+ *
+ * The relative rule wins when it and an event start are both present, so a re-dated event carries
+ * its "day before" with it rather than stranding an absolute moment the creator has to redo.
+ */
+function effectiveVisibleFrom(
+  ticket: { visible_from: string | null; visible_hours_before: number | null },
+  event: { starts_at: string | null },
+): string | null {
+  if (ticket.visible_hours_before != null && event.starts_at) {
+    return toInstant(new Date(new Date(event.starts_at).getTime() - ticket.visible_hours_before * 3600_000))
+  }
+  return ticket.visible_from
 }
 
 /**
@@ -711,6 +756,12 @@ export async function projectTickets(
       'tickets.holder_user_id',
       'tickets.holder_label_cipher',
       'tickets.status',
+      'tickets.visible_from',
+      'tickets.visible_hours_before',
+      'tickets.creator_blocked',
+      'tickets.revealed_at',
+      'tickets.returned_at',
+      'tickets.share_permitted',
       'payments.state as payment_state',
       'payments.amount_cents',
       'payments.currency',
@@ -720,6 +771,8 @@ export async function projectTickets(
     .where('tickets.event_id', '=', input.eventId)
     .orderBy('tickets.created_at', 'asc')
     .execute()
+
+  const now = toInstant()
 
   // Who holds each ticket, by handle, resolved once for the creator. A claim they cannot put a
   // name to is a list of ticket ids and user ids — true, and useless for "who got which".
@@ -738,9 +791,35 @@ export async function projectTickets(
     }
   }
 
+  // Barcodes served to a holder for the first time, so the reveal line is written once the read
+  // has actually handed the code over rather than when the creator merely allowed it.
+  const revealedNow: string[] = []
+
   const projected = rows.map((row) => {
     const isHolder = row.holder_user_id === input.viewerUserId
-    const maySeeBarcode = isCreator || row.assignment_mode === 'OPEN' || isHolder
+    // Whether this viewer is entitled to the barcode at all: the creator always, a member only
+    // for a shared-wallet (OPEN) ticket or one they hold.
+    const entitled = row.assignment_mode === 'OPEN' || isHolder
+
+    // The gate the creator controls. It applies to a member's view only — the creator sees their
+    // own barcode regardless, because withholding it from themselves protects no one.
+    const visibleFrom = effectiveVisibleFrom(row, event)
+    const unpaid = row.payment_state === 'UNPAID' || row.payment_state === 'PARTIAL'
+    const lockReason: 'blocked' | 'unpaid' | 'notYet' | null = row.creator_blocked === 1
+      ? 'blocked'
+      : unpaid
+        ? 'unpaid'
+        : visibleFrom && now < visibleFrom
+          ? 'notYet'
+          : null
+    const locked = !isCreator && entitled && lockReason !== null
+    const maySeeBarcode = isCreator || (entitled && lockReason === null)
+
+    // Serving the barcode to its holder is what reveals it; from here the creator can no longer
+    // block it, so the line is recorded the moment it crosses to a non-creator holder.
+    if (!isCreator && isHolder && maySeeBarcode && row.barcode_cipher && !row.revealed_at) {
+      revealedNow.push(row.id)
+    }
 
     const projection: TicketProjection = {
       id: row.id,
@@ -770,6 +849,15 @@ export async function projectTickets(
       ),
       holderHandle: row.holder_user_id ? (handles.get(row.holder_user_id) ?? null) : null,
       status: row.status,
+      visibleFrom,
+      locked,
+      lockReason: locked ? lockReason : null,
+      blocked: row.creator_blocked === 1,
+      returnedAt: row.returned_at,
+      // Revealed if it already was, or if this very read reveals it — so the creator's block
+      // control disables immediately rather than a request later.
+      revealed: row.revealed_at !== null || revealedNow.includes(row.id),
+      sharePermitted: row.share_permitted === 1,
     }
 
     if (
@@ -792,6 +880,17 @@ export async function projectTickets(
     return projection
   })
 
+  // Written once, after the read, so a list load that showed the holder their barcode also draws
+  // the line past which the creator can no longer take it back.
+  if (revealedNow.length > 0) {
+    await deps.db.db
+      .updateTable('tickets')
+      .set({ revealed_at: now, updated_at: now })
+      .where('id', 'in', revealedNow)
+      .where('revealed_at', 'is', null)
+      .execute()
+  }
+
   // Under self-claim a member sees only the ticket they took — "vea só a súa entrada". The free
   // ones and those other people grabbed are not on their screen at all; the claim button, which
   // reads the count separately, is how they know there is one to take. Open and assigned events
@@ -804,6 +903,147 @@ export async function projectTickets(
     (ticket) =>
       ticket.assignmentMode !== 'SELF_CLAIM' || ticket.holderUserId === input.viewerUserId,
   )
+}
+
+/**
+ * The creator's controls over one ticket's barcode.
+ *
+ * Each is a small, guarded write, and the guards are the feature: a block that arrives after the
+ * barcode has been seen is refused, because it would be a promise the screen cannot keep.
+ */
+async function requireCreator(deps: EventDeps, ticketId: string) {
+  const ticket = await requireTicket(deps, ticketId)
+  const event = await findEvent(deps, ticket.event_id)
+  if (!event) {
+    throw notFound()
+  }
+  return { ticket, event }
+}
+
+/** Sets when the holder may first see the barcode: an absolute moment, hours before the event, or neither. */
+export async function setTicketVisibility(
+  deps: EventDeps,
+  input: {
+    ticketId: string
+    actorUserId: string
+    visibleFrom?: string | null
+    hoursBeforeEvent?: number | null
+  },
+): Promise<void> {
+  const { event } = await requireCreator(deps, input.ticketId)
+  if (event.creator_user_id !== input.actorUserId) {
+    throw forbidden('event.error.notCreator')
+  }
+  await deps.db.db
+    .updateTable('tickets')
+    .set({
+      // At most one gate: a relative rule and an absolute one at once would be two answers to one
+      // question. Setting either clears the other.
+      visible_from: input.hoursBeforeEvent != null ? null : (input.visibleFrom ?? null),
+      visible_hours_before: input.visibleFrom != null ? null : (input.hoursBeforeEvent ?? null),
+      updated_at: toInstant(),
+    })
+    .where('id', '=', input.ticketId)
+    .execute()
+}
+
+/**
+ * Holds a barcode back, or refuses to when it is already out.
+ *
+ * The refusal is the point: once the barcode has been served, the holder may have a photograph,
+ * and a block that pretended otherwise would be security theatre. So blocking is allowed only
+ * while the ticket has never been revealed.
+ */
+export async function blockTicket(
+  deps: EventDeps,
+  input: { ticketId: string; actorUserId: string },
+): Promise<void> {
+  const { ticket, event } = await requireCreator(deps, input.ticketId)
+  if (event.creator_user_id !== input.actorUserId) {
+    throw forbidden('event.error.notCreator')
+  }
+  if (ticket.revealed_at) {
+    throw badRequest('ticket.error.alreadyRevealed')
+  }
+  await deps.db.db
+    .updateTable('tickets')
+    .set({ creator_blocked: 1, updated_at: toInstant() })
+    .where('id', '=', input.ticketId)
+    .execute()
+}
+
+/** Lets the barcode through again. Always allowed — the creator can change their mind at any time. */
+export async function unblockTicket(
+  deps: EventDeps,
+  input: { ticketId: string; actorUserId: string },
+): Promise<void> {
+  const { event } = await requireCreator(deps, input.ticketId)
+  if (event.creator_user_id !== input.actorUserId) {
+    throw forbidden('event.error.notCreator')
+  }
+  await deps.db.db
+    .updateTable('tickets')
+    .set({ creator_blocked: 0, updated_at: toInstant() })
+    .where('id', '=', input.ticketId)
+    .execute()
+}
+
+/** Lends or revokes the holder's ability to pass this ticket on. */
+export async function setSharePermission(
+  deps: EventDeps,
+  input: { ticketId: string; actorUserId: string; permitted: boolean },
+): Promise<void> {
+  const { event } = await requireCreator(deps, input.ticketId)
+  if (event.creator_user_id !== input.actorUserId) {
+    throw forbidden('event.error.notCreator')
+  }
+  await deps.db.db
+    .updateTable('tickets')
+    .set({ share_permitted: input.permitted ? 1 : 0, updated_at: toInstant() })
+    .where('id', '=', input.ticketId)
+    .execute()
+}
+
+/**
+ * Hands a seat back, if it can still be handed back.
+ *
+ * Only the holder, and only while the barcode is still locked to them: once it has been revealed
+ * there is nothing left to return honestly — they have seen the code. The seat goes back to the
+ * pool free, marked returned so the creator's list can say so, and its reveal line is cleared so
+ * whoever takes it next starts locked again.
+ */
+export async function returnTicket(
+  deps: EventDeps,
+  input: { ticketId: string; actorUserId: string },
+): Promise<void> {
+  const ticket = await requireTicket(deps, input.ticketId)
+  if (ticket.holder_user_id !== input.actorUserId) {
+    throw forbidden('ticket.error.notHolder')
+  }
+  if (ticket.revealed_at) {
+    // The whole point of returning is to give back something unused. A revealed barcode is not
+    // that, so the interface must not pretend a return undoes having seen it.
+    throw badRequest('ticket.error.alreadyRevealed')
+  }
+  await deps.db.db
+    .updateTable('tickets')
+    .set({
+      assignment_state: 'FREE',
+      holder_user_id: null,
+      holder_label_cipher: null,
+      assigned_at: null,
+      returned_at: toInstant(),
+      revealed_at: null,
+      updated_at: toInstant(),
+    })
+    .where('id', '=', input.ticketId)
+    .execute()
+  await repo.recordAudit(deps.db, {
+    actorUserId: input.actorUserId,
+    action: 'ticket.returned',
+    subjectKind: 'ticket',
+    subjectId: input.ticketId,
+  })
 }
 
 function decrypt(

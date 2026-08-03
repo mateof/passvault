@@ -263,6 +263,18 @@ export interface TicketSummary {
   /** The holder's public name, present only in the creator's view. */
   holderHandle?: string | null
   status: string
+  /** The moment the barcode may first be seen, or null for no time gate. */
+  visibleFrom?: string | null
+  /** True when this viewer is entitled to the barcode but it is currently withheld. */
+  locked?: boolean
+  lockReason?: 'blocked' | 'unpaid' | 'notYet' | null
+  /** Whether the creator is holding it back. */
+  blocked?: boolean
+  returnedAt?: string | null
+  /** Whether the barcode has been served to its holder, past which it cannot be blocked. */
+  revealed?: boolean
+  /** Whether the holder may pass this ticket on. */
+  sharePermitted?: boolean
   payment?: {
     state: PaymentState
     amountCents?: number | null
@@ -441,7 +453,7 @@ export const api = {
     request<EventDetail>(`/api/v1/events/${encodeURIComponent(id)}`, json(locale)),
 
   tickets: (locale: string, eventId: string) =>
-    request<{ tickets: TicketSummary[]; claim: ClaimSummary }>(
+    request<{ tickets: TicketSummary[]; claim: ClaimSummary; serverTime: string }>(
       `/api/v1/events/${encodeURIComponent(eventId)}/tickets`,
       json(locale),
     ),
@@ -473,6 +485,43 @@ export const api = {
     request<TicketSummary>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/assign`, {
       ...json(locale),
       body,
+    }),
+
+  // ── The creator's controls over a shared barcode ─────────────────────────────
+  setTicketVisibility: (
+    locale: string,
+    ticketId: string,
+    body: { visibleFrom?: string | null; hoursBeforeEvent?: number | null },
+  ) =>
+    request<{ updated: boolean }>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/visibility`, {
+      ...json(locale),
+      method: 'PUT',
+      body,
+    }),
+
+  blockTicket: (locale: string, ticketId: string) =>
+    request<{ blocked: boolean }>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/block`, {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  unblockTicket: (locale: string, ticketId: string) =>
+    request<{ blocked: boolean }>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/unblock`, {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  setSharePermission: (locale: string, ticketId: string, permitted: boolean) =>
+    request<{ sharePermitted: boolean }>(
+      `/api/v1/tickets/${encodeURIComponent(ticketId)}/share-permission`,
+      { ...json(locale), method: 'PUT', body: { permitted } },
+    ),
+
+  /** Hands a seat back, by its holder, while the barcode is still locked. */
+  returnTicket: (locale: string, ticketId: string) =>
+    request<{ returned: boolean }>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/return`, {
+      ...json(locale),
+      method: 'POST',
     }),
 
   claim: (locale: string, ticketId: string, body: Record<string, unknown>) =>
