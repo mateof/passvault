@@ -256,6 +256,12 @@ export interface TicketSummary {
   row?: string | null
   seat?: string | null
   barcode?: { format: string; value: string } | null
+  /**
+   * Whether a barcode download would succeed right now. For a holder the barcode is never in the
+   * list — they fetch it once, on view, and that fetch marks it seen — so this is how the row
+   * knows to offer the code without handing it over.
+   */
+  barcodeAvailable?: boolean
   assignmentMode: string
   assignmentState: string
   holderUserId?: string | null
@@ -486,6 +492,23 @@ export const api = {
       ...json(locale),
       body,
     }),
+
+  /** Takes an assignment back, by the creator, while the holder has not yet downloaded the code. */
+  unassign: (locale: string, ticketId: string) =>
+    request<{ unassigned: boolean }>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/unassign`, {
+      ...json(locale),
+      method: 'POST',
+    }),
+
+  /**
+   * Downloads one ticket's barcode — the only way a holder's code reaches the screen, and the act
+   * that marks it seen. The list never carries it; this does.
+   */
+  barcode: (locale: string, ticketId: string) =>
+    request<{ format: string; value: string }>(
+      `/api/v1/tickets/${encodeURIComponent(ticketId)}/barcode`,
+      json(locale),
+    ),
 
   // ── The creator's controls over a shared barcode ─────────────────────────────
   setTicketVisibility: (

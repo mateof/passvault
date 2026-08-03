@@ -122,7 +122,9 @@ describe('a member picking a self-claim ticket', () => {
     const after = await ticketsResponse(member, eventId)
     expect(after.tickets).toHaveLength(1)
     expect(after.tickets[0].id).toBe(taken.json().ticketId)
-    expect(after.tickets[0].barcode).not.toBeNull()
+    // The claimer holds it, so its barcode is downloaded on view, not carried in the list.
+    expect(after.tickets[0].barcode).toBeNull()
+    expect(after.tickets[0].barcodeAvailable).toBe(true)
     expect(after.claim).toMatchObject({ freeToClaim: 2, alreadyHolds: true })
   })
 

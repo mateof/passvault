@@ -231,6 +231,8 @@ export const gl = {
   'events.imageRemove': 'Quitar a imaxe',
   'tickets.none': 'Este evento aínda non ten entradas.',
   'tickets.noBarcode': 'Esta entrada non ten código, ou non tes permiso para velo.',
+  'tickets.viewCode': 'Ver o código',
+  'tickets.unassign': 'Retirar a asignación',
   'documents.title': 'Ficheiros orixinais',
   'documents.explain':
     'O ficheiro que che mandaron, enteiro. Garda tamén as páxinas que non son entradas — o mapa, as instrucións, as condicións — que son xusto as que a división descarta.',
@@ -654,6 +656,8 @@ export const es: Record<WebMessageKey, string> = {
   'events.imageRemove': 'Quitar la imagen',
   'tickets.none': 'Este evento todavía no tiene entradas.',
   'tickets.noBarcode': 'Esta entrada no tiene código, o no tienes permiso para verlo.',
+  'tickets.viewCode': 'Ver el código',
+  'tickets.unassign': 'Retirar la asignación',
   'documents.title': 'Archivos originales',
   'documents.explain':
     'El archivo que te mandaron, entero. Guarda también las páginas que no son entradas — el mapa, las instrucciones, las condiciones — que son justo las que la división descarta.',
@@ -1071,6 +1075,8 @@ export const en: Record<WebMessageKey, string> = {
   'events.imageRemove': 'Remove the picture',
   'tickets.none': 'This event has no tickets yet.',
   'tickets.noBarcode': 'This ticket has no barcode, or you are not entitled to see it.',
+  'tickets.viewCode': 'View the code',
+  'tickets.unassign': 'Unassign',
   'documents.title': 'Original files',
   'documents.explain':
     'The file you were sent, kept whole. It also holds the pages that are not tickets — the map, the instructions, the terms — which are exactly the ones splitting drops.',

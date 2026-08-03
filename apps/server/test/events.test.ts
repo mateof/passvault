@@ -342,7 +342,14 @@ describe('who may see a barcode', () => {
 
     const response = await ticketsOf(member, eventId)
 
-    expect(response.json().tickets[0].barcode.value).toBe('8412-MINE-0002')
+    // The holder's barcode is not in the list; it is offered and downloaded on view.
+    expect(response.json().tickets[0].barcode).toBeNull()
+    expect(response.json().tickets[0].barcodeAvailable).toBe(true)
+    const downloaded = await server.app.inject({
+      url: `/api/v1/tickets/${ticketIds[0]}/barcode`,
+      headers: bearer(member),
+    })
+    expect(downloaded.json().value).toBe('8412-MINE-0002')
   })
 
   it('always shows every barcode to the organiser', async () => {

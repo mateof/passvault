@@ -1317,6 +1317,10 @@ function TicketRow({
   const [open, setOpen] = useState(false)
   const [holder, setHolder] = useState(ticket.holderLabel ?? '')
   const [confirmWithdraw, setConfirmWithdraw] = useState(false)
+  // The holder's code, once downloaded. It is never in the list; fetching it is what marks it
+  // seen, so it lives here after a deliberate tap rather than arriving with the row.
+  const [downloaded, setDownloaded] = useState<{ format: string; value: string } | null>(null)
+  const shownBarcode = ticket.barcode ?? downloaded
 
   return (
     <li className="ticket">
@@ -1336,10 +1340,10 @@ function TicketRow({
 
       {open ? (
         <div className="ticket-body">
-          {ticket.barcode ? (
+          {shownBarcode ? (
             <p className="barcode">
-              {ticket.barcode.value}
-              <span className="muted"> ({ticket.barcode.format})</span>
+              {shownBarcode.value}
+              <span className="muted"> ({shownBarcode.format})</span>
             </p>
           ) : ticket.locked ? (
             // Why it is withheld, in the words the person can act on: pay it, wait for it, or ask
@@ -1360,6 +1364,20 @@ function TicketRow({
                       })
                     )}
             </Banner>
+          ) : ticket.barcodeAvailable ? (
+            // The holder's code is not in the list. Downloading it is what reveals it — past which
+            // the creator can no longer take the seat back — so it waits behind a deliberate tap
+            // rather than appearing the moment the event is opened.
+            <Button
+              icon="download"
+              onClick={async () => {
+                setDownloaded(await api.barcode(locale, ticket.id))
+                // Now revealed: refresh so the return option, no longer honest, goes away.
+                await onChanged()
+              }}
+            >
+              {t('tickets.viewCode')}
+            </Button>
           ) : (
             <p className="muted">{t('tickets.noBarcode')}</p>
           )}
@@ -1415,6 +1433,22 @@ function TicketRow({
                   and giving it to them: an assigned holder with an account is the only one who
                   can see the barcode of their own ticket and nobody else's. */}
               <AssignToAccount ticketId={ticket.id} onChanged={onChanged} />
+
+              {/* Take it back, while it can still be taken back honestly: an assignment the holder
+                  has not yet downloaded is nobody's loss to undo, and once downloaded it is out. */}
+              {ticket.holderUserId && !ticket.revealed ? (
+                <div className="button-row">
+                  <Button
+                    variant="quiet"
+                    onClick={async () => {
+                      await api.unassign(locale, ticket.id)
+                      await onChanged()
+                    }}
+                  >
+                    {t('tickets.unassign')}
+                  </Button>
+                </div>
+              ) : null}
 
               <PaymentForm ticket={ticket} onChanged={onChanged} />
 

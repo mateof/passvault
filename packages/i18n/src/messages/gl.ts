@@ -100,6 +100,7 @@ export const gl = {
   'claim.error.notClaimable': 'Esta entrada non se pode reclamar.',
   'ticket.error.alreadyRevealed': 'O código xa se mostrou, así que xa non se pode bloquear nin devolver.',
   'ticket.error.notHolder': 'Só quen ten esta entrada pode facer iso.',
+  'ticket.error.locked': 'O código aínda non está dispoñible.',
   'claim.error.forSelfOnly': 'Só podes reclamar unha entrada para ti.',
 
   // ─── Payments ───

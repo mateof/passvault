@@ -141,11 +141,13 @@ import {
   claimFreeTicket,
   claimSummary,
   ensureDevice,
+  getTicketBarcode,
   issueClaimCoupons,
   projectTickets,
   returnTicket,
   setSharePermission,
   setTicketVisibility,
+  unassignTicket,
   unblockTicket,
   reconcileTicket,
   setPayment,
@@ -2163,6 +2165,38 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       ...assignBody.parse(request.body),
     })
     return { assigned: true }
+  })
+
+  /** Takes an assignment back, by the creator, while the holder has not yet downloaded the code. */
+  app.post('/api/v1/tickets/:id/unassign', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    await unassignTicket(eventDeps, { ticketId: id, actorUserId: session.user_id })
+    return { unassigned: true }
+  })
+
+  /**
+   * Serves one ticket's barcode — the download that is the only way a holder's code reaches a
+   * screen, and the act that marks it seen. Needs the event key, because unlike the flag controls
+   * this one does read the sealed barcode. A locked code answers 400, an unentitled viewer 403.
+   */
+  app.get('/api/v1/tickets/:id/barcode', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const ticket = await db.db
+      .selectFrom('tickets')
+      .select('event_id')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!ticket) {
+      throw notFound()
+    }
+    const { eventKey } = await openEvent(request, ticket.event_id)
+    return await getTicketBarcode(eventDeps, {
+      ticketId: id,
+      viewerUserId: session.user_id,
+      eventKey,
+    })
   })
 
   /**

@@ -100,6 +100,13 @@ const memberTicket = async (ticketId: string) => {
   return tickets.find((t: { id: string }) => t.id === ticketId)
 }
 
+/**
+ * The holder's only route to their code: a per-ticket download, which is also what reveals it. The
+ * list never carries a holder's barcode, so this stands in for "the member looked at it".
+ */
+const downloadBarcode = (ticketId: string, token = member) =>
+  server.app.inject({ url: `/api/v1/tickets/${ticketId}/barcode`, headers: bearer(token) })
+
 describe('holding a barcode back until a moment', () => {
   it('shows nothing to the holder before the visible-from time, and the code after', async () => {
     const ticketId = await sharedAssignedTicket()
@@ -114,9 +121,12 @@ describe('holding a barcode back until a moment', () => {
 
     const locked = await memberTicket(ticketId)
     expect(locked.barcode).toBeNull()
+    expect(locked.barcodeAvailable).toBe(false)
     expect(locked.locked).toBe(true)
     expect(locked.lockReason).toBe('notYet')
     expect(locked.visibleFrom).toBe(future)
+    // And the download itself is refused while it is not yet time.
+    expect((await downloadBarcode(ticketId)).statusCode).toBe(400)
 
     // A moment already past opens it.
     const past = new Date(Date.now() - 1000).toISOString()
@@ -127,8 +137,11 @@ describe('holding a barcode back until a moment', () => {
       payload: { visibleFrom: past },
     })
     const open = await memberTicket(ticketId)
-    expect(open.barcode?.value).toBe('SECRET-CODE')
+    // Still not in the list — only offered — and served by the download.
+    expect(open.barcode).toBeNull()
+    expect(open.barcodeAvailable).toBe(true)
     expect(open.locked).toBe(false)
+    expect((await downloadBarcode(ticketId)).json().value).toBe('SECRET-CODE')
   })
 
   it('never hides the barcode from the creator', async () => {
@@ -169,7 +182,9 @@ describe('blocking', () => {
     })
     let seen = await memberTicket(ticketId)
     expect(seen.barcode).toBeNull()
+    expect(seen.barcodeAvailable).toBe(false)
     expect(seen.lockReason).toBe('blocked')
+    expect((await downloadBarcode(ticketId)).statusCode).toBe(400)
 
     await server.app.inject({
       method: 'POST',
@@ -177,13 +192,14 @@ describe('blocking', () => {
       headers: bearer(organiser),
     })
     seen = await memberTicket(ticketId)
-    expect(seen.barcode?.value).toBe('SECRET-CODE')
+    expect(seen.barcodeAvailable).toBe(true)
+    expect((await downloadBarcode(ticketId)).json().value).toBe('SECRET-CODE')
   })
 
   it('cannot be blocked once the holder has seen the code', async () => {
     const ticketId = await sharedAssignedTicket()
-    // The member views it while it is open, which reveals it.
-    expect((await memberTicket(ticketId)).barcode?.value).toBe('SECRET-CODE')
+    // The member downloads it while it is open, which reveals it.
+    expect((await downloadBarcode(ticketId)).json().value).toBe('SECRET-CODE')
 
     const late = await server.app.inject({
       method: 'POST',
@@ -206,6 +222,7 @@ describe('payment gating', () => {
     })
 
     expect((await memberTicket(ticketId)).lockReason).toBe('unpaid')
+    expect((await downloadBarcode(ticketId)).statusCode).toBe(400)
 
     await server.app.inject({
       method: 'POST',
@@ -213,7 +230,8 @@ describe('payment gating', () => {
       headers: bearer(organiser),
       payload: { state: 'PAID', amountCents: 2000, currency: 'EUR', visibility: 'ALL' },
     })
-    expect((await memberTicket(ticketId)).barcode?.value).toBe('SECRET-CODE')
+    expect((await memberTicket(ticketId)).barcodeAvailable).toBe(true)
+    expect((await downloadBarcode(ticketId)).json().value).toBe('SECRET-CODE')
   })
 })
 
@@ -246,7 +264,8 @@ describe('returning a seat', () => {
 
   it('refuses a return once the barcode has been revealed', async () => {
     const ticketId = await sharedAssignedTicket()
-    expect((await memberTicket(ticketId)).barcode?.value).toBe('SECRET-CODE')
+    // Downloading the code is what reveals it.
+    expect((await downloadBarcode(ticketId)).json().value).toBe('SECRET-CODE')
 
     const late = await server.app.inject({
       method: 'POST',
@@ -279,6 +298,49 @@ describe('share permission', () => {
       url: `/api/v1/tickets/${ticketId}/share-permission`,
       headers: bearer(member),
       payload: { permitted: true },
+    })
+    expect(denied.statusCode).toBeGreaterThanOrEqual(400)
+  })
+})
+
+describe('unassigning a seat', () => {
+  it('frees it while the holder has not downloaded the code', async () => {
+    const ticketId = await sharedAssignedTicket()
+    const done = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/tickets/${ticketId}/unassign`,
+      headers: bearer(organiser),
+    })
+    expect(done.json()).toMatchObject({ unassigned: true })
+
+    const row = await server.db.db
+      .selectFrom('tickets')
+      .select(['holder_user_id', 'assignment_state'])
+      .where('id', '=', ticketId)
+      .executeTakeFirstOrThrow()
+    expect(row.holder_user_id).toBeNull()
+    expect(row.assignment_state).toBe('FREE')
+  })
+
+  it('refuses once the holder has downloaded the code', async () => {
+    const ticketId = await sharedAssignedTicket()
+    expect((await downloadBarcode(ticketId)).json().value).toBe('SECRET-CODE')
+
+    const late = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/tickets/${ticketId}/unassign`,
+      headers: bearer(organiser),
+    })
+    expect(late.statusCode).toBe(400)
+    expect(late.json().error).toBe('ticket.error.alreadyRevealed')
+  })
+
+  it('is refused to anyone but the creator', async () => {
+    const ticketId = await sharedAssignedTicket()
+    const denied = await server.app.inject({
+      method: 'POST',
+      url: `/api/v1/tickets/${ticketId}/unassign`,
+      headers: bearer(member),
     })
     expect(denied.statusCode).toBeGreaterThanOrEqual(400)
   })

@@ -85,6 +85,7 @@ export const en: Catalogue = {
   'claim.error.notClaimable': 'This ticket cannot be claimed.',
   'ticket.error.alreadyRevealed': 'The barcode has already been shown, so it can no longer be blocked or returned.',
   'ticket.error.notHolder': 'Only whoever holds this ticket can do that.',
+  'ticket.error.locked': 'The barcode is not available yet.',
   'claim.error.forSelfOnly': 'You can only claim a ticket for yourself.',
 
   'payment.state.UNPAID': 'Unpaid',

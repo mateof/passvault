@@ -140,9 +140,13 @@ describe('an event the organiser assigns', () => {
       payload: { holderUserId: memberUserId },
     })
 
+    // A holder's barcode is never in the list — it is downloaded on view. What the list shows is
+    // that it is available to them, for their own ticket and no other.
     const seen = await ticketsOf(member, eventId)
-    expect(seen.find((ticket: { id: string }) => ticket.id === first.id).barcode).not.toBeNull()
-    expect(seen.filter((ticket: { barcode: unknown }) => ticket.barcode !== null)).toHaveLength(1)
+    expect(seen.find((ticket: { id: string }) => ticket.id === first.id).barcodeAvailable).toBe(true)
+    expect(
+      seen.filter((ticket: { barcodeAvailable: boolean }) => ticket.barcodeAvailable),
+    ).toHaveLength(1)
   })
 
   it('shows the organiser every ticket and who holds it', async () => {
