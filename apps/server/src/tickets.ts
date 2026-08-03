@@ -1083,6 +1083,56 @@ export async function unassignTicket(
 }
 
 /**
+ * Seals barcodes into their tickets, from the side-channel that rides alongside a sync push.
+ *
+ * The counterpart to the barcode no longer travelling inside the `ticket.add` operation: the log is
+ * pulled whole by every member, so a code in it would reach devices the creator means to withhold
+ * it from. Instead the creator's device uploads its codes here, they are sealed into
+ * `barcode_cipher`, and the download endpoint is the only way any of them leaves again. Only the
+ * creator may set a code, and only for a ticket in their own event; anything else is ignored rather
+ * than allowed to fail a sync that is otherwise fine.
+ */
+export async function storeBarcodes(
+  deps: EventDeps,
+  input: {
+    eventId: string
+    actorUserId: string
+    eventKey: Uint8Array
+    barcodes: { ticketId: string; format: string; value: string }[]
+  },
+): Promise<void> {
+  const event = await findEvent(deps, input.eventId)
+  if (!event || event.creator_user_id !== input.actorUserId) {
+    return
+  }
+  for (const barcode of input.barcodes) {
+    const ticket = await deps.db.db
+      .selectFrom('tickets')
+      .select(['id', 'event_id'])
+      .where('id', '=', barcode.ticketId)
+      .executeTakeFirst()
+    if (!ticket || ticket.event_id !== input.eventId) {
+      continue
+    }
+    await deps.db.db
+      .updateTable('tickets')
+      .set({
+        barcode_format: barcode.format,
+        barcode_cipher: Buffer.from(
+          deps.crypto.encryptField(
+            input.eventKey,
+            barcode.value,
+            field(barcode.ticketId, 'barcode_cipher'),
+          ),
+        ),
+        updated_at: toInstant(),
+      })
+      .where('id', '=', barcode.ticketId)
+      .execute()
+  }
+}
+
+/**
  * Serves a barcode on demand — the download that stands in for a holder ever carrying it.
  *
  * This is the only path a holder's code reaches a screen: it is not in the list, not in the sync

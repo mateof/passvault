@@ -147,6 +147,7 @@ import {
   returnTicket,
   setSharePermission,
   setTicketVisibility,
+  storeBarcodes,
   unassignTicket,
   unblockTicket,
   reconcileTicket,
@@ -2107,13 +2108,15 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         eventKey,
         actorUserId: session.user_id,
         type: 'ticket.add',
+        // The barcode is deliberately not in the operation body. The log is pulled whole by every
+        // member of the event, so a code carried here would reach a device the creator meant to
+        // withhold it from. It lives in `barcode_cipher` (written by addTickets above) and is
+        // served only by the download endpoint. A device holding this ticket learns of it from the
+        // log and fetches the code from the server, which is what makes "seen" real.
         body: {
           ticketId,
           ...(ticket?.label ? { label: ticket.label } : {}),
           ...(ticket?.seat ? { seat: ticket.seat } : {}),
-          ...(ticket?.barcode
-            ? { barcodeFormat: ticket.barcode.format, barcodeValue: ticket.barcode.value }
-            : {}),
         },
       })
     }
@@ -2418,6 +2421,20 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     cursor: z.string().optional(),
     limit: z.number().int().min(1).max(500).optional(),
     eventPassword: z.string().optional(),
+    // Barcodes ride alongside the log, not inside it. A code carried in an operation would be
+    // pulled by every member of the event; carried here it reaches the server, is sealed into
+    // `barcode_cipher`, and is served only on download — so the creator's device uploads its
+    // codes as it syncs, and no other device is handed them.
+    barcodes: z
+      .array(
+        z.object({
+          ticketId: z.string().uuid(),
+          format: z.string().min(1).max(40),
+          value: z.string().min(1).max(4096),
+        }),
+      )
+      .max(500)
+      .optional(),
   })
 
   /**
@@ -2451,6 +2468,15 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       eventKey,
       operations: body.operations,
     })
+    // After the operations, so the tickets they create exist before their codes are sealed in.
+    if (body.barcodes && body.barcodes.length > 0) {
+      await storeBarcodes(eventDeps, {
+        eventId: id,
+        actorUserId: session.user_id,
+        eventKey,
+        barcodes: body.barcodes,
+      })
+    }
     const pull = await pullOperations(eventDeps, {
       eventId: id,
       actorUserId: session.user_id,
