@@ -1273,6 +1273,35 @@ function EventAppearanceCard({
   )
 }
 
+/**
+ * How long until a time-locked code opens, ticking down once a second.
+ *
+ * The clock is the server's, not the browser's: `serverTime` is when the list was fetched, and the
+ * gap between that and the target is anchored at mount, so winding the machine's clock forward does
+ * not bring the code out early — the same rule the server enforces when it decides to serve it.
+ */
+function Countdown({ target, serverTime }: { target: string; serverTime?: string }) {
+  const { t } = useT()
+  // Offset between this machine's clock and the server's, fixed at mount. Everything is measured
+  // from the server's now so a wrong local clock cannot move the deadline.
+  const [skew] = useState(() => (serverTime ? Date.parse(serverTime) - Date.now() : 0))
+  const targetMs = useMemo(() => Date.parse(target), [target])
+  const [now, setNow] = useState(() => Date.now() + skew)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now() + skew), 1000)
+    return () => clearInterval(id)
+  }, [skew])
+
+  const remaining = Math.max(0, targetMs - now)
+  const total = Math.floor(remaining / 1000)
+  const days = Math.floor(total / 86400)
+  const hours = Math.floor((total % 86400) / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  const parts = days > 0 ? [days + 'd', hours + 'h', minutes + 'm'] : [hours + 'h', minutes + 'm', seconds + 's']
+  return <>{t('tickets.lockedCountdown', { remaining: parts.join(' ') })}</>
+}
+
 function TicketRow({
   ticket,
   isCreator,
@@ -1321,13 +1350,34 @@ function TicketRow({
                 ? t('tickets.lockedUnpaid')
                 : ticket.lockReason === 'blocked'
                   ? t('tickets.lockedBlocked')
-                  : t('tickets.lockedUntil', {
-                      when: whenText(ticket.visibleFrom ?? undefined, locale) ?? '',
-                    })}
+                  : ticket.visibleFrom ? (
+                      // A live count while there is time to count, falling back to the plain date
+                      // for a target the server sent without a parseable instant.
+                      <Countdown target={ticket.visibleFrom} serverTime={serverTime} />
+                    ) : (
+                      t('tickets.lockedUntil', {
+                        when: whenText(ticket.visibleFrom ?? undefined, locale) ?? '',
+                      })
+                    )}
             </Banner>
           ) : (
             <p className="muted">{t('tickets.noBarcode')}</p>
           )}
+
+          {/* Whether it is paid, when the creator chose to show it. The server only sends the
+              payment to a viewer allowed to see it, so its mere presence here is the permission —
+              a member sees it for their own debt, or for everybody's, or not at all. */}
+          {ticket.payment ? (
+            <p className="muted">
+              <Icon name="money" size={14} /> {t(`payment.${ticket.payment.state}` as never)}
+              {ticket.payment.amountCents != null && ticket.payment.amountCents > 0
+                ? ` · ${(ticket.payment.amountCents / 100).toLocaleString(locale, {
+                    style: 'currency',
+                    currency: ticket.payment.currency ?? 'EUR',
+                  })}`
+                : ''}
+            </p>
+          ) : null}
 
           {/* The holder's way out, while there is still nothing to keep: a locked ticket can be
               handed back, and once the code has been seen it cannot. */}

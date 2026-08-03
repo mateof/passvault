@@ -39,7 +39,15 @@ event can mix them:
 
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
-themselves.
+themselves. An unpaid seat can be kept locked until it is marked paid.
+
+**Withholding a barcode until its moment.** The organiser can hold a code back —
+until an exact time, until the day before the event, or by hand — so a bearer token
+is not in circulation any earlier than it needs to be. Blocking is refused once the
+holder has already seen the code, since from there a photograph may exist. While a
+code is withheld the holder still sees that they hold the ticket, with a live
+countdown when it is waiting for a time. How to reach every one of these controls is
+in the [user manual](docs/user-manual.md).
 
 **The original file, kept.** Splitting a PDF into passes drops every page with no
 barcode on it — which is exactly where the map, the terms and the instructions
