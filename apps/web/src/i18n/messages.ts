@@ -329,6 +329,20 @@ export const gl = {
     'Non todas as entradas veñen unha por páxina: hai PDF con dúas por folla e outros cunha portada de instrucións. Revisa isto antes de gardalo.',
   'ingest.confirm': '{count, plural, one {Gardar # entrada} other {Gardar # entradas}}',
   'ingest.noBarcode': 'Non se atopou ningún código nesta páxina.',
+  'ingest.warning.multipleBarcodes':
+    'Esta páxina leva {count} códigos. Revisa como se reparten en entradas.',
+  'ingest.warning.tooManyBarcodes':
+    'Esta páxina leva máis de {limit} códigos e só se leron os {limit} primeiros. Divide o PDF para non perder as que faltan.',
+  'ingest.warning.sharedPage':
+    'Non se puido repartir esta páxina: cada entrada leva a folla enteira e con ela os códigos das demais.',
+  'ingest.warning.sameCodeOnSheet':
+    'Estas entradas comparten o mesmo código. Hai vendedores que imprimen un só código por pedido, así que poden ser entradas distintas; outros repiten o código no resgardo. Mira a folla e decide.',
+  'ingest.warning.duplicateBarcode':
+    'Este código xa aparecía na páxina {firstSeenOnPage}. Déixase fóra para non crear o mesmo asento dúas veces.',
+  'ingest.warning.pkpassDigestMismatch':
+    'Este pase modificouse despois de asinarse. Déixase fóra ata que o revises.',
+  'ingest.warning.pkpassSignatureUnverified': 'Non se puido comprobar a sinatura deste pase.',
+  'ingest.warning.pkpassNoBarcode': 'Este pase non trae ningún código.',
 
   'account.title': 'A túa conta',
   'account.passkeys': 'Chaves de acceso',
@@ -753,6 +767,20 @@ export const es: Record<WebMessageKey, string> = {
     'No todas las entradas vienen una por página: hay PDF con dos por hoja y otros con una portada de instrucciones. Revisa esto antes de guardarlo.',
   'ingest.confirm': '{count, plural, one {Guardar # entrada} other {Guardar # entradas}}',
   'ingest.noBarcode': 'No se ha encontrado ningún código en esta página.',
+  'ingest.warning.multipleBarcodes':
+    'Esta página lleva {count} códigos. Revisa cómo se reparten en entradas.',
+  'ingest.warning.tooManyBarcodes':
+    'Esta página lleva más de {limit} códigos y solo se han leído los {limit} primeros. Divide el PDF para no perder las que faltan.',
+  'ingest.warning.sharedPage':
+    'No se ha podido repartir esta página: cada entrada lleva la hoja entera y con ella los códigos de las demás.',
+  'ingest.warning.sameCodeOnSheet':
+    'Estas entradas comparten el mismo código. Hay vendedores que imprimen un solo código por pedido, así que pueden ser entradas distintas; otros repiten el código en el resguardo. Mira la hoja y decide.',
+  'ingest.warning.duplicateBarcode':
+    'Este código ya aparecía en la página {firstSeenOnPage}. Se deja fuera para no crear el mismo asiento dos veces.',
+  'ingest.warning.pkpassDigestMismatch':
+    'Este pase se modificó después de firmarse. Se deja fuera hasta que lo revises.',
+  'ingest.warning.pkpassSignatureUnverified': 'No se ha podido comprobar la firma de este pase.',
+  'ingest.warning.pkpassNoBarcode': 'Este pase no trae ningún código.',
 
   'account.title': 'Tu cuenta',
   'account.passkeys': 'Llaves de acceso',
@@ -1172,6 +1200,20 @@ export const en: Record<WebMessageKey, string> = {
     'Tickets do not always come one per page: some PDFs put two on a sheet and others lead with instructions. Check this before saving it.',
   'ingest.confirm': '{count, plural, one {Save # ticket} other {Save # tickets}}',
   'ingest.noBarcode': 'No barcode was found on this page.',
+  'ingest.warning.multipleBarcodes':
+    'This page holds {count} barcodes. Check how they split into tickets.',
+  'ingest.warning.tooManyBarcodes':
+    'This page holds more than {limit} barcodes and only the first {limit} were read. Split the PDF so the rest are not lost.',
+  'ingest.warning.sharedPage':
+    'This page could not be divided: every ticket carries the whole sheet and the other codes on it.',
+  'ingest.warning.sameCodeOnSheet':
+    'These tickets share the same barcode. Some sellers print one code for the whole order, so they may be separate tickets; others repeat the code on the stub. Look at the sheet and decide.',
+  'ingest.warning.duplicateBarcode':
+    'This barcode already appeared on page {firstSeenOnPage}. It is left out so the same seat is not created twice.',
+  'ingest.warning.pkpassDigestMismatch':
+    'This pass was altered after it was signed. It is left out until you have checked it.',
+  'ingest.warning.pkpassSignatureUnverified': 'The signature on this pass could not be checked.',
+  'ingest.warning.pkpassNoBarcode': 'This pass carries no barcode.',
 
   'account.title': 'Your account',
   'account.passkeys': 'Passkeys',

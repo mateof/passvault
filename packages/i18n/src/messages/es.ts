@@ -112,6 +112,14 @@ export const es: Catalogue = {
     'No se ha encontrado ningún código en esta página. Repasa si es una entrada o una hoja de instrucciones.',
   'ingest.warning.multipleBarcodes':
     'Se han encontrado {count} códigos en esta página. Revisa cómo se reparten en entradas.',
+  'ingest.warning.tooManyBarcodes':
+    'Esta página lleva más de {limit} códigos y solo se han leído los {limit} primeros. Divide el PDF para no perder las entradas que faltan.',
+  'ingest.warning.sharedPage':
+    'No se ha podido repartir esta página, así que cada entrada lleva la hoja entera y con ella los códigos de las demás.',
+  'ingest.warning.sameCodeOnSheet':
+    'Estas entradas comparten el mismo código. Hay vendedores que imprimen un solo código por pedido, así que pueden ser entradas distintas; otros repiten el código en el resguardo. Mira la hoja y decide.',
+  'ingest.warning.duplicateBarcode':
+    'Este código ya aparecía en la página {firstSeenOnPage}. Se deja fuera para no crear el mismo asiento dos veces.',
   'ingest.proposal.summary':
     'Se han encontrado {tickets, plural, one {# entrada} other {# entradas}} en {pages, plural, one {# página} other {# páginas}}. Revísalo antes de guardar.',
   'ingest.proposal.reviewRequired':

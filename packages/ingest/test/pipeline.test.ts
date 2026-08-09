@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
+  INGEST_LIMITS,
   countPages,
   createPdfJsRasterizer,
+  decodeBarcodes,
   includedTickets,
   propose,
   type PageRasterizer,
@@ -175,10 +177,153 @@ describe('a PDF with two passes on one sheet', () => {
     ).toBe(2)
   })
 
-  it('gives both tickets the same page document', async () => {
+  it('records that both came off the same page', async () => {
     const proposal = await propose(await pdf(), { rasterizer })
 
     expect(proposal.tickets[0]?.pageNumber).toBe(proposal.tickets[1]?.pageNumber)
+  })
+
+  it('cuts the sheet, so no ticket carries the other seat’s code', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    for (const ticket of proposal.tickets) {
+      const onDocument = await decodeBarcodes(ticket.document.bytes)
+
+      expect(onDocument.map((code) => code.value)).toEqual([ticket.barcode?.value])
+    }
+  })
+
+  it('hands over the cut region as an image, since a crop box would only hide the rest', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(proposal.tickets.map((ticket) => ticket.document.mediaType)).toEqual([
+      'image/png',
+      'image/png',
+    ])
+  })
+
+  it('does not warn that the page is shared, because it was divided', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(proposal.warnings.some((warning) => warning.code === 'SHARED_PAGE')).toBe(false)
+  })
+})
+
+describe('a sheet with the passes stacked rather than side by side', () => {
+  const pdf = () =>
+    ticketPdf([{ columns: 1, codes: [{ text: '8412-STACK-0001' }, { text: '8412-STACK-0002' }] }])
+
+  it('cuts across the sheet instead of down it', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    for (const ticket of proposal.tickets) {
+      const onDocument = await decodeBarcodes(ticket.document.bytes)
+
+      expect(onDocument.map((code) => code.value)).toEqual([ticket.barcode?.value])
+    }
+  })
+})
+
+describe('a sheet of four passes printed two by two', () => {
+  const pdf = () =>
+    ticketPdf([
+      {
+        columns: 2,
+        codes: [
+          { text: '8412-GRID-0001' },
+          { text: '8412-GRID-0002' },
+          { text: '8412-GRID-0003' },
+          { text: '8412-GRID-0004' },
+        ],
+      },
+    ])
+
+  it('proposes four tickets', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(proposal.tickets).toHaveLength(4)
+  })
+
+  it('separates a grid, which one cut across the page cannot do', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    for (const ticket of proposal.tickets) {
+      const onDocument = await decodeBarcodes(ticket.document.bytes)
+
+      expect(onDocument.map((code) => code.value)).toEqual([ticket.barcode?.value])
+    }
+  })
+})
+
+describe('a page carrying more codes than the limit allows', () => {
+  // Thirty on one sheet, against a limit of twenty-four. Before, the surplus was dropped and
+  // the proposal looked complete, so the missing seats were discovered at the turnstile.
+  const pdf = () =>
+    ticketPdf([
+      {
+        columns: 6,
+        codes: Array.from({ length: 30 }, (_, index) => ({
+          text: `8412-MANY-${String(index + 1).padStart(4, '0')}`,
+        })),
+      },
+    ])
+
+  it('says the page held more than it could take', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(proposal.warnings.some((warning) => warning.code === 'TOO_MANY_BARCODES')).toBe(true)
+  })
+
+  it('reports the limit it stopped at', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(
+      proposal.warnings.find((warning) => warning.code === 'TOO_MANY_BARCODES')?.detail?.limit,
+    ).toBe(INGEST_LIMITS.barcodesPerPage)
+  })
+
+  it('proposes exactly the limit, not one more', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(proposal.tickets).toHaveLength(INGEST_LIMITS.barcodesPerPage)
+  })
+
+  it('puts the warning on the tickets too, where the user is looking', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(
+      proposal.tickets.every((ticket) =>
+        ticket.warnings.some((warning) => warning.code === 'TOO_MANY_BARCODES'),
+      ),
+    ).toBe(true)
+  })
+}, 120_000)
+
+describe('a sheet whose codes cannot be separated', () => {
+  it('keeps the whole page and says each ticket carries the others', async () => {
+    const pdf = await ticketPdf([
+      { codes: [{ text: '8412-TIGHT-0001' }, { text: '8412-TIGHT-0002' }] },
+    ])
+    // A rasterizer with no `renderRegion` is the case an older client presents, and it is the
+    // same outcome as a layout no straight cut divides.
+    const cannotCrop: PageRasterizer = {
+      open: async (bytes) => {
+        const document = await rasterizer.open(bytes)
+        return {
+          pageCount: document.pageCount,
+          renderPage: document.renderPage,
+          close: document.close,
+        }
+      },
+    }
+
+    const proposal = await propose(pdf, { rasterizer: cannotCrop })
+
+    expect(proposal.warnings.some((warning) => warning.code === 'SHARED_PAGE')).toBe(true)
+    expect(proposal.tickets.map((ticket) => ticket.document.mediaType)).toEqual([
+      'application/pdf',
+      'application/pdf',
+    ])
   })
 })
 
@@ -215,6 +360,50 @@ describe('a PDF whose summary page repeats a ticket barcode', () => {
     const proposal = await propose(await pdf(), { rasterizer })
 
     expect(includedTickets(proposal).map((ticket) => ticket.pageNumber)).toEqual([1, 2])
+  })
+})
+
+describe('a sheet whose passes all carry the same code', () => {
+  // What infoticketing and sacatuentrada print: one code for the whole order, repeated on
+  // every pass. The passes are different tickets — different type, price and reference — and
+  // unticking the second one threw a real ticket away.
+  const pdf = () =>
+    ticketPdf([
+      {
+        columns: 1,
+        codes: [{ text: '8412-ORDER-0001' }, { text: '8412-ORDER-0001' }],
+      },
+    ])
+
+  it('keeps both, because the repeat is the seller’s layout and not a summary page', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(includedTickets(proposal)).toHaveLength(2)
+  })
+
+  it('does not call it a duplicate, which would mean the same seat twice', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(proposal.warnings.some((warning) => warning.code === 'DUPLICATE_BARCODE')).toBe(false)
+  })
+
+  it('warns on both rows, since it is a property of the pair', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(
+      proposal.tickets.every((ticket) =>
+        ticket.warnings.some((warning) => warning.code === 'SAME_CODE_ON_SHEET'),
+      ),
+    ).toBe(true)
+  })
+
+  it('still cuts the sheet in two', async () => {
+    const proposal = await propose(await pdf(), { rasterizer })
+
+    expect(proposal.tickets.map((ticket) => ticket.document.mediaType)).toEqual([
+      'image/png',
+      'image/png',
+    ])
   })
 })
 

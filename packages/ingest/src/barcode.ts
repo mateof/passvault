@@ -49,11 +49,56 @@ const REQUESTED_FORMATS = [
   'DataMatrix',
 ] as const
 
+/** Axis-aligned bounds of a symbol, in pixels of the image it was read from. */
+export interface BarcodeBox {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}
+
 export interface DecodedBarcode {
   format: BarcodeFormat
   value: string
   /** ZXing's own format name, kept for diagnostics when a format maps to several. */
   rawFormat: string
+  /**
+   * Where the symbol sits on the page.
+   *
+   * This is what lets a sheet carrying several passes be cut into one image per ticket,
+   * instead of handing every holder a copy of the whole sheet with their neighbours' codes
+   * on it.
+   */
+  box: BarcodeBox
+}
+
+interface Corners {
+  topLeft: { x: number; y: number }
+  topRight: { x: number; y: number }
+  bottomLeft: { x: number; y: number }
+  bottomRight: { x: number; y: number }
+}
+
+/** The four corners come back in reading order, which a rotated symbol does not respect. */
+function boundsOf(position: Corners): BarcodeBox {
+  const xs = [
+    position.topLeft.x,
+    position.topRight.x,
+    position.bottomLeft.x,
+    position.bottomRight.x,
+  ]
+  const ys = [
+    position.topLeft.y,
+    position.topRight.y,
+    position.bottomLeft.y,
+    position.bottomRight.y,
+  ]
+  return {
+    left: Math.min(...xs),
+    top: Math.min(...ys),
+    right: Math.max(...xs),
+    bottom: Math.max(...ys),
+  }
 }
 
 let modulePrepared: Promise<void> | undefined
@@ -80,6 +125,11 @@ async function ensureModule(): Promise<void> {
  * Returns them all rather than the first, because a page with two barcodes is a real case
  * — two passes printed on one sheet — and the caller has to decide how they split into
  * tickets instead of being handed a guess.
+ *
+ * One symbol *over* the per-page limit is requested on purpose. Asking for exactly the
+ * limit makes a page that happens to hold that many indistinguishable from one that holds
+ * more, and the difference matters: the second case is losing tickets. A caller that gets
+ * back more than `INGEST_LIMITS.barcodesPerPage` knows the page overflowed and can say so.
  */
 export async function decodeBarcodes(imageBytes: Uint8Array): Promise<DecodedBarcode[]> {
   await ensureModule()
@@ -88,7 +138,7 @@ export async function decodeBarcodes(imageBytes: Uint8Array): Promise<DecodedBar
     tryHarder: true,
     tryRotate: true,
     tryInvert: true,
-    maxNumberOfSymbols: INGEST_LIMITS.barcodesPerPage,
+    maxNumberOfSymbols: INGEST_LIMITS.barcodesPerPage + 1,
   })
   return results
     .filter((result) => result.isValid && result.text.length > 0)
@@ -96,6 +146,7 @@ export async function decodeBarcodes(imageBytes: Uint8Array): Promise<DecodedBar
       format: FORMAT_MAP[result.format] ?? 'QR_CODE',
       value: result.text,
       rawFormat: result.format,
+      box: boundsOf(result.position),
     }))
 }
 

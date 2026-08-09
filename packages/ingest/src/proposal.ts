@@ -1,12 +1,14 @@
 import { v7 as uuidv7 } from 'uuid'
 import type { BarcodeFormat, DocumentMediaType } from '@passvault/tkpak'
-import { decodeBarcodes } from './barcode.js'
+import { decodeBarcodes, type DecodedBarcode } from './barcode.js'
 import { detectMediaType } from './detect.js'
 import { IngestError } from './errors.js'
+import { imageSize } from './image.js'
 import { INGEST_LIMITS, assertFileSize } from './limits.js'
 import { splitPages } from './pdf.js'
 import { readPkpass } from './pkpass.js'
-import type { PageRasterizer } from './rasterizer.js'
+import type { PageRasterizer, RasterizedDocument } from './rasterizer.js'
+import { cutIntoRegions, normalizeBox } from './sheet.js'
 
 /**
  * Ingestion produces a proposal, never a saved result.
@@ -23,6 +25,9 @@ import type { PageRasterizer } from './rasterizer.js'
 export type ProposalWarningCode =
   | 'NO_BARCODE'
   | 'MULTIPLE_BARCODES'
+  | 'TOO_MANY_BARCODES'
+  | 'SHARED_PAGE'
+  | 'SAME_CODE_ON_SHEET'
   | 'DUPLICATE_BARCODE'
   | 'PKPASS_DIGEST_MISMATCH'
   | 'PKPASS_SIGNATURE_UNVERIFIED'
@@ -120,37 +125,47 @@ async function proposeFromPdf(bytes: Uint8Array, options: ProposeOptions): Promi
         continue
       }
 
-      if (found.length > 1) {
-        warnings.push({
+      // The decoder is asked for one symbol over the limit precisely so this case can be
+      // told apart from a page that merely reaches it. Dropping the surplus quietly would
+      // present a short proposal as a complete one, and the missing seats would only turn
+      // up when somebody was refused at the door.
+      const kept = found.slice(0, INGEST_LIMITS.barcodesPerPage)
+      const pageWarnings: ProposalWarning[] = []
+      if (found.length > kept.length) {
+        pageWarnings.push({
+          code: 'TOO_MANY_BARCODES',
+          pageNumber: page.pageNumber,
+          detail: { limit: INGEST_LIMITS.barcodesPerPage },
+        })
+      }
+      if (kept.length > 1) {
+        pageWarnings.push({
           code: 'MULTIPLE_BARCODES',
           pageNumber: page.pageNumber,
-          detail: { count: found.length },
+          detail: { count: kept.length },
         })
       }
 
-      for (const [index, barcode] of found.entries()) {
-        const ticketWarnings: ProposalWarning[] =
-          found.length > 1
-            ? [
-                {
-                  code: 'MULTIPLE_BARCODES',
-                  pageNumber: page.pageNumber,
-                  detail: { count: found.length },
-                },
-              ]
-            : []
+      const crops = await cropsFor(rendered, page.pageNumber, kept, image)
+      if (kept.length > 1 && !crops) {
+        pageWarnings.push({ code: 'SHARED_PAGE', pageNumber: page.pageNumber })
+      }
+      warnings.push(...pageWarnings)
+
+      for (const [index, barcode] of kept.entries()) {
         tickets.push({
           id: uuidv7(),
           suggestedLabel: labelFor(
             options,
             page.pageNumber,
-            found.length > 1 ? index + 1 : undefined,
+            kept.length > 1 ? index + 1 : undefined,
           ),
           barcode: { format: barcode.format, value: barcode.value },
           pageNumber: page.pageNumber,
-          document: { mediaType: 'application/pdf', bytes: page.bytes },
+          document: crops?.[index] ?? { mediaType: 'application/pdf', bytes: page.bytes },
           include: true,
-          warnings: ticketWarnings,
+          // A copy per ticket, because `flagDuplicates` appends to these.
+          warnings: [...pageWarnings],
         })
       }
     }
@@ -167,6 +182,61 @@ async function proposeFromPdf(bytes: Uint8Array, options: ProposeOptions): Promi
     warnings,
     requiresReview: true,
   }
+}
+
+/**
+ * One image per barcode, when the sheet can be cut so that no ticket carries another's code.
+ *
+ * Rasterised rather than clipped. A PDF crop box, or a form XObject with a tight bounding
+ * box, hides the neighbouring pass without removing it: the drawing commands stay in the
+ * file and anybody who opens it with the right tool has the other seat's code. Rendering the
+ * region drops it from the bytes. The cost is that the page's text stops being selectable,
+ * which for a ticket that exists to be shown at a turnstile is the right way round.
+ *
+ * `undefined` means the page could not be divided — no straight cut separates the codes, or
+ * this rasterizer cannot clip — and the caller falls back to the whole sheet with a warning.
+ */
+async function cropsFor(
+  rendered: RasterizedDocument,
+  pageNumber: number,
+  found: DecodedBarcode[],
+  image: Uint8Array,
+): Promise<{ mediaType: DocumentMediaType; bytes: Uint8Array }[] | undefined> {
+  const renderRegion = rendered.renderRegion
+  if (found.length < 2 || !renderRegion) {
+    return undefined
+  }
+  // Barcode positions are in pixels of the render they were read from, and the cut works in
+  // fractions of the page, so the size of that render is the missing term.
+  const size = imageSize(image)
+  if (!size) {
+    return undefined
+  }
+  // Optional, and cheap to do without: it only decides where inside the gap the line goes.
+  const ink = await rendered.inkMap?.(pageNumber).catch(() => undefined)
+  const regions = cutIntoRegions(
+    found.map((barcode) => normalizeBox(barcode.box, size)),
+    ink,
+  )
+  if (!regions) {
+    return undefined
+  }
+
+  const documents: { mediaType: DocumentMediaType; bytes: Uint8Array }[] = []
+  for (const region of regions) {
+    try {
+      documents.push({
+        mediaType: 'image/png',
+        bytes: await renderRegion(pageNumber, region),
+      })
+    } catch {
+      // A rasterizer that offers the method and then fails on a region is no more use than
+      // one that never had it. Half a set of crops is worse than none, so the whole page
+      // goes back to being the document and the warning explains what that means.
+      return undefined
+    }
+  }
+  return documents
 }
 
 async function proposeFromImage(
@@ -193,22 +263,33 @@ async function proposeFromImage(
       warnings: [warning],
     })
   } else {
-    for (const [index, barcode] of found.entries()) {
+    const kept = found.slice(0, INGEST_LIMITS.barcodesPerPage)
+    const shared: ProposalWarning[] = []
+    if (found.length > kept.length) {
+      shared.push({
+        code: 'TOO_MANY_BARCODES',
+        pageNumber: 1,
+        detail: { limit: INGEST_LIMITS.barcodesPerPage },
+      })
+    }
+    if (kept.length > 1) {
+      shared.push({ code: 'MULTIPLE_BARCODES', pageNumber: 1, detail: { count: kept.length } })
+      // Unlike a PDF page there is nothing to re-render a region from: the document *is* the
+      // file the user chose. So every ticket carries every code on it, and saying so is the
+      // most this path can do.
+      shared.push({ code: 'SHARED_PAGE', pageNumber: 1 })
+    }
+    warnings.push(...shared)
+
+    for (const [index, barcode] of kept.entries()) {
       tickets.push({
         id: uuidv7(),
-        suggestedLabel: labelFor(options, 1, found.length > 1 ? index + 1 : undefined),
+        suggestedLabel: labelFor(options, 1, kept.length > 1 ? index + 1 : undefined),
         barcode: { format: barcode.format, value: barcode.value },
         pageNumber: 1,
         document: { mediaType, bytes },
         include: true,
-        warnings: [],
-      })
-    }
-    if (found.length > 1) {
-      warnings.push({
-        code: 'MULTIPLE_BARCODES',
-        pageNumber: 1,
-        detail: { count: found.length },
+        warnings: [...shared],
       })
     }
   }
@@ -269,27 +350,54 @@ function proposeFromPkpass(bytes: Uint8Array, options: ProposeOptions): IngestPr
 }
 
 /**
- * Flags barcodes that appear more than once.
+ * Flags barcodes that appear more than once, which means two different things.
  *
- * A repeated barcode almost always means a summary or cover page carrying the same code as
- * a real ticket. Importing both would produce two tickets that are the same seat, and the
- * duplicate would be discovered at the turnstile.
+ * **On another page** it almost always means a summary or cover sheet carrying the same code
+ * as a real ticket. Importing both would produce two tickets that are the same seat, and the
+ * duplicate would be discovered at the turnstile. That one is unticked.
+ *
+ * **On the same page** it means nothing of the sort. Some sellers — infoticketing and
+ * sacatuentrada among them — print one code for the whole order and repeat it on every pass
+ * on the sheet; what tells the passes apart is the reference and the ticket type, not the
+ * code. Unticking there threw away a real ticket, and it protected nothing: the code handed
+ * out is identical either way, so keeping one row instead of two prevents no double entry
+ * and only loses the second pass's type, price and reference. Both rows stay ticked, and the
+ * warning says what to look at.
+ *
+ * Which of the two it is cannot be decided from the code alone, and this is the screen whose
+ * entire purpose is that somebody who can see the document decides.
  */
 function flagDuplicates(tickets: ProposedTicket[], warnings: ProposalWarning[]): void {
-  const seen = new Map<string, number>()
+  const seen = new Map<string, ProposedTicket>()
   for (const ticket of tickets) {
     if (!ticket.barcode) {
       continue
     }
-    const previous = seen.get(ticket.barcode.value)
-    if (previous === undefined) {
-      seen.set(ticket.barcode.value, ticket.pageNumber ?? 1)
+    const first = seen.get(ticket.barcode.value)
+    if (!first) {
+      seen.set(ticket.barcode.value, ticket)
       continue
     }
+
+    if ((first.pageNumber ?? 1) === (ticket.pageNumber ?? 1)) {
+      const warning: ProposalWarning = {
+        code: 'SAME_CODE_ON_SHEET',
+        ...(ticket.pageNumber === undefined ? {} : { pageNumber: ticket.pageNumber }),
+      }
+      warnings.push(warning)
+      ticket.warnings.push(warning)
+      // On the first one too. It is a property of the pair, and a warning on only the second
+      // row reads as if the second row were the problem.
+      if (!first.warnings.some((existing) => existing.code === 'SAME_CODE_ON_SHEET')) {
+        first.warnings.push(warning)
+      }
+      continue
+    }
+
     const warning: ProposalWarning = {
       code: 'DUPLICATE_BARCODE',
       ...(ticket.pageNumber === undefined ? {} : { pageNumber: ticket.pageNumber }),
-      detail: { firstSeenOnPage: previous },
+      detail: { firstSeenOnPage: first.pageNumber ?? 1 },
     }
     warnings.push(warning)
     ticket.warnings.push(warning)

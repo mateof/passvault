@@ -109,6 +109,14 @@ export const en: Catalogue = {
     'No barcode was found on this page. Check whether it is a ticket or a page of instructions.',
   'ingest.warning.multipleBarcodes':
     '{count} barcodes were found on this page. Check how they split into tickets.',
+  'ingest.warning.tooManyBarcodes':
+    'This page holds more than {limit} barcodes and only the first {limit} were read. Split the PDF so the rest are not lost.',
+  'ingest.warning.sharedPage':
+    'This page could not be divided, so every ticket carries the whole sheet and the other codes on it.',
+  'ingest.warning.sameCodeOnSheet':
+    'These tickets share the same barcode. Some sellers print one code for the whole order, so they may be separate tickets; others repeat the code on the stub. Look at the sheet and decide.',
+  'ingest.warning.duplicateBarcode':
+    'This barcode already appeared on page {firstSeenOnPage}. It is left out so the same seat is not created twice.',
   'ingest.proposal.summary':
     'Found {tickets, plural, one {# ticket} other {# tickets}} across {pages, plural, one {# page} other {# pages}}. Review before saving.',
   'ingest.proposal.reviewRequired':

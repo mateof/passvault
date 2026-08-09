@@ -45,7 +45,18 @@ export interface PageSpec {
   /** Barcode payloads to draw on this page. Empty means a page with no barcode at all. */
   codes: { text: string; format?: WritableFormat }[]
   heading?: string
+  /**
+   * Lay the codes out in a grid of this many columns instead of a single row.
+   *
+   * A row is what a sheet of two passes looks like and is the default. Real sheets also come
+   * stacked (`columns: 1`) and four-up or more, and those layouts are the ones that tell
+   * whether a page is being cut into tickets correctly rather than by luck.
+   */
+  columns?: number
 }
+
+const PAGE_WIDTH = 595
+const PAGE_HEIGHT = 842
 
 /** Builds a multi-page PDF, one spec per page. */
 export async function ticketPdf(pages: PageSpec[]): Promise<Uint8Array> {
@@ -53,24 +64,58 @@ export async function ticketPdf(pages: PageSpec[]): Promise<Uint8Array> {
   const font = await document.embedFont(StandardFonts.Helvetica)
 
   for (const spec of pages) {
-    const page = document.addPage([595, 842])
+    const page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT])
     if (spec.heading) {
       page.drawText(spec.heading, { x: 48, y: 780, size: 16, font })
     }
     for (const [index, code] of spec.codes.entries()) {
       const png = await document.embedPng(await barcodePng(code.text, code.format ?? 'QRCode'))
-      const size = 180
+      const { x, y, size, captionY, caption } = spec.columns
+        ? gridSlot(index, spec.columns)
+        : rowSlot(index)
       page.drawImage(png, {
-        x: 60 + index * (size + 40),
-        y: 520,
+        x,
+        y,
         width: size,
         height: (size * png.height) / png.width,
       })
-      page.drawText(code.text, { x: 60 + index * (size + 40), y: 496, size: 9, font })
+      page.drawText(code.text, { x, y: captionY, size: caption, font })
     }
   }
 
   return new Uint8Array(await document.save())
+}
+
+interface Slot {
+  x: number
+  y: number
+  size: number
+  captionY: number
+  caption: number
+}
+
+function rowSlot(index: number): Slot {
+  const size = 180
+  const x = 60 + index * (size + 40)
+  return { x, y: 520, size, captionY: 496, caption: 9 }
+}
+
+function gridSlot(index: number, columns: number): Slot {
+  const margin = 36
+  const cell = (PAGE_WIDTH - margin * 2) / columns
+  // Short of the cell, so the gap between neighbours is a band with nothing in it — which is
+  // what a guillotine cut needs and what a printed sheet has.
+  const size = Math.min(cell - 14, 160)
+  const row = Math.floor(index / columns)
+  const column = index % columns
+  const y = PAGE_HEIGHT - margin - (row + 1) * (size + 28)
+  return {
+    x: margin + column * cell,
+    y,
+    size,
+    captionY: y - 12,
+    caption: Math.max(5, Math.min(9, size / 20)),
+  }
 }
 
 /** A PDF with no barcode anywhere: the instructions sheet vendors put in front. */

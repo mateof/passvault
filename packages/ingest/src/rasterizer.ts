@@ -21,11 +21,78 @@ export interface RasterizedDocument {
   pageCount: number
   /** Renders one page, 1-based, as PNG bytes. */
   renderPage: (pageNumber: number, widthPx?: number) => Promise<Uint8Array>
+  /**
+   * Renders part of a page, so a sheet holding several passes can be cut into one image per
+   * ticket. `widthPx` is the width of the returned image, not of the whole page.
+   *
+   * Optional: a rasterizer that cannot clip simply omits it, and ingestion falls back to
+   * giving every ticket on the sheet the whole sheet — with a warning saying so, since that
+   * puts each holder's code in front of the others.
+   */
+  renderRegion?: (pageNumber: number, region: PageRegion, widthPx?: number) => Promise<Uint8Array>
+  /**
+   * A coarse map of where the page has something drawn on it.
+   *
+   * Cutting a shared sheet halfway between two barcodes puts the line wherever the arithmetic
+   * lands, and vendors print the code at the top of each pass — so the midpoint falls inside
+   * the first pass and saws its footer off. This says where the paper is actually blank, so
+   * the cut can go in the gutter between the two printed blocks instead.
+   *
+   * Optional, like `renderRegion`: without it the cut falls back to the midpoint, which is
+   * safe but ugly.
+   */
+  inkMap?: (pageNumber: number) => Promise<InkMap>
   close: () => Promise<void>
+}
+
+/**
+ * Which cells of a low-resolution render have anything on them.
+ *
+ * Row-major, one byte per cell, `1` where something is drawn. Coarse on purpose: this looks
+ * for the white band between two printed passes, not for detail.
+ */
+export interface InkMap {
+  width: number
+  height: number
+  ink: Uint8Array
 }
 
 export interface PageRasterizer {
   open: (pdf: Uint8Array) => Promise<RasterizedDocument>
+}
+
+/**
+ * A rectangle on a page, as fractions of the page box with the origin at the top left.
+ *
+ * Fractions rather than points, because the caller works from barcode positions measured in
+ * the pixels of a render whose scale it never chose.
+ */
+export interface PageRegion {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+const WHOLE_PAGE: PageRegion = { left: 0, top: 0, width: 1, height: 1 }
+
+/** Below this a crop stops being legible, whatever fraction of the sheet it covers. */
+const MINIMUM_CROP_WIDTH = 320
+
+/** Lighter than this in every channel is paper, not print. */
+const INK_THRESHOLD = 248
+
+/** A region from outside cannot be trusted to lie on the page, and a canvas of zero throws. */
+function clampRegion(region: PageRegion): PageRegion {
+  // Short of 1, so that what is left of the page is never zero wide.
+  const left = Math.min(Math.max(region.left, 0), 0.99)
+  const top = Math.min(Math.max(region.top, 0), 0.99)
+  return {
+    left,
+    top,
+    width: Math.min(Math.max(region.width, 0.01), 1 - left),
+    height: Math.min(Math.max(region.height, 0.01), 1 - top),
+  }
 }
 
 interface NodeCanvas {
@@ -84,31 +151,87 @@ export async function createPdfJsRasterizer(): Promise<PageRasterizer> {
         throw new IngestError('DAMAGED_FILE', 'pdf.js could not open the document', { cause })
       }
 
+      /**
+       * Paints a region of a page onto a canvas of that region's size.
+       *
+       * The whole-page render is the same operation with the region set to the whole page,
+       * which is why there is one implementation rather than two that drift apart.
+       */
+      const paint = async (
+        pageNumber: number,
+        widthPx: number,
+        region: PageRegion,
+      ): Promise<{ canvas: NodeCanvas; context: CanvasRenderingContext2D }> => {
+        const page = await document.getPage(pageNumber)
+        const unscaled = page.getViewport({ scale: 1 })
+        const scale = widthPx / (unscaled.width * region.width)
+        const viewport = page.getViewport({
+          scale,
+          // Shifts the page under a canvas cut to the region. Without the offsets this
+          // would be the whole page squeezed into the crop's dimensions.
+          offsetX: -region.left * unscaled.width * scale,
+          offsetY: -region.top * unscaled.height * scale,
+        })
+        // The canvas comes from pdf.js's own factory. Creating one directly with
+        // @napi-rs/canvas and passing it in looks equivalent and crashes the process.
+        const { canvas, context } = (document.canvasFactory as unknown as CanvasFactory).create(
+          Math.ceil(unscaled.width * region.width * scale),
+          Math.ceil(unscaled.height * region.height * scale),
+        )
+        // White first: a transparent background flattens to black, and a barcode on black
+        // does not decode.
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        await page.render({
+          canvas: canvas as unknown as HTMLCanvasElement,
+          canvasContext: context,
+          viewport,
+        }).promise
+        page.cleanup()
+        return { canvas, context }
+      }
+
+      const png = async (
+        pageNumber: number,
+        widthPx: number,
+        region: PageRegion,
+      ): Promise<Uint8Array> => {
+        const { canvas } = await paint(pageNumber, widthPx, region)
+        return new Uint8Array(canvas.toBuffer('image/png'))
+      }
+
       return {
         pageCount: document.numPages,
-        async renderPage(pageNumber, widthPx = INGEST_LIMITS.renderWidth) {
-          const page = await document.getPage(pageNumber)
-          const unscaled = page.getViewport({ scale: 1 })
-          const viewport = page.getViewport({
-            scale: Math.min(widthPx, INGEST_LIMITS.renderWidth) / unscaled.width,
-          })
-          // The canvas comes from pdf.js's own factory. Creating one directly with
-          // @napi-rs/canvas and passing it in looks equivalent and crashes the process.
-          const { canvas, context } = (document.canvasFactory as unknown as CanvasFactory).create(
-            Math.ceil(viewport.width),
-            Math.ceil(viewport.height),
+        renderPage: async (pageNumber, widthPx = INGEST_LIMITS.renderWidth) =>
+          png(pageNumber, Math.min(widthPx, INGEST_LIMITS.renderWidth), WHOLE_PAGE),
+        renderRegion: async (pageNumber, region, widthPx) => {
+          const clamped = clampRegion(region)
+          const target = Math.min(
+            widthPx ?? INGEST_LIMITS.cropRenderWidth * clamped.width,
+            INGEST_LIMITS.cropRenderWidth,
           )
-          // White first: a transparent background flattens to black, and a barcode on black
-          // does not decode.
-          context.fillStyle = '#ffffff'
-          context.fillRect(0, 0, canvas.width, canvas.height)
-          await page.render({
-            canvas: canvas as unknown as HTMLCanvasElement,
-            canvasContext: context,
-            viewport,
-          }).promise
-          page.cleanup()
-          return new Uint8Array(canvas.toBuffer('image/png'))
+          // A region can be a narrow strip, and a strip asked for at one pixel wide is not
+          // a document anybody can read.
+          return png(pageNumber, Math.max(target, MINIMUM_CROP_WIDTH), clamped)
+        },
+        inkMap: async (pageNumber) => {
+          const { canvas, context } = await paint(pageNumber, INGEST_LIMITS.inkMapWidth, WHOLE_PAGE)
+          const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height)
+          const ink = new Uint8Array(width * height)
+          for (let pixel = 0; pixel < ink.length; pixel += 1) {
+            const at = pixel * 4
+            // Near-white counts as blank. The background was filled white before rendering,
+            // so anything the page drew — including the palest tint of a ticket's card — is
+            // darker than this in at least one channel.
+            if (
+              data[at]! < INK_THRESHOLD ||
+              data[at + 1]! < INK_THRESHOLD ||
+              data[at + 2]! < INK_THRESHOLD
+            ) {
+              ink[pixel] = 1
+            }
+          }
+          return { width, height, ink }
         },
         close: async () => {
           // The loading task owns the worker, so destroying the document proxy is not

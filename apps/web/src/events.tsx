@@ -9,12 +9,14 @@ import {
   type Tag,
   type EventSummary,
   type IngestProposal,
+  type IngestWarning,
   type PaymentState,
   type PaymentVisibility,
   type TicketSummary,
 } from './api/passvault'
 import { ApiError } from './api/client'
 import { useT } from './i18n'
+import type { WebMessageKey } from './i18n/messages'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
 import { EventMark, Icon } from './icons'
@@ -1744,6 +1746,56 @@ function AddTicketCard({ eventId, onAdded }: { eventId: string; onAdded: () => P
   )
 }
 
+/**
+ * What each warning code says.
+ *
+ * `NO_BARCODE` is deliberately absent: the entry already shows «no barcode» where its value
+ * would be, and saying it twice in two different wordings reads as two separate problems.
+ *
+ * A code with no entry here is skipped rather than rendered raw. The server is free to add
+ * warnings this build has never heard of, and `MULTIPLE_BARCODES` in the middle of a
+ * sentence is worse than silence.
+ */
+const INGEST_WARNINGS: Partial<Record<string, WebMessageKey>> = {
+  MULTIPLE_BARCODES: 'ingest.warning.multipleBarcodes',
+  TOO_MANY_BARCODES: 'ingest.warning.tooManyBarcodes',
+  SHARED_PAGE: 'ingest.warning.sharedPage',
+  SAME_CODE_ON_SHEET: 'ingest.warning.sameCodeOnSheet',
+  DUPLICATE_BARCODE: 'ingest.warning.duplicateBarcode',
+  PKPASS_DIGEST_MISMATCH: 'ingest.warning.pkpassDigestMismatch',
+  PKPASS_SIGNATURE_UNVERIFIED: 'ingest.warning.pkpassSignatureUnverified',
+  PKPASS_NO_BARCODE: 'ingest.warning.pkpassNoBarcode',
+}
+
+function IngestWarnings({ warnings }: { warnings: IngestWarning[] }) {
+  const { t } = useT()
+  const said = warnings.flatMap((warning) => {
+    const key = INGEST_WARNINGS[warning.code]
+    if (!key) {
+      return []
+    }
+    try {
+      return [t(key, warning.detail ?? {})]
+    } catch {
+      // A message whose placeholder the server did not fill would otherwise take the whole
+      // review screen down with it, which is a poor trade for one missing sentence.
+      return []
+    }
+  })
+  if (said.length === 0) {
+    return null
+  }
+  return (
+    <ul className="ingest-warnings">
+      {said.map((sentence, index) => (
+        <li key={index} className="muted">
+          {sentence}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function IngestCard({ eventId, onIngested }: { eventId: string; onIngested: () => Promise<void> }) {
   const { t, locale } = useT()
   const [file, setFile] = useState<File>()
@@ -1811,6 +1863,7 @@ function IngestCard({ eventId, onIngested }: { eventId: string; onIngested: () =
                       )}
                     </span>
                   </label>
+                  <IngestWarnings warnings={entry.warnings} />
                 </li>
               )
             })}

@@ -215,18 +215,25 @@ export interface EventDocument {
  * review list rendered as empty every time and there was nothing to confirm — a proposal is the
  * one screen in the product whose entire purpose is to be looked at before it is accepted.
  */
+export interface IngestWarning {
+  code: string
+  pageNumber?: number
+  /** Whatever the warning needs to say something specific: a count, a limit, a page. */
+  detail?: Record<string, string | number>
+}
+
 export interface IngestProposal {
   ingestId: string
   pageCount: number
   requiresReview: boolean
-  warnings: { code: string; pageNumber?: number }[]
+  warnings: IngestWarning[]
   entries: {
     index: number
     suggestedLabel: string
     barcode: { format: string; value: string } | null
     pageNumber?: number | null
     include: boolean
-    warnings: { code: string; pageNumber?: number }[]
+    warnings: IngestWarning[]
   }[]
 }
 

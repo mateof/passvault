@@ -126,6 +126,14 @@ export const gl = {
     'Non se atopou ningún código nesta páxina. Repasa se é unha entrada ou unha folla de instrucións.',
   'ingest.warning.multipleBarcodes':
     'Atopáronse {count} códigos nesta páxina. Revisa como se reparten en entradas.',
+  'ingest.warning.tooManyBarcodes':
+    'Esta páxina leva máis de {limit} códigos e só se leron os {limit} primeiros. Divide o PDF para non perder as entradas que faltan.',
+  'ingest.warning.sharedPage':
+    'Non se puido repartir esta páxina, así que cada entrada leva a folla enteira e con ela os códigos das demais.',
+  'ingest.warning.sameCodeOnSheet':
+    'Estas entradas comparten o mesmo código. Hai vendedores que imprimen un só código por pedido, así que poden ser entradas distintas; outros repiten o código no resgardo. Mira a folla e decide.',
+  'ingest.warning.duplicateBarcode':
+    'Este código xa aparecía na páxina {firstSeenOnPage}. Déixase fóra para non crear o mesmo asento dúas veces.',
   'ingest.proposal.summary':
     'Atopáronse {tickets, plural, one {# entrada} other {# entradas}} en {pages, plural, one {# páxina} other {# páxinas}}. Revísao antes de gardar.',
   'ingest.proposal.reviewRequired':

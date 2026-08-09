@@ -699,6 +699,18 @@ button.link {
   color: var(--ink-muted);
 }
 
+/* Indented under the entry they belong to, since a warning about page 3 that reads as if it
+   applied to the whole import is worse than no warning. */
+.ingest-warnings {
+  list-style: none;
+  margin: 0.15rem 0 0;
+  padding: 0 0 0 1.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85em;
+}
+
 .empty {
   display: flex;
   flex-direction: column;

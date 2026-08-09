@@ -1,4 +1,9 @@
-export { decodeBarcodes, isTicketBarcodeFormat, type DecodedBarcode } from './barcode.js'
+export {
+  decodeBarcodes,
+  isTicketBarcodeFormat,
+  type BarcodeBox,
+  type DecodedBarcode,
+} from './barcode.js'
 export { detectMediaType, isSupported } from './detect.js'
 export { IngestError, type IngestErrorCode } from './errors.js'
 export { INGEST_LIMITS, assertFileSize, assertPageCount } from './limits.js'
@@ -20,6 +25,9 @@ export {
 } from './proposal.js'
 export {
   createPdfJsRasterizer,
+  type InkMap,
   type PageRasterizer,
+  type PageRegion,
   type RasterizedDocument,
 } from './rasterizer.js'
+export { cutIntoRegions, normalizeBox, type SheetBox } from './sheet.js'

@@ -48,6 +48,21 @@ what is stored on that device; it is not something the server can recover for yo
    unticked for you, and you can tick or untick rows before saving. This is on purpose
    — a PDF might put two passes on one page, or lead with a page of directions.
 
+   When a page does hold several passes, PassVault cuts it up along the blank gutter
+   between them: each ticket keeps its own pass whole — reference, price and all — and
+   nothing of its neighbour, so handing a seat to somebody does not hand them the codes
+   printed beside it. If the layout cannot be divided — codes overlapping, or
+   interleaved — the review screen says so, and every ticket off that page carries the
+   whole sheet. A page with more codes than PassVault will read at once says that too,
+   rather than quietly proposing a short list.
+
+   Two passes on one sheet sometimes carry the **same** code: several Spanish sellers
+   issue one code per order and print it on every ticket, and what tells the tickets
+   apart is the reference and the type. Both are proposed, with a note asking you to
+   check, because they may equally be a ticket and its stub. A code repeated on a
+   *different* page is another matter — that is usually a summary sheet — and it is
+   unticked for you.
+
 Every imported ticket carries its barcode. From here on, the creator decides who gets
 which seat and who may see its code.
 
