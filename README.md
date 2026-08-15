@@ -1,5 +1,13 @@
 # PassVault
 
+<p align="center">
+  <a href="https://github.com/mateof/passvault/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/mateof/passvault/ci.yml?branch=main&amp;label=CI&amp;logo=github"></a>
+  <a href="https://github.com/mateof/passvault/pkgs/container/passvault"><img alt="GHCR image" src="https://img.shields.io/badge/ghcr.io-image-2496ED?logo=docker&amp;logoColor=white"></a>
+  <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-TypeScript-339933?logo=nodedotjs&amp;logoColor=white"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/mateof/passvault"></a>
+  <a href="https://github.com/mateof/passvault/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/mateof/passvault"></a>
+</p>
+
 Event tickets rarely arrive one per person. You buy ten seats for a concert, get a
 single ten-page PDF, and then spend a week working out who gets which seat, who
 has paid you back, and how to hand each person their barcode without losing track
