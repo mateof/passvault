@@ -1,6 +1,6 @@
 {
   "name": "@passvault/server",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
