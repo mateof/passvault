@@ -269,6 +269,8 @@ export interface TicketSummary {
    * knows to offer the code without handing it over.
    */
   barcodeAvailable?: boolean
+  /** Whether this ticket has a pass of its own to show, gated exactly like the barcode. */
+  documentAvailable?: boolean
   assignmentMode: string
   assignmentState: string
   holderUserId?: string | null
@@ -516,6 +518,16 @@ export const api = {
       `/api/v1/tickets/${encodeURIComponent(ticketId)}/barcode`,
       json(locale),
     ),
+
+  /**
+   * The pass this ticket was cut from. Behind the same gate as the barcode, and fetching it
+   * counts as having seen the code, because the code is printed on it.
+   */
+  ticketDocument: (locale: string, ticketId: string) =>
+    request<Blob>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/document`, {
+      ...json(locale),
+      blob: true,
+    }),
 
   // ── The creator's controls over a shared barcode ─────────────────────────────
   setTicketVisibility: (

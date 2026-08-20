@@ -45,6 +45,12 @@ event can mix them:
 - *Self-claim* — members claim a free ticket for themselves, one each.
 - *Individual grants* — access given to named people rather than a group.
 
+**Showing a ticket.** The holder is given the barcode as the symbol a scanner reads,
+drawn in the browser from the value they downloaded — the server never renders a code it
+went to such lengths not to hand around, and nothing is fetched from a CDN, so a ticket
+displays in a basement venue with no signal. Beside it is the pass itself: the page the
+ticket was split from, or the region cut out of a sheet it shared with others.
+
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
 themselves. An unpaid seat can be kept locked until it is marked paid.

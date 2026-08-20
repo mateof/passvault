@@ -681,6 +681,12 @@ export interface TicketProjection {
    * handing the code over.
    */
   barcodeAvailable: boolean
+  /**
+   * Whether this ticket has a pass of its own to hand over — the page it was split from, or
+   * the region cut out of a sheet it shared. Gated exactly like the barcode, since the code is
+   * printed on it.
+   */
+  documentAvailable: boolean
   assignmentMode: string
   assignmentState: string
   holderUserId: string | null
@@ -722,7 +728,9 @@ function effectiveVisibleFrom(
   event: { starts_at: string | null },
 ): string | null {
   if (ticket.visible_hours_before != null && event.starts_at) {
-    return toInstant(new Date(new Date(event.starts_at).getTime() - ticket.visible_hours_before * 3600_000))
+    return toInstant(
+      new Date(new Date(event.starts_at).getTime() - ticket.visible_hours_before * 3600_000),
+    )
   }
   return ticket.visible_from
 }
@@ -769,6 +777,7 @@ export async function projectTickets(
       'tickets.revealed_at',
       'tickets.returned_at',
       'tickets.share_permitted',
+      'tickets.document_blob_id',
       'payments.state as payment_state',
       'payments.amount_cents',
       'payments.currency',
@@ -810,13 +819,14 @@ export async function projectTickets(
     // own barcode regardless, because withholding it from themselves protects no one.
     const visibleFrom = effectiveVisibleFrom(row, event)
     const unpaid = row.payment_state === 'UNPAID' || row.payment_state === 'PARTIAL'
-    const lockReason: 'blocked' | 'unpaid' | 'notYet' | null = row.creator_blocked === 1
-      ? 'blocked'
-      : unpaid
-        ? 'unpaid'
-        : visibleFrom && now < visibleFrom
-          ? 'notYet'
-          : null
+    const lockReason: 'blocked' | 'unpaid' | 'notYet' | null =
+      row.creator_blocked === 1
+        ? 'blocked'
+        : unpaid
+          ? 'unpaid'
+          : visibleFrom && now < visibleFrom
+            ? 'notYet'
+            : null
     const locked = !isCreator && entitled && lockReason !== null
     const maySeeBarcode = isCreator || (entitled && lockReason === null)
 
@@ -844,6 +854,7 @@ export async function projectTickets(
             }
           : null,
       barcodeAvailable: maySeeBarcode && row.barcode_cipher !== null,
+      documentAvailable: maySeeBarcode && row.document_blob_id !== null,
       assignmentMode: row.assignment_mode,
       assignmentState: row.assignment_state,
       holderUserId: row.holder_user_id,
@@ -1133,17 +1144,23 @@ export async function storeBarcodes(
 }
 
 /**
- * Serves a barcode on demand — the download that stands in for a holder ever carrying it.
+ * The gate every path to a holder's code passes through.
  *
- * This is the only path a holder's code reaches a screen: it is not in the list, not in the sync
- * log, only here. Refused while locked or to a viewer not entitled. The moment it crosses to a
- * non-creator holder it is marked revealed — from there the creator can no longer block it and a
- * return is no longer honest — so the act of downloading is the act of being seen.
+ * A barcode and the pass it is printed on are the same secret in two shapes. Giving them separate
+ * rules would mean a ticket whose code is withheld handing over a picture of that code, so one
+ * function decides and both endpoints ask it.
+ *
+ * Refused to a viewer not entitled, and while the code is locked. The creator is never locked out
+ * of their own event: withholding a code from the person who is withholding it protects nobody.
  */
-export async function getTicketBarcode(
+async function openCode(
   deps: EventDeps,
-  input: { ticketId: string; viewerUserId: string; eventKey: Uint8Array },
-): Promise<{ format: string; value: string }> {
+  input: { ticketId: string; viewerUserId: string },
+): Promise<{
+  ticket: Awaited<ReturnType<typeof requireTicket>>
+  isCreator: boolean
+  isHolder: boolean
+}> {
   const ticket = await requireTicket(deps, input.ticketId)
   const event = await findEvent(deps, ticket.event_id)
   if (!event) {
@@ -1165,25 +1182,59 @@ export async function getTicketBarcode(
   const unpaid = payment?.state === 'UNPAID' || payment?.state === 'PARTIAL'
   const locked =
     !isCreator &&
-    (ticket.creator_blocked === 1 ||
-      unpaid ||
-      (visibleFrom !== null && toInstant() < visibleFrom))
+    (ticket.creator_blocked === 1 || unpaid || (visibleFrom !== null && toInstant() < visibleFrom))
   if (locked) {
     throw badRequest('ticket.error.locked')
   }
+  return { ticket, isCreator, isHolder }
+}
+
+/**
+ * The download is the reveal.
+ *
+ * Written before the value leaves, and only for a genuine holder: the creator reading their own
+ * code does not close their own window to take the seat back.
+ */
+async function markRevealed(
+  deps: EventDeps,
+  input: {
+    ticketId: string
+    revealedAt: string | null
+    isCreator: boolean
+    isHolder: boolean
+  },
+): Promise<void> {
+  if (input.isCreator || !input.isHolder || input.revealedAt) {
+    return
+  }
+  await deps.db.db
+    .updateTable('tickets')
+    .set({ revealed_at: toInstant(), updated_at: toInstant() })
+    .where('id', '=', input.ticketId)
+    .where('revealed_at', 'is', null)
+    .execute()
+}
+
+/**
+ * Serves a barcode on demand — the download that stands in for a holder ever carrying it.
+ *
+ * This is the only path a holder's code reaches a screen: it is not in the list, not in the sync
+ * log, only here.
+ */
+export async function getTicketBarcode(
+  deps: EventDeps,
+  input: { ticketId: string; viewerUserId: string; eventKey: Uint8Array },
+): Promise<{ format: string; value: string }> {
+  const { ticket, isCreator, isHolder } = await openCode(deps, input)
   if (!ticket.barcode_cipher || !ticket.barcode_format) {
     throw notFound()
   }
-  // The download is the reveal. Written before the value leaves, and only for a genuine holder:
-  // the creator reading their own code does not close their own window to take the seat back.
-  if (!isCreator && isHolder && !ticket.revealed_at) {
-    await deps.db.db
-      .updateTable('tickets')
-      .set({ revealed_at: toInstant(), updated_at: toInstant() })
-      .where('id', '=', input.ticketId)
-      .where('revealed_at', 'is', null)
-      .execute()
-  }
+  await markRevealed(deps, {
+    ticketId: input.ticketId,
+    revealedAt: ticket.revealed_at,
+    isCreator,
+    isHolder,
+  })
   return {
     format: ticket.barcode_format,
     value: deps.crypto.decryptField(
@@ -1192,6 +1243,34 @@ export async function getTicketBarcode(
       field(input.ticketId, 'barcode_cipher'),
     ),
   }
+}
+
+/**
+ * Which blob holds this ticket's own pass, once the same gate has let the viewer through.
+ *
+ * Ingestion cuts a sheet carrying several passes into one image per ticket exactly so this can be
+ * handed over without handing over the neighbours' codes — and until now it was stored, encrypted,
+ * carried into every export, and served to nobody.
+ *
+ * Reading and decrypting the blob is the caller's job; this decides whether they may. Fetching the
+ * pass counts as the reveal, because the code is printed on it: a holder who has seen their pass
+ * has seen their code, whatever route they took to it.
+ */
+export async function openTicketDocument(
+  deps: EventDeps,
+  input: { ticketId: string; viewerUserId: string },
+): Promise<{ blobId: string; page: number | null }> {
+  const { ticket, isCreator, isHolder } = await openCode(deps, input)
+  if (!ticket.document_blob_id) {
+    throw notFound()
+  }
+  await markRevealed(deps, {
+    ticketId: input.ticketId,
+    revealedAt: ticket.revealed_at,
+    isCreator,
+    isHolder,
+  })
+  return { blobId: ticket.document_blob_id, page: ticket.document_page }
 }
 
 function decrypt(

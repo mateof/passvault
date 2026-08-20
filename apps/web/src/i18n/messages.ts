@@ -335,6 +335,14 @@ export const gl = {
     'Esta páxina leva máis de {limit} códigos e só se leron os {limit} primeiros. Divide o PDF para non perder as que faltan.',
   'ingest.warning.sharedPage':
     'Non se puido repartir esta páxina: cada entrada leva a folla enteira e con ela os códigos das demais.',
+  'tickets.symbolDrawing': 'Debuxando o código…',
+  'tickets.symbolFailed': 'Non se puido debuxar este código. Aquí tes o valor:',
+  'tickets.symbolLabel': 'Código da entrada: {value}',
+  'tickets.viewPass': 'Ver o pase',
+  'tickets.hidePass': 'Agochar o pase',
+  'tickets.passExplain':
+    'A folla que che tocou, co teu código e mais os teus datos. Abrila conta como ter visto o código.',
+  'tickets.passFailed': 'Non se puido cargar o pase.',
   'ingest.warning.sameCodeOnSheet':
     'Estas entradas comparten o mesmo código. Hai vendedores que imprimen un só código por pedido, así que poden ser entradas distintas; outros repiten o código no resgardo. Mira a folla e decide.',
   'ingest.warning.duplicateBarcode':
@@ -773,6 +781,14 @@ export const es: Record<WebMessageKey, string> = {
     'Esta página lleva más de {limit} códigos y solo se han leído los {limit} primeros. Divide el PDF para no perder las que faltan.',
   'ingest.warning.sharedPage':
     'No se ha podido repartir esta página: cada entrada lleva la hoja entera y con ella los códigos de las demás.',
+  'tickets.symbolDrawing': 'Dibujando el código…',
+  'tickets.symbolFailed': 'No se ha podido dibujar este código. Aquí tienes el valor:',
+  'tickets.symbolLabel': 'Código de la entrada: {value}',
+  'tickets.viewPass': 'Ver el pase',
+  'tickets.hidePass': 'Ocultar el pase',
+  'tickets.passExplain':
+    'La hoja que te ha tocado, con tu código y tus datos. Abrirla cuenta como haber visto el código.',
+  'tickets.passFailed': 'No se ha podido cargar el pase.',
   'ingest.warning.sameCodeOnSheet':
     'Estas entradas comparten el mismo código. Hay vendedores que imprimen un solo código por pedido, así que pueden ser entradas distintas; otros repiten el código en el resguardo. Mira la hoja y decide.',
   'ingest.warning.duplicateBarcode':
@@ -1206,6 +1222,14 @@ export const en: Record<WebMessageKey, string> = {
     'This page holds more than {limit} barcodes and only the first {limit} were read. Split the PDF so the rest are not lost.',
   'ingest.warning.sharedPage':
     'This page could not be divided: every ticket carries the whole sheet and the other codes on it.',
+  'tickets.symbolDrawing': 'Drawing the code…',
+  'tickets.symbolFailed': 'This code could not be drawn. Here is its value:',
+  'tickets.symbolLabel': 'Ticket code: {value}',
+  'tickets.viewPass': 'Show the pass',
+  'tickets.hidePass': 'Hide the pass',
+  'tickets.passExplain':
+    'The part of the sheet that is yours, with your code and your details on it. Opening it counts as having seen the code.',
+  'tickets.passFailed': 'The pass could not be loaded.',
   'ingest.warning.sameCodeOnSheet':
     'These tickets share the same barcode. Some sellers print one code for the whole order, so they may be separate tickets; others repeat the code on the stub. Look at the sheet and decide.',
   'ingest.warning.duplicateBarcode':

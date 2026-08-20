@@ -142,6 +142,7 @@ import {
   claimSummary,
   ensureDevice,
   getTicketBarcode,
+  openTicketDocument,
   issueClaimCoupons,
   projectTickets,
   returnTicket,
@@ -1377,9 +1378,14 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     if (!event) {
       throw notFound()
     }
-    const isAdmin = (
-      await db.db.selectFrom('users').select('is_admin').where('id', '=', session.user_id).executeTakeFirst()
-    )?.is_admin === 1
+    const isAdmin =
+      (
+        await db.db
+          .selectFrom('users')
+          .select('is_admin')
+          .where('id', '=', session.user_id)
+          .executeTakeFirst()
+      )?.is_admin === 1
     if (event.creator_user_id !== session.user_id && !isAdmin) {
       throw forbidden('event.error.notCreator')
     }
@@ -1669,7 +1675,9 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
   app.get('/api/v1/tags', async (request) => {
     const session = await sessionOf(request)
     const vault = vaults.require(session.id)
-    return { tags: await listTags(eventDeps, { ownerUserId: session.user_id, dataKey: vault.dataKey }) }
+    return {
+      tags: await listTags(eventDeps, { ownerUserId: session.user_id, dataKey: vault.dataKey }),
+    }
   })
 
   app.post('/api/v1/tags', async (request, reply) => {
@@ -2200,6 +2208,41 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
       viewerUserId: session.user_id,
       eventKey,
     })
+  })
+
+  /**
+   * Serves the pass this ticket was cut from.
+   *
+   * Behind the same gate as the barcode, and marking the same reveal, because it is the same
+   * secret: the code is printed on the page. What it adds is everything around the code — the
+   * reference, the type, the price, the seat — which is what tells one ticket on a shared sheet
+   * from the next when the code itself is identical.
+   */
+  app.get('/api/v1/tickets/:id/document', async (request, reply) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const ticket = await db.db
+      .selectFrom('tickets')
+      .select('event_id')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!ticket) {
+      throw notFound()
+    }
+    const { eventKey } = await openEvent(request, ticket.event_id)
+    const { blobId } = await openTicketDocument(eventDeps, {
+      ticketId: id,
+      viewerUserId: session.user_id,
+    })
+    const blob = await readBlob(transferDeps, { blobId, eventKey })
+    return (
+      reply
+        .header('content-type', blob.mediaType)
+        // Private: decrypted per session, and a shared cache holding it would be a copy of a
+        // barcode outside the event key entirely.
+        .header('cache-control', 'private, max-age=300')
+        .send(Buffer.from(blob.bytes))
+    )
   })
 
   /**

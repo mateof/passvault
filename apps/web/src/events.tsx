@@ -16,6 +16,7 @@ import {
 } from './api/passvault'
 import { ApiError } from './api/client'
 import { useT } from './i18n'
+import { BarcodeSymbol } from './barcode'
 import type { WebMessageKey } from './i18n/messages'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
@@ -1343,10 +1344,10 @@ function TicketRow({
       {open ? (
         <div className="ticket-body">
           {shownBarcode ? (
-            <p className="barcode">
-              {shownBarcode.value}
-              <span className="muted"> ({shownBarcode.format})</span>
-            </p>
+            <>
+              <BarcodeSymbol value={shownBarcode.value} format={shownBarcode.format} />
+              {ticket.documentAvailable ? <TicketPass ticketId={ticket.id} /> : null}
+            </>
           ) : ticket.locked ? (
             // Why it is withheld, in the words the person can act on: pay it, wait for it, or ask
             // the creator. The countdown is measured against the server's clock, sent with the
@@ -1497,6 +1498,68 @@ function TicketRow({
         </div>
       ) : null}
     </li>
+  )
+}
+
+/**
+ * The holder's own pass, on demand.
+ *
+ * The document is not fetched with the list. It is the page the code is printed on, so pulling it
+ * is being shown the code, and that is a deliberate act rather than a side effect of opening an
+ * event — the same rule the barcode download follows.
+ *
+ * A PDF goes in an object frame and an image in an `img`, because a browser will happily render a
+ * PDF into an `img` as nothing at all.
+ */
+function TicketPass({ ticketId }: { ticketId: string }) {
+  const { t, locale } = useT()
+  const [open, setOpen] = useState(false)
+  const [type, setType] = useState<string>()
+  const fetcher = useMemo(
+    () =>
+      open
+        ? async () => {
+            const blob = await api.ticketDocument(locale, ticketId)
+            setType(blob.type)
+            return blob
+          }
+        : undefined,
+    [open, locale, ticketId],
+  )
+  const url = useObjectUrl(fetcher)
+
+  if (!open) {
+    return (
+      <div className="button-row">
+        <Button variant="quiet" icon="file" onClick={() => setOpen(true)}>
+          {t('tickets.viewPass')}
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="ticket-pass">
+      <p className="muted">{t('tickets.passExplain')}</p>
+      {url ? (
+        type === 'application/pdf' ? (
+          <object className="ticket-pass-view" data={url} type="application/pdf">
+            <a href={url} download>
+              {t('tickets.viewPass')}
+            </a>
+          </object>
+        ) : (
+          <img className="ticket-pass-view" src={url} alt={t('tickets.viewPass')} />
+        )
+      ) : (
+        <p className="muted">{t('tickets.passFailed')}</p>
+      )}
+      <div className="button-row">
+        <Button variant="quiet" onClick={() => setOpen(false)}>
+          {t('tickets.hidePass')}
+        </Button>
+      </div>
+    </div>
   )
 }
 

@@ -66,6 +66,13 @@ what is stored on that device; it is not something the server can recover for yo
 Every imported ticket carries its barcode. From here on, the creator decides who gets
 which seat and who may see its code.
 
+When you open a ticket you hold, the code is drawn as the symbol a scanner reads, not
+written out as text, so the screen works at a turnstile. Beside it is **Show the pass**:
+the part of the sheet that is yours, with your reference, type and price on it — which is
+what tells one ticket from another when a seller prints the same code on every ticket of
+an order. Opening the pass counts as having seen the code, because the code is printed on
+it, so the same rules apply as to the code itself.
+
 ---
 
 ## 3. Handing tickets out

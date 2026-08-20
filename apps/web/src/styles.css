@@ -1122,3 +1122,49 @@ button.link {
   flex: 1;
   min-width: 0;
 }
+
+/* ── A ticket's own code and pass ───────────────────────────────────────────── */
+
+/* The symbol is the thing a scanner reads, so it gets the room. Centred and capped, because a
+   QR stretched across a desktop window is not more scannable, only larger. */
+.barcode-symbol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.barcode-symbol-image {
+  /* White under it always: a dark theme behind a barcode inverts it, and an inverted symbol is
+     one many scanners refuse. */
+  background: #ffffff;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  line-height: 0;
+  max-width: min(20rem, 100%);
+}
+
+.barcode-symbol-image svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.ticket-pass {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.ticket-pass-view {
+  width: 100%;
+  /* Tall enough to read a seat number on, short enough not to push every control off screen. */
+  max-height: 60vh;
+  min-height: 16rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: #ffffff;
+  object-fit: contain;
+}
