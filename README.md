@@ -22,10 +22,10 @@ The Android app works with no server at all. This repository holds the optional
 server, the web frontend, and the specification of the interchange format the two
 implementations share.
 
-| Component | Repository |
-| --- | --- |
-| Server, web frontend, format specification | this repository |
-| Android app | [mateof/passvault-android](https://github.com/mateof/passvault-android) |
+| Component                                  | Repository                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| Server, web frontend, format specification | this repository                                                         |
+| Android app                                | [mateof/passvault-android](https://github.com/mateof/passvault-android) |
 
 ## What it does
 
@@ -39,11 +39,11 @@ saved.
 **Distribution.** Four assignment models, per ticket rather than per event, so one
 event can mix them:
 
-- *Open* — everyone with access to the event can see every ticket.
-- *Assigned* — the organiser allocates each ticket to one person, who sees only
+- _Open_ — everyone with access to the event can see every ticket.
+- _Assigned_ — the organiser allocates each ticket to one person, who sees only
   their own.
-- *Self-claim* — members claim a free ticket for themselves, one each.
-- *Individual grants* — access given to named people rather than a group.
+- _Self-claim_ — members claim a free ticket for themselves, one each.
+- _Individual grants_ — access given to named people rather than a group.
 
 **Showing a ticket.** The holder is given the barcode as the symbol a scanner reads,
 drawn in the browser from the value they downloaded — the server never renders a code it
@@ -69,7 +69,7 @@ to their own event's seats and nothing else.
 
 **Being told before it happens.** Until now nothing on the server ever spoke first:
 every notice was a side effect of somebody's request, which left everything that
-matters because of *time* unsaid — a countdown on a withheld code is only a countdown
+matters because of _time_ unsaid — a countdown on a withheld code is only a countdown
 if you are looking at it. A sweep now says four things: the event is tomorrow, your
 code is about to open, your seat is still unpaid, and — to the organiser — seats are
 still unclaimed and the night is close. Each is said once, and that is enforced by
@@ -169,15 +169,17 @@ docker compose up
 
 [.env.example](.env.example) documents every environment variable and what
 happens when it is left empty.
+[docs/deployment.md](docs/deployment.md) covers running it somewhere real: the three
+settings that matter, claiming a fresh installation, and what runs on a timer.
 
 Or without the source, from the published image:
 
-| Tag | What it is |
-| --- | --- |
-| `ghcr.io/mateof/passvault:latest` | every merge to main |
-| `ghcr.io/mateof/passvault:0.2.1` | one build, pinned; the number rises with every merge |
-| `ghcr.io/mateof/passvault:alldatabases` | the same build, keeping every database driver |
-| `ghcr.io/mateof/passvault:0.2.1-alldatabases` | both of the above |
+| Tag                                           | What it is                                           |
+| --------------------------------------------- | ---------------------------------------------------- |
+| `ghcr.io/mateof/passvault:latest`             | every merge to main                                  |
+| `ghcr.io/mateof/passvault:0.2.1`              | one build, pinned; the number rises with every merge |
+| `ghcr.io/mateof/passvault:alldatabases`       | the same build, keeping every database driver        |
+| `ghcr.io/mateof/passvault:0.2.1-alldatabases` | both of the above                                    |
 
 The default image carries SQLite alone, because a single box uses one engine and
 the Postgres, MySQL and SQL Server drivers are tens of megabytes each. Pointing
@@ -231,12 +233,12 @@ friends, or one small promoter, and a single file is a backup you can actually
 perform. Nothing in the code assumes it. Point `DATABASE_URL` at another engine
 and the same schema is created there:
 
-| Engine | `DATABASE_URL` |
-| --- | --- |
-| SQLite (default) | `sqlite:./data/passvault.db` |
-| PostgreSQL | `postgres://user:pass@host:5432/passvault` |
-| MySQL / MariaDB | `mysql://user:pass@host:3306/passvault` |
-| SQL Server | `mssql://user:pass@host:1433/passvault` |
+| Engine           | `DATABASE_URL`                             |
+| ---------------- | ------------------------------------------ |
+| SQLite (default) | `sqlite:./data/passvault.db`               |
+| PostgreSQL       | `postgres://user:pass@host:5432/passvault` |
+| MySQL / MariaDB  | `mysql://user:pass@host:3306/passvault`    |
+| SQL Server       | `mssql://user:pass@host:1433/passvault`    |
 
 Portability is a design constraint rather than an afterthought, which is why the
 schema stores booleans as integers, timestamps as fixed-format ISO-8601 text,
