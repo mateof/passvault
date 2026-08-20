@@ -29,6 +29,51 @@ export function migrations(engine: Engine): Record<string, Migration> {
     '0007_refresh_tokens_and_multi_totp': refreshTokensAndMultiTotp(engine),
     '0008_ticket_visibility_and_returns': ticketVisibilityAndReturns(engine),
     '0009_door_check_in': doorCheckIn(engine),
+    '0010_waiting_list': waitingList(engine),
+  }
+}
+
+/**
+ * The queue for a seat that comes back.
+ *
+ * Handing a seat back has always worked and the seat has always gone straight back to the free
+ * list, where it sat until the creator happened to look. Meanwhile the person who missed out had
+ * no way to say "if one frees up, I want it" other than asking and being remembered.
+ *
+ * One row per person per event, in the order they joined — which is the only fair order and the
+ * only one nobody has to explain. Unique on the pair, so asking twice is asking once.
+ */
+function waitingList(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  const id = () => sql.raw(t.varchar(36))
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .createTable('waiting_list')
+        .addColumn('id', id(), (column) => column.primaryKey())
+        .addColumn('event_id', id(), (column) => column.notNull().references('events.id'))
+        .addColumn('user_id', id(), (column) => column.notNull().references('users.id'))
+        .addColumn('created_at', sql.raw(t.varchar(24)), (column) => column.notNull())
+        // When they were last told a seat had come free. Kept so the same person is not sent the
+        // same sentence every time a seat bounces in and out of the free list.
+        .addColumn('offered_at', sql.raw(t.varchar(24)))
+        .execute()
+      await db.schema
+        .createIndex('idx_waiting_event')
+        .on('waiting_list')
+        .columns(['event_id', 'created_at'])
+        .execute()
+      await db.schema
+        .createIndex('idx_waiting_person')
+        .on('waiting_list')
+        .columns(['event_id', 'user_id'])
+        .unique()
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      await db.schema.dropTable('waiting_list').ifExists().execute()
+    },
   }
 }
 

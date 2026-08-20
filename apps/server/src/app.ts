@@ -59,6 +59,7 @@ import { allocate } from './allocate.js'
 import { eventAudit, installationAudit } from './audit.js'
 import { icalendar } from './calendar.js'
 import { sweepReminders } from './reminders.js'
+import { joinWaitingList, leaveWaitingList, listWaiting } from './waitlist.js'
 import { TkpakError, type DocumentMediaType } from '@passvault/tkpak'
 
 /**
@@ -2375,6 +2376,30 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         ...(limit === undefined ? {} : { limit }),
       }),
     }
+  })
+
+  // ── The queue for a seat that comes back ────────────────────────────────────
+
+  /** "If one frees up, I want it." Anybody the event was shared with. */
+  app.post('/api/v1/events/:id/waitlist', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    const result = await joinWaitingList(eventDeps, { eventId: id, userId: session.user_id })
+    return reply.status(201).send(result)
+  })
+
+  app.delete('/api/v1/events/:id/waitlist', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    await leaveWaitingList(eventDeps, { eventId: id, userId: session.user_id })
+    return { waiting: false }
+  })
+
+  /** Who is waiting, in order. The creator's list: it names people who want their seats. */
+  app.get('/api/v1/events/:id/waitlist', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    return { waiting: await listWaiting(eventDeps, { eventId: id, actorUserId: session.user_id }) }
   })
 
   // ── The door ────────────────────────────────────────────────────────────────

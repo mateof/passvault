@@ -237,6 +237,15 @@ export interface IngestProposal {
   }[]
 }
 
+/** Somebody waiting for a seat to come back, as the creator's list shows them. */
+export interface WaitingEntry {
+  userId: string
+  handle: string | null
+  since: string
+  /** When they were last told a seat had come free. */
+  offeredAt: string | null
+}
+
 /** The result of handing a whole event out at once. */
 export interface AllocationResult {
   assigned: { ticketId: string; holderUserId: string }[]
@@ -574,6 +583,26 @@ export const api = {
 
   adminAudit: (locale: string) =>
     request<{ entries: AuditEntry[] }>('/api/v1/admin/audit', json(locale)),
+
+  // ── The queue for a seat that comes back ─────────────────────────────────────
+  joinWaitlist: (locale: string, eventId: string) =>
+    request<{ position: number }>(`/api/v1/events/${encodeURIComponent(eventId)}/waitlist`, {
+      ...json(locale),
+      method: 'POST',
+      body: {},
+    }),
+
+  leaveWaitlist: (locale: string, eventId: string) =>
+    request<{ waiting: boolean }>(`/api/v1/events/${encodeURIComponent(eventId)}/waitlist`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
+
+  waitlist: (locale: string, eventId: string) =>
+    request<{ waiting: WaitingEntry[] }>(
+      `/api/v1/events/${encodeURIComponent(eventId)}/waitlist`,
+      json(locale),
+    ),
 
   // ── The door ─────────────────────────────────────────────────────────────────
   checkIn: (locale: string, eventId: string, value: string) =>

@@ -211,6 +211,19 @@ Table event_invitations {
   }
 }
 
+Table waiting_list {
+  id varchar(36) [pk]
+  event_id varchar(36) [not null]
+  user_id varchar(36) [not null]
+  created_at varchar(24) [not null, note: 'The order of the queue, which is the only order nobody has to have explained to them.']
+  offered_at varchar(24) [null, note: 'When they were last told a seat had come free, so the same sentence is not repeated.']
+
+  indexes {
+    (event_id, created_at)
+    (event_id, user_id) [unique]
+  }
+}
+
 Table notifications {
   id varchar(36) [pk]
   user_id varchar(36) [not null]

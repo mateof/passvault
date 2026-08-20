@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { api, type AllocationResult, type AuditEntry, type Group } from './api/passvault'
+import {
+  api,
+  type AllocationResult,
+  type AuditEntry,
+  type Group,
+  type WaitingEntry,
+} from './api/passvault'
 import { useT } from './i18n'
 import { Banner, Button, Card, Empty, Select } from './ui'
 
@@ -198,5 +204,81 @@ export function AuditList({ entries }: { entries: AuditEntry[] | undefined }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+/**
+ * The queue for a seat that comes back.
+ *
+ * Two shapes of the same thing. Somebody the event was shared with sees a button; the creator
+ * sees who is waiting, in order, because the seat is theirs to give — under every mode but
+ * self-claim, where the queue takes it and this list is how they find out it did.
+ */
+export function WaitlistCard({ eventId, isCreator }: { eventId: string; isCreator: boolean }) {
+  const { t, locale } = useT()
+  const [waiting, setWaiting] = useState<WaitingEntry[]>()
+  const [joined, setJoined] = useState<number>()
+
+  useEffect(() => {
+    if (!isCreator) {
+      return
+    }
+    api
+      .waitlist(locale, eventId)
+      .then((answer) => setWaiting(answer.waiting))
+      .catch(() => setWaiting([]))
+  }, [isCreator, locale, eventId, joined])
+
+  if (isCreator) {
+    return (
+      <Card title={t('waitlist.title')} icon="users">
+        {!waiting || waiting.length === 0 ? (
+          <p className="muted">{t('waitlist.nobody')}</p>
+        ) : (
+          <ul className="list">
+            {waiting.map((entry, index) => (
+              <li key={entry.userId} className="payment-owed">
+                <span>
+                  {index + 1}. {entry.handle ?? entry.userId.slice(0, 8)}
+                </span>
+                {entry.offeredAt ? <span className="muted">{t('waitlist.told')}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    )
+  }
+
+  return (
+    <Card title={t('waitlist.title')} icon="users">
+      <p className="muted">{t('waitlist.explain')}</p>
+      <div className="button-row">
+        {joined === undefined ? (
+          <Button
+            variant="quiet"
+            onClick={async () => {
+              const answer = await api.joinWaitlist(locale, eventId)
+              setJoined(answer.position)
+            }}
+          >
+            {t('waitlist.join')}
+          </Button>
+        ) : (
+          <>
+            <span className="muted">{t('waitlist.position', { position: joined })}</span>
+            <Button
+              variant="quiet"
+              onClick={async () => {
+                await api.leaveWaitlist(locale, eventId)
+                setJoined(undefined)
+              }}
+            >
+              {t('waitlist.leave')}
+            </Button>
+          </>
+        )}
+      </div>
+    </Card>
   )
 }

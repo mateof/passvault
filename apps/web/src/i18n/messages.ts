@@ -355,6 +355,17 @@ export const gl = {
   'notice.reminder.unpaid': 'Aínda queda por pagar a túa entrada.',
   'notice.reminder.seatsUnclaimed':
     'Quedan {count, plural, one {# entrada libre} other {# entradas libres}} sen repartir.',
+  'waitlist.title': 'Lista de agarda',
+  'waitlist.explain':
+    'Se alguén devolve unha entrada, avisámoste. Entras na fila por orde de chegada.',
+  'waitlist.join': 'Avisademe se queda unha libre',
+  'waitlist.leave': 'Saír da lista',
+  'waitlist.position': 'Es o número {position} da fila.',
+  'waitlist.nobody': 'Non hai ninguén agardando.',
+  'waitlist.told': 'xa avisado',
+  'notice.waitlist.seatFree': 'Quedou unha entrada libre neste evento.',
+  'notice.waitlist.taken': 'A entrada que agardabas xa é túa.',
+  'notice.waitlist.someoneWaiting': 'Hai alguén agardando por unha entrada deste evento.',
   'allocate.title': 'Repartir a todo un grupo',
   'allocate.explain':
     'Dá unha entrada libre a cada persoa do grupo, na orde en que están. Non toca as que xa teñen titular.',
@@ -869,6 +880,17 @@ export const es: Record<WebMessageKey, string> = {
   'notice.reminder.unpaid': 'Todavía queda por pagar tu entrada.',
   'notice.reminder.seatsUnclaimed':
     'Quedan {count, plural, one {# entrada libre} other {# entradas libres}} sin repartir.',
+  'waitlist.title': 'Lista de espera',
+  'waitlist.explain':
+    'Si alguien devuelve una entrada, te avisamos. Entras en la fila por orden de llegada.',
+  'waitlist.join': 'Avisadme si queda una libre',
+  'waitlist.leave': 'Salir de la lista',
+  'waitlist.position': 'Eres el número {position} de la fila.',
+  'waitlist.nobody': 'No hay nadie esperando.',
+  'waitlist.told': 'ya avisado',
+  'notice.waitlist.seatFree': 'Ha quedado una entrada libre en este evento.',
+  'notice.waitlist.taken': 'La entrada que esperabas ya es tuya.',
+  'notice.waitlist.someoneWaiting': 'Hay alguien esperando una entrada de este evento.',
   'allocate.title': 'Repartir a todo un grupo',
   'allocate.explain':
     'Da una entrada libre a cada persona del grupo, en el orden en que están. No toca las que ya tienen titular.',
@@ -1377,6 +1399,17 @@ export const en: Record<WebMessageKey, string> = {
   'notice.reminder.unpaid': 'Your ticket is still unpaid.',
   'notice.reminder.seatsUnclaimed':
     '{count, plural, one {# ticket is} other {# tickets are}} still unclaimed.',
+  'waitlist.title': 'Waiting list',
+  'waitlist.explain':
+    'If somebody hands a ticket back, we will tell you. The queue is in the order people joined.',
+  'waitlist.join': 'Tell me if one comes free',
+  'waitlist.leave': 'Leave the list',
+  'waitlist.position': 'You are number {position} in the queue.',
+  'waitlist.nobody': 'Nobody is waiting.',
+  'waitlist.told': 'already told',
+  'notice.waitlist.seatFree': 'A ticket has come free for this event.',
+  'notice.waitlist.taken': 'The ticket you were waiting for is yours.',
+  'notice.waitlist.someoneWaiting': 'Somebody is waiting for a ticket to this event.',
   'allocate.title': 'Hand out to a whole group',
   'allocate.explain':
     'Gives one free ticket to each person in the group, in the order they are in. Seats that already have a holder are left alone.',

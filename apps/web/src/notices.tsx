@@ -223,6 +223,14 @@ function Sentence({ notice }: { notice: Notice }) {
           })}
         </>
       )
+    case 'waitlist.seatFree':
+      // Under self-claim the queue takes the seat; under every other mode it only says one is
+      // free. Two sentences, because "it is yours" and "there is one" are not the same news.
+      return (
+        <>{notice.payload.assigned ? t('notice.waitlist.taken') : t('notice.waitlist.seatFree')}</>
+      )
+    case 'waitlist.someoneWaiting':
+      return <>{t('notice.waitlist.someoneWaiting')}</>
     case 'reminder.unpaid':
       return <>{t('notice.reminder.unpaid')}</>
     case 'reminder.seatsUnclaimed':

@@ -104,6 +104,8 @@ export const es: Catalogue = {
 
   'calendar.error.noDate':
     'Este evento todavía no tiene fecha, así que no hay nada que añadir al calendario.',
+  'waitlist.error.creator':
+    'Ya tienes todas las entradas que nadie más tiene: eres quien creó el evento.',
   'checkin.error.empty': 'No se ha leído ningún código. Vuelve a intentarlo.',
   'ingest.error.unsupportedFile':
     'No se reconoce este tipo de archivo. Se admiten PDF, imágenes PNG o JPG y pases .pkpass.',

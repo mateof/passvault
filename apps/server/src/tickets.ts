@@ -5,6 +5,7 @@ import { canSeePayment, type AssignmentMode, type BarcodeFormat } from '@passvau
 import { badRequest, conflict, forbidden, notFound } from './errors.js'
 import { findEvent, hasAccess, type EventDeps } from './events.js'
 import * as repo from './repository.js'
+import { offerFreedSeat } from './waitlist.js'
 
 /**
  * Tickets, assignment, and the one genuinely hard part of the product: deciding who gets a
@@ -1060,6 +1061,13 @@ export async function returnTicket(
     subjectKind: 'ticket',
     subjectId: input.ticketId,
   })
+
+  // Whoever was waiting for one. Swallowed on purpose: a queue that could not be told is not a
+  // reason to fail the return that freed the seat.
+  await offerFreedSeat(deps, {
+    ticketId: input.ticketId,
+    exceptUserId: input.actorUserId,
+  }).catch(() => undefined)
 }
 
 /**

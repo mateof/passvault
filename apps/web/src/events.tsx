@@ -19,7 +19,7 @@ import { useT } from './i18n'
 import { BarcodeSymbol } from './barcode'
 import { PaymentSummary } from './payments'
 import { DoorScanner } from './scanner'
-import { AllocateCard, AuditCard, CalendarButton } from './organise'
+import { AllocateCard, AuditCard, CalendarButton, WaitlistCard } from './organise'
 import type { WebMessageKey } from './i18n/messages'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
@@ -692,6 +692,8 @@ export function EventPage() {
       {event.isCreator !== false ? <AllocateCard eventId={id} onChanged={load} /> : null}
 
       {event.isCreator !== false ? <DoorCard eventId={id} onChanged={load} /> : null}
+
+      <WaitlistCard eventId={id} isCreator={event.isCreator !== false} />
 
       {event.isCreator !== false ? <AuditCard eventId={id} /> : null}
 

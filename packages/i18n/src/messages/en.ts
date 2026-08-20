@@ -100,6 +100,7 @@ export const en: Catalogue = {
   'payment.summary': '{paid} of {total} paid',
 
   'calendar.error.noDate': 'This event has no date yet, so there is nothing to add to a calendar.',
+  'waitlist.error.creator': 'You already hold every seat nobody else does: you created the event.',
   'checkin.error.empty': 'No code was read. Try again.',
   'ingest.error.unsupportedFile':
     'This file type is not recognised. PDFs, PNG or JPG images and .pkpass passes are supported.',

@@ -75,6 +75,13 @@ code is about to open, your seat is still unpaid, and — to the organiser — s
 still unclaimed and the night is close. Each is said once, and that is enforced by
 asking the notices themselves rather than by a marker that can drift from them.
 
+**A queue for a seat that comes back.** Handing a seat back always worked, and the
+seat went to the free list where it sat until the organiser happened to look. Somebody
+who missed out can now say "if one frees up, I want it". What happens then depends on
+what the organiser already decided: under self-claim they have said members take seats
+themselves, so the queue takes it; under assigned or open, giving a seat away is their
+act, so the queue says somebody is waiting and does not perform it.
+
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
 themselves. An unpaid seat can be kept locked until it is marked paid.

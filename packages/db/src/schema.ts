@@ -154,6 +154,20 @@ export interface EventInvitationsTable {
   role: 'ORGANISER' | 'MEMBER'
 }
 
+/**
+ * Who wants a seat if one comes back.
+ *
+ * In the order they joined, which is the only order nobody has to have explained to them.
+ */
+export interface WaitingListTable {
+  id: string
+  event_id: string
+  user_id: string
+  created_at: Instant
+  /** When they were last told a seat had come free, so the same sentence is not repeated. */
+  offered_at: Instant | null
+}
+
 export interface NotificationsTable {
   id: string
   user_id: string
@@ -429,6 +443,7 @@ export interface Database {
   event_tags: EventTagsTable
   event_invitations: EventInvitationsTable
   notifications: NotificationsTable
+  waiting_list: WaitingListTable
 }
 
 /** Every table name, in an order that satisfies foreign keys when inserting. */
@@ -460,5 +475,6 @@ export const TABLES_IN_DEPENDENCY_ORDER = [
   'event_tags',
   'event_invitations',
   'notifications',
+  'waiting_list',
   'audit_events',
 ] as const satisfies readonly (keyof Database)[]

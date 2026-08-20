@@ -118,6 +118,8 @@ export const gl = {
   // ─── Ingestion ───
   'calendar.error.noDate':
     'Este evento aínda non ten data, así que non hai nada que engadir ao calendario.',
+  'waitlist.error.creator':
+    'Xa tes todas as entradas que ninguén máis ten: es quen creou o evento.',
   'checkin.error.empty': 'Non se leu ningún código. Volve intentalo.',
   'ingest.error.unsupportedFile':
     'Non se recoñece este tipo de ficheiro. Admítense PDF, imaxes PNG ou JPG e pases .pkpass.',
