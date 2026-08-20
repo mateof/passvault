@@ -282,3 +282,61 @@ export function WaitlistCard({ eventId, isCreator }: { eventId: string; isCreato
     </Card>
   )
 }
+
+/**
+ * Into the wallet the phone already has.
+ *
+ * Only rendered when the installation can actually issue one. Neither Apple nor Google can be
+ * entered anonymously, so most installations have neither — and a button that always fails is
+ * worse than no button.
+ */
+export function WalletButtons({ ticketId }: { ticketId: string }) {
+  const { t, locale } = useT()
+  const [support, setSupport] = useState<{ apple: boolean; google: boolean }>()
+
+  useEffect(() => {
+    api
+      .walletSupport(locale)
+      .then(setSupport)
+      .catch(() => setSupport({ apple: false, google: false }))
+  }, [locale])
+
+  if (!support || (!support.apple && !support.google)) {
+    return null
+  }
+
+  return (
+    <div className="button-row">
+      {support.apple ? (
+        <Button
+          variant="quiet"
+          icon="download"
+          onClick={async () => {
+            const file = await api.applePass(locale, ticketId)
+            const url = URL.createObjectURL(file)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `${ticketId}.pkpass`
+            link.click()
+            URL.revokeObjectURL(url)
+          }}
+        >
+          {t('wallet.apple')}
+        </Button>
+      ) : null}
+      {support.google ? (
+        <Button
+          variant="quiet"
+          icon="download"
+          onClick={async () => {
+            const { url } = await api.googlePass(locale, ticketId)
+            // Google's own page takes it from here, which is why this is a link and not a file.
+            window.open(url, '_blank', 'noopener')
+          }}
+        >
+          {t('wallet.google')}
+        </Button>
+      ) : null}
+    </div>
+  )
+}

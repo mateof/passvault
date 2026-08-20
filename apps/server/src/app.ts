@@ -60,6 +60,7 @@ import { eventAudit, installationAudit } from './audit.js'
 import { icalendar } from './calendar.js'
 import { sweepReminders } from './reminders.js'
 import { joinWaitingList, leaveWaitingList, listWaiting } from './waitlist.js'
+import { applePass, googlePassLink } from './wallet.js'
 import { TkpakError, type DocumentMediaType } from '@passvault/tkpak'
 
 /**
@@ -2376,6 +2377,100 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         ...(limit === undefined ? {} : { limit }),
       }),
     }
+  })
+
+  /**
+   * What goes on a wallet pass, gathered once for both wallets.
+   *
+   * It reads the barcode, so it goes through `getTicketBarcode` rather than round the side of it:
+   * a pass with the code printed on it is the code, and the entitlement, the lock and the reveal
+   * all have to apply exactly as they do to a download.
+   */
+  const passContentsFor = async (request: FastifyRequest) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const row = await db.db
+      .selectFrom('tickets')
+      .select('event_id')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!row) {
+      throw notFound()
+    }
+    const { eventKey } = await openEvent(request, row.event_id)
+    const barcode = await getTicketBarcode(eventDeps, {
+      ticketId: id,
+      viewerUserId: session.user_id,
+      eventKey,
+    })
+    const event = await findEvent(eventDeps, row.event_id)
+    if (!event) {
+      throw notFound()
+    }
+    const projected = await projectEvent(eventDeps, event, eventKey, session.user_id)
+    const ticket = (
+      await projectTickets(eventDeps, {
+        eventId: row.event_id,
+        viewerUserId: session.user_id,
+        eventKey,
+      })
+    ).find((entry) => entry.id === id)
+
+    return {
+      contents: {
+        // The ticket's own id, so re-adding updates the pass in the wallet instead of leaving
+        // two of the same seat in it.
+        serialNumber: id,
+        eventName: projected.name,
+        venue: projected.venue ?? null,
+        startsAt: projected.startsAt ?? null,
+        seat: ticket?.seat ?? ticket?.label ?? null,
+        holder: ticket?.holderLabel ?? ticket?.holderHandle ?? null,
+        barcode,
+      },
+    }
+  }
+
+  // ── Into the wallet the phone already has ───────────────────────────────────
+
+  /**
+   * What this installation can issue, so the interface knows whether to offer a button at all.
+   *
+   * Both are off unless an operator configured credentials, and neither can be entered
+   * anonymously — so an installation without a developer account simply does not show it, rather
+   * than offering something that fails at the phone.
+   */
+  app.get('/api/v1/wallet', async (request) => {
+    await sessionOf(request)
+    return { apple: Boolean(config.wallet.apple), google: Boolean(config.wallet.google) }
+  })
+
+  /**
+   * A ticket as an Apple Wallet pass.
+   *
+   * Behind the same gate as the barcode, and marking the same reveal, because a pass with the
+   * code on it *is* the code — the same reasoning as the document endpoint.
+   */
+  app.get('/api/v1/tickets/:id/pass.pkpass', async (request, reply) => {
+    const apple = config.wallet.apple
+    if (!apple) {
+      throw badRequest('wallet.error.notConfigured')
+    }
+    const { contents } = await passContentsFor(request)
+    return reply
+      .header('content-type', 'application/vnd.apple.pkpass')
+      .header('content-disposition', `attachment; filename="${contents.serialNumber}.pkpass"`)
+      .send(Buffer.from(await applePass(apple, contents)))
+  })
+
+  /** The same ticket as a link that saves it into Google Wallet. */
+  app.get('/api/v1/tickets/:id/pass.google', async (request) => {
+    const google = config.wallet.google
+    if (!google) {
+      throw badRequest('wallet.error.notConfigured')
+    }
+    const { contents } = await passContentsFor(request)
+    return { url: googlePassLink(google, contents) }
   })
 
   // ── The queue for a seat that comes back ────────────────────────────────────

@@ -584,6 +584,22 @@ export const api = {
   adminAudit: (locale: string) =>
     request<{ entries: AuditEntry[] }>('/api/v1/admin/audit', json(locale)),
 
+  /** What this installation can issue, so a button is only offered when it would work. */
+  walletSupport: (locale: string) =>
+    request<{ apple: boolean; google: boolean }>('/api/v1/wallet', json(locale)),
+
+  applePass: (locale: string, ticketId: string) =>
+    request<Blob>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/pass.pkpass`, {
+      ...json(locale),
+      blob: true,
+    }),
+
+  googlePass: (locale: string, ticketId: string) =>
+    request<{ url: string }>(
+      `/api/v1/tickets/${encodeURIComponent(ticketId)}/pass.google`,
+      json(locale),
+    ),
+
   // ── The queue for a seat that comes back ─────────────────────────────────────
   joinWaitlist: (locale: string, eventId: string) =>
     request<{ position: number }>(`/api/v1/events/${encodeURIComponent(eventId)}/waitlist`, {

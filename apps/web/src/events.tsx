@@ -19,7 +19,7 @@ import { useT } from './i18n'
 import { BarcodeSymbol } from './barcode'
 import { PaymentSummary } from './payments'
 import { DoorScanner } from './scanner'
-import { AllocateCard, AuditCard, CalendarButton, WaitlistCard } from './organise'
+import { AllocateCard, AuditCard, CalendarButton, WaitlistCard, WalletButtons } from './organise'
 import type { WebMessageKey } from './i18n/messages'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
@@ -1377,6 +1377,7 @@ function TicketRow({
             <>
               <BarcodeSymbol value={shownBarcode.value} format={shownBarcode.format} />
               {ticket.documentAvailable ? <TicketPass ticketId={ticket.id} /> : null}
+              <WalletButtons ticketId={ticket.id} />
             </>
           ) : ticket.locked ? (
             // Why it is withheld, in the words the person can act on: pay it, wait for it, or ask

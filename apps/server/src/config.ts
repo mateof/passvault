@@ -46,6 +46,30 @@ export interface ServerConfig {
   blobDir: string
   backupDir: string
   publicUrl: string
+  /**
+   * Credentials for the phone wallets, when an operator has them.
+   *
+   * Absent by default and absent on most installations. Neither Apple nor Google can be entered
+   * anonymously — a pass has to be signed by a named developer account — so this is either
+   * configured or the feature is not offered at all, rather than producing a file a phone will
+   * reject without saying why.
+   */
+  wallet: {
+    apple?: {
+      certificatePem: string
+      keyPem: string
+      wwdrPem: string
+      passTypeIdentifier: string
+      teamIdentifier: string
+      organizationName: string
+    }
+    google?: {
+      issuerId: string
+      serviceAccountEmail: string
+      privateKeyPem: string
+      classSuffix: string
+    }
+  }
   defaultLocale: Locale
   masterKey: Uint8Array
   blindIndexKey: Uint8Array
@@ -183,6 +207,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       from: env.MAIL_FROM ?? 'passvault@localhost',
       ...(env.SMTP_URL ? { smtpUrl: env.SMTP_URL } : {}),
     },
+    wallet: readWallet(env),
     bootstrap: readBootstrap(env),
     generatedSecrets,
   }
@@ -245,6 +270,61 @@ function androidOrigins(env: NodeJS.ProcessEnv, assetLinksFile: string): string[
  */
 export const adminSetupLinkFile = (config: { dataDir: string }): string =>
   join(config.dataDir, 'ADMIN-SETUP-LINK.txt')
+
+/**
+ * Wallet credentials, read whole or not at all.
+ *
+ * A half-configured wallet is worse than none: a certificate without its key produces a pass that
+ * fails at the phone with no explanation the operator can act on. So each half is present only
+ * when every field it needs is set.
+ *
+ * PEM values arrive either inline or as a path, because a certificate in an environment variable
+ * is a certificate in `docker inspect` and a NAS operator would rather mount a file.
+ */
+function readWallet(env: NodeJS.ProcessEnv): ServerConfig['wallet'] {
+  const pem = (inline?: string, path?: string): string | undefined => {
+    if (inline) {
+      // A literal backslash-n is taken as the newline it stands for: real line breaks do not
+      // survive most .env files, so a PEM pasted into one arrives escaped.
+      return inline.replace(/\\n/g, '\n')
+    }
+    return path && existsSync(path) ? readFileSync(path, 'utf8') : undefined
+  }
+
+  const appleCertificate = pem(env.APPLE_WALLET_CERT_PEM, env.APPLE_WALLET_CERT_FILE)
+  const appleKey = pem(env.APPLE_WALLET_KEY_PEM, env.APPLE_WALLET_KEY_FILE)
+  const appleWwdr = pem(env.APPLE_WALLET_WWDR_PEM, env.APPLE_WALLET_WWDR_FILE)
+  const googleKey = pem(env.GOOGLE_WALLET_KEY_PEM, env.GOOGLE_WALLET_KEY_FILE)
+
+  return {
+    ...(appleCertificate &&
+    appleKey &&
+    appleWwdr &&
+    env.APPLE_WALLET_PASS_TYPE_ID &&
+    env.APPLE_WALLET_TEAM_ID
+      ? {
+          apple: {
+            certificatePem: appleCertificate,
+            keyPem: appleKey,
+            wwdrPem: appleWwdr,
+            passTypeIdentifier: env.APPLE_WALLET_PASS_TYPE_ID,
+            teamIdentifier: env.APPLE_WALLET_TEAM_ID,
+            organizationName: env.APPLE_WALLET_ORGANISATION ?? 'PassVault',
+          },
+        }
+      : {}),
+    ...(googleKey && env.GOOGLE_WALLET_ISSUER_ID && env.GOOGLE_WALLET_SERVICE_ACCOUNT
+      ? {
+          google: {
+            issuerId: env.GOOGLE_WALLET_ISSUER_ID,
+            serviceAccountEmail: env.GOOGLE_WALLET_SERVICE_ACCOUNT,
+            privateKeyPem: googleKey,
+            classSuffix: env.GOOGLE_WALLET_CLASS ?? 'passvault-event',
+          },
+        }
+      : {}),
+  }
+}
 
 function readBootstrap(env: NodeJS.ProcessEnv): BootstrapConfig {
   const adminLocale = env.ADMIN_LOCALE

@@ -101,6 +101,10 @@ export const en: Catalogue = {
 
   'calendar.error.noDate': 'This event has no date yet, so there is nothing to add to a calendar.',
   'waitlist.error.creator': 'You already hold every seat nobody else does: you created the event.',
+  'wallet.error.notConfigured':
+    'This installation has no phone wallet configured. It needs an Apple or Google developer account.',
+  'wallet.error.unsupportedFormat': 'This kind of barcode cannot go into a phone wallet.',
+  'wallet.error.signingFailed': 'The pass could not be signed. Check the configured certificate.',
   'checkin.error.empty': 'No code was read. Try again.',
   'ingest.error.unsupportedFile':
     'This file type is not recognised. PDFs, PNG or JPG images and .pkpass passes are supported.',

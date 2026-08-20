@@ -120,6 +120,11 @@ export const gl = {
     'Este evento aínda non ten data, así que non hai nada que engadir ao calendario.',
   'waitlist.error.creator':
     'Xa tes todas as entradas que ninguén máis ten: es quen creou o evento.',
+  'wallet.error.notConfigured':
+    'Esta instalación non ten configurada a carteira do móbil. Fai falta unha conta de desenvolvedor de Apple ou de Google.',
+  'wallet.error.unsupportedFormat':
+    'Este tipo de código non se pode meter nunha carteira do móbil.',
+  'wallet.error.signingFailed': 'Non se puido asinar o pase. Revisa o certificado configurado.',
   'checkin.error.empty': 'Non se leu ningún código. Volve intentalo.',
   'ingest.error.unsupportedFile':
     'Non se recoñece este tipo de ficheiro. Admítense PDF, imaxes PNG ou JPG e pases .pkpass.',

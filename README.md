@@ -90,6 +90,16 @@ API is ever cached**. A cached barcode response would be a bearer token written 
 outliving the tab, the sign-out and the locked vault, which would undo the reason a code
 is not in the ticket list in the first place.
 
+**Into the wallet the phone already has.** PassVault has read `.pkpass` files since
+the beginning and never written one, which is the wrong way round for something whose
+job is handing tickets to people. It now issues both an Apple pass and a Google Wallet
+link — when an operator has the credentials. Neither wallet can be entered
+anonymously: Apple refuses a pass not signed by a Pass Type ID certificate, and Google
+only shows an object from a registered issuer. Those are the point of those systems,
+not obstacles to route around, so an installation without a developer account is told
+so plainly and the button is not offered rather than producing a file a phone rejects
+without explanation.
+
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
 themselves. An unpaid seat can be kept locked until it is marked paid.

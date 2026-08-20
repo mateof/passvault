@@ -355,6 +355,8 @@ export const gl = {
   'notice.reminder.unpaid': 'Aínda queda por pagar a túa entrada.',
   'notice.reminder.seatsUnclaimed':
     'Quedan {count, plural, one {# entrada libre} other {# entradas libres}} sen repartir.',
+  'wallet.apple': 'Engadir a Apple Wallet',
+  'wallet.google': 'Engadir a Google Wallet',
   'waitlist.title': 'Lista de agarda',
   'waitlist.explain':
     'Se alguén devolve unha entrada, avisámoste. Entras na fila por orde de chegada.',
@@ -880,6 +882,8 @@ export const es: Record<WebMessageKey, string> = {
   'notice.reminder.unpaid': 'Todavía queda por pagar tu entrada.',
   'notice.reminder.seatsUnclaimed':
     'Quedan {count, plural, one {# entrada libre} other {# entradas libres}} sin repartir.',
+  'wallet.apple': 'Añadir a Apple Wallet',
+  'wallet.google': 'Añadir a Google Wallet',
   'waitlist.title': 'Lista de espera',
   'waitlist.explain':
     'Si alguien devuelve una entrada, te avisamos. Entras en la fila por orden de llegada.',
@@ -1399,6 +1403,8 @@ export const en: Record<WebMessageKey, string> = {
   'notice.reminder.unpaid': 'Your ticket is still unpaid.',
   'notice.reminder.seatsUnclaimed':
     '{count, plural, one {# ticket is} other {# tickets are}} still unclaimed.',
+  'wallet.apple': 'Add to Apple Wallet',
+  'wallet.google': 'Add to Google Wallet',
   'waitlist.title': 'Waiting list',
   'waitlist.explain':
     'If somebody hands a ticket back, we will tell you. The queue is in the order people joined.',

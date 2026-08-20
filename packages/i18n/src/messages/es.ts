@@ -106,6 +106,12 @@ export const es: Catalogue = {
     'Este evento todavía no tiene fecha, así que no hay nada que añadir al calendario.',
   'waitlist.error.creator':
     'Ya tienes todas las entradas que nadie más tiene: eres quien creó el evento.',
+  'wallet.error.notConfigured':
+    'Esta instalación no tiene configurada la cartera del móvil. Hace falta una cuenta de desarrollador de Apple o de Google.',
+  'wallet.error.unsupportedFormat':
+    'Este tipo de código no se puede meter en una cartera del móvil.',
+  'wallet.error.signingFailed':
+    'No se ha podido firmar el pase. Revisa el certificado configurado.',
   'checkin.error.empty': 'No se ha leído ningún código. Vuelve a intentarlo.',
   'ingest.error.unsupportedFile':
     'No se reconoce este tipo de archivo. Se admiten PDF, imágenes PNG o JPG y pases .pkpass.',
