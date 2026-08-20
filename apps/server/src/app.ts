@@ -58,6 +58,7 @@ import { checkInByBarcode, checkInTicket, undoCheckIn, type CheckInResult } from
 import { allocate } from './allocate.js'
 import { eventAudit, installationAudit } from './audit.js'
 import { icalendar } from './calendar.js'
+import { sweepReminders } from './reminders.js'
 import { TkpakError, type DocumentMediaType } from '@passvault/tkpak'
 
 /**
@@ -1159,6 +1160,25 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
     vaults,
     ...(options.argon2Params ? { argon2Params: options.argon2Params } : {}),
   }
+
+  /**
+   * The one thing on this server that speaks first.
+   *
+   * Every notice until now was written as a side effect of somebody's request, which left
+   * everything that matters because of *time* unsaid — a countdown on a withheld code is only a
+   * countdown if you are looking at it. Five minutes is far more often than any reminder needs and
+   * costs one indexed query over events starting in the next three days.
+   *
+   * Unreferenced like the vault sweeper, so a process with nothing else to do still exits, and
+   * every failure is swallowed: a reminder that could not be written is not a reason to take a
+   * timer down and stop sending the rest.
+   */
+  const reminders = setInterval(() => {
+    void sweepReminders(eventDeps).catch((cause) =>
+      app.log.warn({ cause }, 'reminder sweep failed'),
+    )
+  }, 5 * 60_000)
+  reminders.unref()
 
   // The directory looks people up by address as well as by handle, and the blind index is what
   // makes an encrypted address searchable. Passed in rather than reached for, so the module
@@ -2308,6 +2328,23 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
           url: `${config.publicUrl}/events/${id}`,
         }),
       )
+  })
+
+  /**
+   * Runs the reminder sweep now.
+   *
+   * It runs on a timer anyway. This exists because "did it send anything?" is otherwise a
+   * question an operator answers by waiting five minutes and looking in a table, and because a
+   * sweep that is safe to run at any moment ought to be one anybody responsible for the
+   * installation can actually run.
+   */
+  app.post('/api/v1/admin/reminders/sweep', async (request) => {
+    const session = await sessionOf(request)
+    const actor = await repo.findUserById(db, session.user_id)
+    if (!actor || actor.is_admin !== 1) {
+      throw forbidden()
+    }
+    return await sweepReminders(eventDeps)
   })
 
   /** The installation's own trail. Administrators, because it is about the installation. */

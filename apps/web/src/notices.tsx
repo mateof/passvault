@@ -190,8 +190,45 @@ function PasswordAnswer({
  * still read correctly in a language added last week.
  */
 function Sentence({ notice }: { notice: Notice }) {
-  const { t } = useT()
+  const { t, locale } = useT()
   const event = notice.payload.eventName ?? ''
+
+  // A reminder's kind carries what it is about — `reminder.unpaid:<ticket id>` — so that the
+  // sweep can ask "have I already said this?" without decrypting every notice a person holds.
+  // The part before the colon is the sentence; the part after is the reason it was sent once.
+  const [head] = notice.kind.split(':')
+  switch (head) {
+    case 'reminder.eventTomorrow':
+      return (
+        <>
+          {t('notice.reminder.eventTomorrow', {
+            when: notice.payload.startsAt
+              ? new Date(String(notice.payload.startsAt)).toLocaleString(locale, {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })
+              : '',
+          })}
+        </>
+      )
+    case 'reminder.codeOpening':
+      return (
+        <>
+          {t('notice.reminder.codeOpening', {
+            when: notice.payload.visibleFrom
+              ? new Date(String(notice.payload.visibleFrom)).toLocaleString(locale, {
+                  timeStyle: 'short',
+                })
+              : '',
+          })}
+        </>
+      )
+    case 'reminder.unpaid':
+      return <>{t('notice.reminder.unpaid')}</>
+    case 'reminder.seatsUnclaimed':
+      return <>{t('notice.reminder.seatsUnclaimed', { count: Number(notice.payload.free ?? 0) })}</>
+  }
+
   switch (notice.kind) {
     case 'event.invited':
       return <>{t('notice.invited', { inviter: notice.payload.invitedBy ?? '', event })}</>

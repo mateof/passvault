@@ -350,6 +350,11 @@ export const gl = {
     'Esta páxina leva máis de {limit} códigos e só se leron os {limit} primeiros. Divide o PDF para non perder as que faltan.',
   'ingest.warning.sharedPage':
     'Non se puido repartir esta páxina: cada entrada leva a folla enteira e con ela os códigos das demais.',
+  'notice.reminder.eventTomorrow': 'O evento é o {when}. Leva a entrada contigo.',
+  'notice.reminder.codeOpening': 'O teu código ábrese ás {when}.',
+  'notice.reminder.unpaid': 'Aínda queda por pagar a túa entrada.',
+  'notice.reminder.seatsUnclaimed':
+    'Quedan {count, plural, one {# entrada libre} other {# entradas libres}} sen repartir.',
   'allocate.title': 'Repartir a todo un grupo',
   'allocate.explain':
     'Dá unha entrada libre a cada persoa do grupo, na orde en que están. Non toca as que xa teñen titular.',
@@ -859,6 +864,11 @@ export const es: Record<WebMessageKey, string> = {
     'Esta página lleva más de {limit} códigos y solo se han leído los {limit} primeros. Divide el PDF para no perder las que faltan.',
   'ingest.warning.sharedPage':
     'No se ha podido repartir esta página: cada entrada lleva la hoja entera y con ella los códigos de las demás.',
+  'notice.reminder.eventTomorrow': 'El evento es el {when}. Llévate la entrada.',
+  'notice.reminder.codeOpening': 'Tu código se abre a las {when}.',
+  'notice.reminder.unpaid': 'Todavía queda por pagar tu entrada.',
+  'notice.reminder.seatsUnclaimed':
+    'Quedan {count, plural, one {# entrada libre} other {# entradas libres}} sin repartir.',
   'allocate.title': 'Repartir a todo un grupo',
   'allocate.explain':
     'Da una entrada libre a cada persona del grupo, en el orden en que están. No toca las que ya tienen titular.',
@@ -1362,6 +1372,11 @@ export const en: Record<WebMessageKey, string> = {
     'This page holds more than {limit} barcodes and only the first {limit} were read. Split the PDF so the rest are not lost.',
   'ingest.warning.sharedPage':
     'This page could not be divided: every ticket carries the whole sheet and the other codes on it.',
+  'notice.reminder.eventTomorrow': 'The event is on {when}. Take your ticket with you.',
+  'notice.reminder.codeOpening': 'Your code opens at {when}.',
+  'notice.reminder.unpaid': 'Your ticket is still unpaid.',
+  'notice.reminder.seatsUnclaimed':
+    '{count, plural, one {# ticket is} other {# tickets are}} still unclaimed.',
   'allocate.title': 'Hand out to a whole group',
   'allocate.explain':
     'Gives one free ticket to each person in the group, in the order they are in. Seats that already have a holder are left alone.',

@@ -67,6 +67,14 @@ keep their nights.
 them: an administrator sees the installation's trail, and a creator sees what happened
 to their own event's seats and nothing else.
 
+**Being told before it happens.** Until now nothing on the server ever spoke first:
+every notice was a side effect of somebody's request, which left everything that
+matters because of *time* unsaid — a countdown on a withheld code is only a countdown
+if you are looking at it. A sweep now says four things: the event is tomorrow, your
+code is about to open, your seat is still unpaid, and — to the organiser — seats are
+still unclaimed and the night is close. Each is said once, and that is enforced by
+asking the notices themselves rather than by a marker that can drift from them.
+
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
 themselves. An unpaid seat can be kept locked until it is marked paid.
