@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PassVault">
+  <!--
+    A ticket with a code on it. Drawn rather than photographed so one file serves every size a
+    launcher asks for, and given a full-bleed background because a maskable icon is cropped to
+    whatever shape the platform prefers and a transparent one comes out as a floating shard.
+  -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5b4bd6" />
+      <stop offset="1" stop-color="#0ea5a5" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#g)" />
+  <!-- The notches that make a rectangle read as a ticket. -->
+  <path
+    fill="#ffffff"
+    d="M112 160h288a16 16 0 0 1 16 16v56a40 40 0 0 0 0 80v56a16 16 0 0 1-16 16H112a16 16 0 0 1-16-16v-56a40 40 0 0 0 0-80v-56a16 16 0 0 1 16-16z"
+  />
+  <g fill="#15161c">
+    <rect x="140" y="196" width="72" height="72" rx="8" />
+    <rect x="164" y="220" width="24" height="24" rx="3" fill="#ffffff" />
+    <rect x="140" y="292" width="72" height="72" rx="8" />
+    <rect x="164" y="316" width="24" height="24" rx="3" fill="#ffffff" />
+    <rect x="248" y="196" width="20" height="72" rx="4" />
+    <rect x="284" y="196" width="12" height="72" rx="4" />
+    <rect x="312" y="196" width="24" height="72" rx="4" />
+    <rect x="352" y="196" width="12" height="72" rx="4" />
+    <rect x="248" y="292" width="120" height="16" rx="8" />
+    <rect x="248" y="328" width="80" height="16" rx="8" />
+  </g>
+</svg>

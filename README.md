@@ -82,6 +82,14 @@ what the organiser already decided: under self-claim they have said members take
 themselves, so the queue takes it; under assigned or open, giving a seat away is their
 act, so the queue says somebody is waiting and does not perform it.
 
+**Installable, and it opens without a network.** The web interface is a progressive
+web app: it can be added to a phone's home screen and its shell loads from cache, which
+is the difference between a queue at a gate and standing aside to reload. One rule is
+absolute in the service worker and everything else follows from it — **nothing from the
+API is ever cached**. A cached barcode response would be a bearer token written to disk,
+outliving the tab, the sign-out and the locked vault, which would undo the reason a code
+is not in the ticket list in the first place.
+
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
 themselves. An unpaid seat can be kept locked until it is marked paid.

@@ -49,6 +49,21 @@ export default tseslint.config(
     },
   },
   {
+    // The service worker runs in a worker, not a page and not Node. Its vocabulary — `self`,
+    // `caches`, `fetch`, `URL` — is neither of the environments configured above, so without
+    // this the linter reports the entire runtime it is written against as undefined.
+    files: ['apps/web/public/sw.js'],
+    languageOptions: {
+      globals: {
+        self: 'readonly',
+        caches: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        Response: 'readonly',
+      },
+    },
+  },
+  {
     // The scripts run under Node, where `console` and `process` exist. Without the globals
     // the linter reports the runtime's own vocabulary as undefined.
     files: ['scripts/**/*.mjs'],
