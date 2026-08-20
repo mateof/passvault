@@ -350,6 +350,27 @@ export const gl = {
     'Esta páxina leva máis de {limit} códigos e só se leron os {limit} primeiros. Divide o PDF para non perder as que faltan.',
   'ingest.warning.sharedPage':
     'Non se puido repartir esta páxina: cada entrada leva a folla enteira e con ela os códigos das demais.',
+  'allocate.title': 'Repartir a todo un grupo',
+  'allocate.explain':
+    'Dá unha entrada libre a cada persoa do grupo, na orde en que están. Non toca as que xa teñen titular.',
+  'allocate.group': 'Grupo',
+  'allocate.choose': 'Escolle un grupo',
+  'allocate.run': 'Repartir',
+  'allocate.failed': 'Non se puido repartir.',
+  'allocate.done':
+    'Repartidas {count, plural, one {# entrada} other {# entradas}}. Quedan {remaining} libres.',
+  'allocate.unseated':
+    'Quedaron {count, plural, one {# persoa} other {# persoas}} sen entrada: non chegaron.',
+  'calendar.add': 'Engadir ao calendario',
+  'calendar.failed': 'Este evento aínda non ten data.',
+  'audit.title': 'Que pasou con estas entradas',
+  'audit.explain':
+    'O rexistro do que se fixo: quen asignou, quen descargou, quen pasou pola porta.',
+  'audit.show': 'Ver o rexistro',
+  'audit.loading': 'Cargando o rexistro…',
+  'audit.none': 'Aínda non hai nada rexistrado.',
+  'audit.nobody': 'o servidor',
+  'audit.installation': 'Rexistro da instalación',
   'checkin.title': 'Porta',
   'checkin.explain':
     'Apunta a cámara ao código da entrada. Isto non impide entrar a ninguén: o que fai é avisar no momento de que ese código xa pasou.',
@@ -838,6 +859,27 @@ export const es: Record<WebMessageKey, string> = {
     'Esta página lleva más de {limit} códigos y solo se han leído los {limit} primeros. Divide el PDF para no perder las que faltan.',
   'ingest.warning.sharedPage':
     'No se ha podido repartir esta página: cada entrada lleva la hoja entera y con ella los códigos de las demás.',
+  'allocate.title': 'Repartir a todo un grupo',
+  'allocate.explain':
+    'Da una entrada libre a cada persona del grupo, en el orden en que están. No toca las que ya tienen titular.',
+  'allocate.group': 'Grupo',
+  'allocate.choose': 'Elige un grupo',
+  'allocate.run': 'Repartir',
+  'allocate.failed': 'No se ha podido repartir.',
+  'allocate.done':
+    'Repartidas {count, plural, one {# entrada} other {# entradas}}. Quedan {remaining} libres.',
+  'allocate.unseated':
+    'Se quedaron {count, plural, one {# persona} other {# personas}} sin entrada: no llegaron.',
+  'calendar.add': 'Añadir al calendario',
+  'calendar.failed': 'Este evento todavía no tiene fecha.',
+  'audit.title': 'Qué ha pasado con estas entradas',
+  'audit.explain':
+    'El registro de lo que se hizo: quién asignó, quién descargó, quién pasó por la puerta.',
+  'audit.show': 'Ver el registro',
+  'audit.loading': 'Cargando el registro…',
+  'audit.none': 'Todavía no hay nada registrado.',
+  'audit.nobody': 'el servidor',
+  'audit.installation': 'Registro de la instalación',
   'checkin.title': 'Puerta',
   'checkin.explain':
     'Apunta la cámara al código de la entrada. Esto no impide entrar a nadie: lo que hace es avisar en el momento de que ese código ya ha pasado.',
@@ -1320,6 +1362,27 @@ export const en: Record<WebMessageKey, string> = {
     'This page holds more than {limit} barcodes and only the first {limit} were read. Split the PDF so the rest are not lost.',
   'ingest.warning.sharedPage':
     'This page could not be divided: every ticket carries the whole sheet and the other codes on it.',
+  'allocate.title': 'Hand out to a whole group',
+  'allocate.explain':
+    'Gives one free ticket to each person in the group, in the order they are in. Seats that already have a holder are left alone.',
+  'allocate.group': 'Group',
+  'allocate.choose': 'Choose a group',
+  'allocate.run': 'Hand out',
+  'allocate.failed': 'They could not be handed out.',
+  'allocate.done':
+    '{count, plural, one {# ticket} other {# tickets}} handed out. {remaining} still free.',
+  'allocate.unseated':
+    '{count, plural, one {# person} other {# people}} got nothing: the seats ran out.',
+  'calendar.add': 'Add to calendar',
+  'calendar.failed': 'This event has no date yet.',
+  'audit.title': 'What happened to these tickets',
+  'audit.explain':
+    'The record of what was done: who assigned, who downloaded, who went through the door.',
+  'audit.show': 'Show the record',
+  'audit.loading': 'Loading the record…',
+  'audit.none': 'Nothing recorded yet.',
+  'audit.nobody': 'the server',
+  'audit.installation': 'Installation record',
   'checkin.title': 'Door',
   'checkin.explain':
     'Point the camera at the ticket. This stops nobody getting in: what it does is say, on the spot, that this code has already been through.',

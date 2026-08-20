@@ -1219,3 +1219,20 @@ button.link {
   color: var(--ink-muted);
   white-space: nowrap;
 }
+
+/* One line per action: the code, who, and when. Monospace on the action so a column of them
+   lines up and a scan down the list is a scan down one column. */
+.audit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.audit-row code {
+  font-size: 0.85em;
+  background: var(--surface-inset);
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-sm);
+}

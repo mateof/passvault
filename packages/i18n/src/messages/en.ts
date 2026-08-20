@@ -83,7 +83,8 @@ export const en: Catalogue = {
   'claim.rejected.invalidCoupon': 'This ticket was not offered for claiming.',
   'claim.rejected.ticketWithdrawn': 'The organiser withdrew this ticket.',
   'claim.error.notClaimable': 'This ticket cannot be claimed.',
-  'ticket.error.alreadyRevealed': 'The barcode has already been shown, so it can no longer be blocked or returned.',
+  'ticket.error.alreadyRevealed':
+    'The barcode has already been shown, so it can no longer be blocked or returned.',
   'ticket.error.notHolder': 'Only whoever holds this ticket can do that.',
   'ticket.error.locked': 'The barcode is not available yet.',
   'claim.error.forSelfOnly': 'You can only claim a ticket for yourself.',
@@ -98,6 +99,7 @@ export const en: Catalogue = {
   'payment.owes': '{holder} owes {amount}',
   'payment.summary': '{paid} of {total} paid',
 
+  'calendar.error.noDate': 'This event has no date yet, so there is nothing to add to a calendar.',
   'checkin.error.empty': 'No code was read. Try again.',
   'ingest.error.unsupportedFile':
     'This file type is not recognised. PDFs, PNG or JPG images and .pkpass passes are supported.',

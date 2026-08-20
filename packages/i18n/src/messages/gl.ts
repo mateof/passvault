@@ -98,7 +98,8 @@ export const gl = {
   'claim.rejected.invalidCoupon': 'Esta entrada non estaba ofrecida para reclamar.',
   'claim.rejected.ticketWithdrawn': 'O organizador retirou esta entrada.',
   'claim.error.notClaimable': 'Esta entrada non se pode reclamar.',
-  'ticket.error.alreadyRevealed': 'O código xa se mostrou, así que xa non se pode bloquear nin devolver.',
+  'ticket.error.alreadyRevealed':
+    'O código xa se mostrou, así que xa non se pode bloquear nin devolver.',
   'ticket.error.notHolder': 'Só quen ten esta entrada pode facer iso.',
   'ticket.error.locked': 'O código aínda non está dispoñible.',
   'claim.error.forSelfOnly': 'Só podes reclamar unha entrada para ti.',
@@ -115,6 +116,8 @@ export const gl = {
   'payment.summary': '{paid} de {total} pagadas',
 
   // ─── Ingestion ───
+  'calendar.error.noDate':
+    'Este evento aínda non ten data, así que non hai nada que engadir ao calendario.',
   'checkin.error.empty': 'Non se leu ningún código. Volve intentalo.',
   'ingest.error.unsupportedFile':
     'Non se recoñece este tipo de ficheiro. Admítense PDF, imaxes PNG ou JPG e pases .pkpass.',

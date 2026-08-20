@@ -19,6 +19,7 @@ import { useT } from './i18n'
 import { BarcodeSymbol } from './barcode'
 import { PaymentSummary } from './payments'
 import { DoorScanner } from './scanner'
+import { AllocateCard, AuditCard, CalendarButton } from './organise'
 import type { WebMessageKey } from './i18n/messages'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
@@ -593,6 +594,9 @@ export function EventPage() {
           <Button variant="quiet" icon="users" onClick={() => setOpenDialog('share')}>
             {t('sharing.title')}
           </Button>
+          {/* Anybody the event was shared with, not only its creator, would want this — but the
+              toolbar it lives in is the creator's. Moved out would mean a second toolbar. */}
+          <CalendarButton eventId={id} />
           <Button variant="quiet" icon="lock" onClick={() => setOpenDialog('password')}>
             {t('events.password')}
           </Button>
@@ -685,7 +689,11 @@ export function EventPage() {
         <DeleteEventForm eventId={id} eventName={event.name} />
       </Modal>
 
+      {event.isCreator !== false ? <AllocateCard eventId={id} onChanged={load} /> : null}
+
       {event.isCreator !== false ? <DoorCard eventId={id} onChanged={load} /> : null}
+
+      {event.isCreator !== false ? <AuditCard eventId={id} /> : null}
 
       <PaymentSummary tickets={tickets} />
 

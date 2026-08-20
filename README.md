@@ -58,6 +58,15 @@ between noticing a duplicated code while its holder is in front of you and heari
 about it from whoever was refused. Only the creator and the organisers they name may
 work it, and every scan leaves an audit line whether it admitted anybody or not.
 
+**Handing out, in one go.** Free seats to a whole group, one each, in order — and the
+answer says who got nothing when the seats ran out, rather than leaving an organiser to
+count. The date exports as an `.ics`, so a ticket ends up in the calendar where people
+keep their nights.
+
+**The record.** Every consequential act writes an audit line, and now something reads
+them: an administrator sees the installation's trail, and a creator sees what happened
+to their own event's seats and nothing else.
+
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
 themselves. An unpaid seat can be kept locked until it is marked paid.

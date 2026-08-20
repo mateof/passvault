@@ -55,6 +55,9 @@ import {
   type PageRasterizer,
 } from '@passvault/ingest'
 import { checkInByBarcode, checkInTicket, undoCheckIn, type CheckInResult } from './checkin.js'
+import { allocate } from './allocate.js'
+import { eventAudit, installationAudit } from './audit.js'
+import { icalendar } from './calendar.js'
 import { TkpakError, type DocumentMediaType } from '@passvault/tkpak'
 
 /**
@@ -2248,6 +2251,93 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         .header('cache-control', 'private, max-age=300')
         .send(Buffer.from(blob.bytes))
     )
+  })
+
+  /**
+   * Hands the whole event out in one go.
+   *
+   * Free seats in import order to people in the order given, one each. The answer says who got
+   * nothing when the seats ran out, because an organiser who has to count the response to find
+   * out is back where they started.
+   */
+  app.post('/api/v1/events/:id/allocate', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const body = z
+      .object({ holderUserIds: z.array(z.string().uuid()).min(1).max(500) })
+      .parse(request.body)
+    const { session, eventKey } = await openEvent(request, id)
+    const result = await allocate(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      eventKey,
+      holderUserIds: body.holderUserIds,
+    })
+    return reply.status(201).send(result)
+  })
+
+  /**
+   * The event as a calendar entry.
+   *
+   * Anybody the event is shared with, because a date and a place are what they were told when
+   * they were given a ticket. The name and the venue are encrypted, so this needs the event key
+   * like every other reading of them.
+   */
+  app.get('/api/v1/events/:id/calendar.ics', async (request, reply) => {
+    const { id } = eventParams.parse(request.params)
+    const { session, eventKey } = await openEvent(request, id)
+    const event = await findEvent(eventDeps, id)
+    if (!event) {
+      throw notFound()
+    }
+    const projected = await projectEvent(eventDeps, event, eventKey, session.user_id)
+    if (!projected.startsAt) {
+      // Nothing to put in a calendar. An entry with no time would be filed under today, which is
+      // worse than saying there is nothing yet.
+      throw badRequest('calendar.error.noDate')
+    }
+    return reply
+      .header('content-type', 'text/calendar; charset=utf-8')
+      .header('content-disposition', `attachment; filename="${id}.ics"`)
+      .send(
+        icalendar({
+          id,
+          name: projected.name,
+          venue: projected.venue ?? null,
+          notes: projected.notes ?? null,
+          startsAt: projected.startsAt,
+          url: `${config.publicUrl}/events/${id}`,
+        }),
+      )
+  })
+
+  /** The installation's own trail. Administrators, because it is about the installation. */
+  app.get('/api/v1/admin/audit', async (request) => {
+    const session = await sessionOf(request)
+    const { limit } = z
+      .object({ limit: z.coerce.number().int().min(1).max(200).optional() })
+      .parse(request.query ?? {})
+    return {
+      entries: await installationAudit(eventDeps, {
+        actorUserId: session.user_id,
+        ...(limit === undefined ? {} : { limit }),
+      }),
+    }
+  })
+
+  /** What happened to one event's seats. Its creator, and nobody else's event. */
+  app.get('/api/v1/events/:id/audit', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const session = await sessionOf(request)
+    const { limit } = z
+      .object({ limit: z.coerce.number().int().min(1).max(200).optional() })
+      .parse(request.query ?? {})
+    return {
+      entries: await eventAudit(eventDeps, {
+        eventId: id,
+        actorUserId: session.user_id,
+        ...(limit === undefined ? {} : { limit }),
+      }),
+    }
   })
 
   // ── The door ────────────────────────────────────────────────────────────────

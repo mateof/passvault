@@ -73,6 +73,24 @@ what tells one ticket from another when a seller prints the same code on every t
 an order. Opening the pass counts as having seen the code, because the code is printed on
 it, so the same rules apply as to the code itself.
 
+### Handing out to a whole group
+
+On the event screen, **Hand out to a whole group** gives one free seat to each member
+of a group you choose, in the order the group is in. It never touches a seat that
+already has a holder, and it tells you who got nothing when the seats ran out.
+
+### Putting the date in your calendar
+
+**Add to calendar** downloads an `.ics` the phone or the computer will offer to your
+calendar. Re-downloading it updates the same entry rather than making a second one.
+
+### What happened to these tickets
+
+**Show the record** lists what was done and by whom: assignments, downloads, seats
+handed back, arrivals at the door. Only the creator of an event sees its record.
+Administrators have a separate one for the installation itself, at the bottom of the
+administration screen.
+
 ---
 
 ## 3. The door

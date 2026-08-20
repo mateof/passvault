@@ -4,12 +4,14 @@ import {
   type AdminInvitation,
   type AdminUser,
   type AdminWhitelistEntry,
+  type AuditEntry,
   type RegistrationMode,
   type RegistrationSettings,
 } from './api/passvault'
 import { useT, LOCALES, LOCALE_NAMES, type Locale } from './i18n'
 import { useSession } from './session'
 import { Banner, Button, Card, Field, Form, Loading, Select } from './ui'
+import { AuditList } from './organise'
 
 /**
  * Running the installation.
@@ -226,9 +228,7 @@ function UsersCard({ mode }: { mode: RegistrationMode }) {
                   // squatting on my name". The account keeps working; the name becomes claimable.
                   <Button
                     variant="quiet"
-                    onClick={() =>
-                      void act(() => api.adminClearHandle(locale, user.userId))
-                    }
+                    onClick={() => void act(() => api.adminClearHandle(locale, user.userId))}
                   >
                     {t('admin.clearHandle')}
                   </Button>
@@ -460,6 +460,43 @@ export function AdminPage() {
       <UsersCard mode={settings.mode} />
       <InvitationsCard active={settings.mode === 'INVITATION'} />
       <WhitelistCard active={settings.mode === 'WHITELIST'} />
+      <InstallationAuditCard />
     </>
+  )
+}
+
+/**
+ * The installation's own trail.
+ *
+ * Written from fourteen places since the beginning and never once readable. Loaded on demand: it
+ * is the last card on the screen and nobody opens administration to read a log.
+ */
+function InstallationAuditCard() {
+  const { t, locale } = useT()
+  const [entries, setEntries] = useState<AuditEntry[]>()
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    api
+      .adminAudit(locale)
+      .then((answer) => setEntries(answer.entries))
+      .catch(() => setEntries([]))
+  }, [open, locale])
+
+  return (
+    <Card title={t('audit.installation')} icon="shield">
+      {open ? (
+        <AuditList entries={entries} />
+      ) : (
+        <div className="button-row">
+          <Button variant="quiet" onClick={() => setOpen(true)}>
+            {t('audit.show')}
+          </Button>
+        </div>
+      )}
+    </Card>
   )
 }

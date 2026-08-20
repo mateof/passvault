@@ -237,6 +237,24 @@ export interface IngestProposal {
   }[]
 }
 
+/** The result of handing a whole event out at once. */
+export interface AllocationResult {
+  assigned: { ticketId: string; holderUserId: string }[]
+  /** People the seats ran out before reaching, so nobody has to count the response. */
+  unseated: string[]
+  remaining: number
+}
+
+/** One line of the trail. The sealed detail is never part of it. */
+export interface AuditEntry {
+  id: string
+  action: string
+  subjectKind: string | null
+  subjectId: string | null
+  createdAt: string
+  actor: string | null
+}
+
 /** What the door is told about a code somebody just presented. */
 export interface CheckInResult {
   outcome: 'ADMITTED' | 'ALREADY_USED' | 'WITHDRAWN' | 'UNKNOWN'
@@ -533,6 +551,29 @@ export const api = {
       `/api/v1/tickets/${encodeURIComponent(ticketId)}/barcode`,
       json(locale),
     ),
+
+  /** Hands the whole event out in one go: free seats to these people, one each, in order. */
+  allocate: (locale: string, eventId: string, holderUserIds: string[]) =>
+    request<AllocationResult>(`/api/v1/events/${encodeURIComponent(eventId)}/allocate`, {
+      ...json(locale),
+      method: 'POST',
+      body: { holderUserIds },
+    }),
+
+  calendar: (locale: string, eventId: string) =>
+    request<Blob>(`/api/v1/events/${encodeURIComponent(eventId)}/calendar.ics`, {
+      ...json(locale),
+      blob: true,
+    }),
+
+  eventAudit: (locale: string, eventId: string) =>
+    request<{ entries: AuditEntry[] }>(
+      `/api/v1/events/${encodeURIComponent(eventId)}/audit`,
+      json(locale),
+    ),
+
+  adminAudit: (locale: string) =>
+    request<{ entries: AuditEntry[] }>('/api/v1/admin/audit', json(locale)),
 
   // ── The door ─────────────────────────────────────────────────────────────────
   checkIn: (locale: string, eventId: string, value: string) =>
