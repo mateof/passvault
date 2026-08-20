@@ -17,6 +17,7 @@ import {
 import { ApiError } from './api/client'
 import { useT } from './i18n'
 import { BarcodeSymbol } from './barcode'
+import { PaymentSummary } from './payments'
 import type { WebMessageKey } from './i18n/messages'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
@@ -222,7 +223,9 @@ export function EventsPage() {
 
       {shown.length === 0 ? (
         <Card>
-          <Empty icon="events">{events.length === 0 ? t('events.none') : t('events.noMatch')}</Empty>
+          <Empty icon="events">
+            {events.length === 0 ? t('events.none') : t('events.noMatch')}
+          </Empty>
         </Card>
       ) : (
         <div className="grid">
@@ -256,9 +259,7 @@ export function EventsPage() {
                   ) : null}
                   {(event.tagIds ?? []).map((tagId) => {
                     const tag = tags.find((row) => row.id === tagId)
-                    return tag ? (
-                      <TagChip key={tag.id} name={tag.name} colour={tag.colour} />
-                    ) : null
+                    return tag ? <TagChip key={tag.id} name={tag.name} colour={tag.colour} /> : null
                   })}
                 </span>
               </span>
@@ -608,9 +609,7 @@ export function EventPage() {
 
       {/* Only for somebody the event was shared with. The creator makes the tickets; they do
           not queue for a random one of their own. */}
-      {event.isCreator === false ? (
-        <ClaimCard eventId={id} claim={claim} onClaimed={load} />
-      ) : null}
+      {event.isCreator === false ? <ClaimCard eventId={id} claim={claim} onClaimed={load} /> : null}
 
       <Modal
         open={openDialog === 'edit'}
@@ -684,6 +683,8 @@ export function EventPage() {
       >
         <DeleteEventForm eventId={id} eventName={event.name} />
       </Modal>
+
+      <PaymentSummary tickets={tickets} />
 
       <DocumentsCard eventId={id} tickets={tickets} onChanged={load} />
 
@@ -1131,16 +1132,15 @@ function DocumentsCard({
   onChanged: () => Promise<void>
 }) {
   const { t, locale } = useT()
-  const [documents, setDocuments] =
-    useState<
-      {
-        id: string
-        mediaType: string
-        pageCount?: number | null
-        byteCount?: number | null
-        ticketIds: string[]
-      }[]
-    >()
+  const [documents, setDocuments] = useState<
+    {
+      id: string
+      mediaType: string
+      pageCount?: number | null
+      byteCount?: number | null
+      ticketIds: string[]
+    }[]
+  >()
 
   useEffect(() => {
     api
@@ -1301,7 +1301,10 @@ function Countdown({ target, serverTime }: { target: string; serverTime?: string
   const hours = Math.floor((total % 86400) / 3600)
   const minutes = Math.floor((total % 3600) / 60)
   const seconds = total % 60
-  const parts = days > 0 ? [days + 'd', hours + 'h', minutes + 'm'] : [hours + 'h', minutes + 'm', seconds + 's']
+  const parts =
+    days > 0
+      ? [days + 'd', hours + 'h', minutes + 'm']
+      : [hours + 'h', minutes + 'm', seconds + 's']
   return <>{t('tickets.lockedCountdown', { remaining: parts.join(' ') })}</>
 }
 
@@ -1353,19 +1356,19 @@ function TicketRow({
             // the creator. The countdown is measured against the server's clock, sent with the
             // list, so moving the phone's time does nothing.
             <Banner kind="info">
-              {ticket.lockReason === 'unpaid'
-                ? t('tickets.lockedUnpaid')
-                : ticket.lockReason === 'blocked'
-                  ? t('tickets.lockedBlocked')
-                  : ticket.visibleFrom ? (
-                      // A live count while there is time to count, falling back to the plain date
-                      // for a target the server sent without a parseable instant.
-                      <Countdown target={ticket.visibleFrom} serverTime={serverTime} />
-                    ) : (
-                      t('tickets.lockedUntil', {
-                        when: whenText(ticket.visibleFrom ?? undefined, locale) ?? '',
-                      })
-                    )}
+              {ticket.lockReason === 'unpaid' ? (
+                t('tickets.lockedUnpaid')
+              ) : ticket.lockReason === 'blocked' ? (
+                t('tickets.lockedBlocked')
+              ) : ticket.visibleFrom ? (
+                // A live count while there is time to count, falling back to the plain date
+                // for a target the server sent without a parseable instant.
+                <Countdown target={ticket.visibleFrom} serverTime={serverTime} />
+              ) : (
+                t('tickets.lockedUntil', {
+                  when: whenText(ticket.visibleFrom ?? undefined, locale) ?? '',
+                })
+              )}
             </Banner>
           ) : ticket.barcodeAvailable ? (
             // The holder's code is not in the list. Downloading it is what reveals it — past which
@@ -1669,7 +1672,11 @@ function VisibilityControls({
         />
         <span>{t('tickets.allowShare')}</span>
       </label>
-      {serverTime ? <p className="field-help">{t('tickets.serverTime', { when: whenText(serverTime, locale) ?? '' })}</p> : null}
+      {serverTime ? (
+        <p className="field-help">
+          {t('tickets.serverTime', { when: whenText(serverTime, locale) ?? '' })}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -1704,8 +1711,8 @@ function AssignToAccount({
         onChange={setEmail}
         type="email"
         autoComplete="off"
-        {...(known === false ? {help: t('groups.unknownEmail')} : {})}
-        {...(known === true ? {help: t('groups.knownEmail')} : {})}
+        {...(known === false ? { help: t('groups.unknownEmail') } : {})}
+        {...(known === true ? { help: t('groups.knownEmail') } : {})}
       />
     </Form>
   )
@@ -2012,7 +2019,6 @@ function QuarantineCard({ eventId }: { eventId: string }) {
     </Card>
   )
 }
-
 
 /**
  * The end of an event, said before it happens.

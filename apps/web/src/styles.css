@@ -1168,3 +1168,13 @@ button.link {
   background: #ffffff;
   object-fit: contain;
 }
+
+/* The debt and the seat count on one line, the count pushed to the end so a column of amounts
+   stays readable down the left. Wraps rather than truncating: a long handle is still a name. */
+.payment-owed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}

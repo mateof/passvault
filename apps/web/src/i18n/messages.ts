@@ -18,13 +18,15 @@ export const gl = {
   'nav.admin': 'Administración',
   'nav.signOut': 'Saír',
   'deleteAccount.title': 'Eliminar a conta',
-  'deleteAccount.explain': 'Borra a conta, o baul, os teus eventos e os seus ficheiros. Os eventos que compartiches desaparecen tamen das carteiras dos demais.',
+  'deleteAccount.explain':
+    'Borra a conta, o baul, os teus eventos e os seus ficheiros. Os eventos que compartiches desaparecen tamen das carteiras dos demais.',
   'deleteAccount.start': 'Quero eliminar a mina conta',
   'deleteAccount.warning': 'Isto non se pode desfacer. Non hai copia nin recuperacion posible.',
   'deleteAccount.confirmField': 'Contrasinal (ou correo, se entras con Google/chave)',
   'deleteAccount.confirm': 'Eliminar definitivamente',
   'admin.deleteUser': 'Eliminar a conta',
-  'admin.deleteUserWarning': 'Borra a conta, os seus eventos e os seus ficheiros, tamen das carteiras de quen os recibiu. Non se pode desfacer. Seguro?',
+  'admin.deleteUserWarning':
+    'Borra a conta, os seus eventos e os seus ficheiros, tamen das carteiras de quen os recibiu. Non se pode desfacer. Seguro?',
   'events.refresh': 'Actualizar',
   'admin.clearHandle': 'Liberar o nome',
 
@@ -40,9 +42,11 @@ export const gl = {
   'password.new': 'Contrasinal novo',
   'password.set': 'Poñer contrasinal',
   'password.change': 'Cambiar o contrasinal',
-  'password.changeExplain': 'Quen xa o abrira nesta sesion segue dentro; as proximas aperturas piden o novo.',
+  'password.changeExplain':
+    'Quen xa o abrira nesta sesion segue dentro; as proximas aperturas piden o novo.',
   'password.remove': 'Quitar o contrasinal',
-  'password.removeWarning': 'Sen contrasinal, quen administra este servidor pode ler as entradas deste evento.',
+  'password.removeWarning':
+    'Sen contrasinal, quen administra este servidor pode ler as entradas deste evento.',
   'handle.current': 'O teu nome agora mesmo:',
   'handle.none': 'Ainda non tes nome de usuario.',
   'handle.saved': 'Nome gardado.',
@@ -94,8 +98,7 @@ export const gl = {
   'sessions.revokeOthers': 'Pechar as demais',
   'sessions.unknownClient': 'Cliente descoñecido',
   'handle.title': 'Nome de usuario',
-  'handle.explain':
-    'Un nome publico co que che poden atopar para compartir. Non fai falta ter un.',
+  'handle.explain': 'Un nome publico co que che poden atopar para compartir. Non fai falta ter un.',
   'handle.field': 'Nome de usuario',
   'handle.taken': 'Xa esta collido.',
   'handle.free': 'Esta libre.',
@@ -108,7 +111,8 @@ export const gl = {
   'groups.subtitle': 'A xente coa que compartes mais dunha vez.',
   'groups.create': 'Crear un grupo',
   'groups.name': 'Nome do grupo',
-  'groups.empty': 'Ainda non tes ningun grupo. Un grupo aforra escribir os mesmos correos en cada evento.',
+  'groups.empty':
+    'Ainda non tes ningun grupo. Un grupo aforra escribir os mesmos correos en cada evento.',
   'groups.locked': 'Abre o baul para ver os teus grupos: os nomes estan cifrados.',
   'groups.error.load': 'Non se puideron cargar os grupos.',
   'groups.memberCount': '{count, plural, one {# persoa} other {# persoas}}',
@@ -120,13 +124,15 @@ export const gl = {
   'groups.unnamed': 'Grupo sen nome',
   'groups.unknownEmail': 'Non hai ningunha conta con ese correo neste servidor.',
   'groups.knownEmail': 'Hai unha conta con ese correo.',
-  'groups.deleteWarning': 'Ao borrar o grupo pechanse todos os eventos que abria para as persoas que estaban nel.',
+  'groups.deleteWarning':
+    'Ao borrar o grupo pechanse todos os eventos que abria para as persoas que estaban nel.',
   'groups.deleteConfirm': 'Borrar o grupo',
   'action.delete': 'Borrar',
   'sharing.title': 'Compartido con',
   'sharing.none': 'Este evento ainda non esta compartido con ninguen.',
   'sharing.revoke': 'Quitar acceso',
-  'sharing.revokeExplain': 'Quitar o acceso impide ver o evento a partir de agora. Non recupera un ficheiro que xa se enviase.',
+  'sharing.revokeExplain':
+    'Quitar o acceso impide ver o evento a partir de agora. Non recupera un ficheiro que xa se enviase.',
   'sharing.shareWithGroup': 'Compartir co grupo',
   'sharing.shareWithPerson': 'Compartir con esta persoa',
   'sharing.group': 'Grupo',
@@ -134,25 +140,30 @@ export const gl = {
   'sharing.noGroups': 'Ainda non tes grupos. Podes compartir cunha persoa polo seu correo.',
   'sharing.email': 'Correo da persoa',
   'claim.title': 'Coller unha entrada',
-  'claim.explain': 'Quedan {count, plural, one {# entrada libre} other {# entradas libres}}. Colle a tua.',
-    'claim.take': 'Coller unha entrada ao azar',
+  'claim.explain':
+    'Quedan {count, plural, one {# entrada libre} other {# entradas libres}}. Colle a tua.',
+  'claim.take': 'Coller unha entrada ao azar',
   'sharing.state.pending': 'sen aceptar',
   'sharing.state.downloaded': 'xa descargado',
   'sharing.state.notDownloaded': 'ainda non descargado',
-  'sharing.revokeConfirm.clean': 'Esta persoa ainda non descargou o evento, asi que quitarlle o acceso elimínao por completo para ela. Continuar?',
-  'sharing.revokeConfirm.downloaded': 'Esta persoa xa descargou o evento no seu dispositivo. Quitar o acceso impide que sincronice cambios novos, pero non borra o que xa ten: iso so desaparece se ela o elimina. Continuar?',
+  'sharing.revokeConfirm.clean':
+    'Esta persoa ainda non descargou o evento, asi que quitarlle o acceso elimínao por completo para ela. Continuar?',
+  'sharing.revokeConfirm.downloaded':
+    'Esta persoa xa descargou o evento no seu dispositivo. Quitar o acceso impide que sincronice cambios novos, pero non borra o que xa ten: iso so desaparece se ela o elimina. Continuar?',
   'admin.sessionLength': 'Duración da sesión',
   'admin.sessionLength.default': 'Predeterminada do servidor',
   'admin.sessionLength.30': '30 días',
   'admin.sessionLength.90': '3 meses',
   'admin.sessionLength.180': '6 meses',
   'admin.sessionLength.365': '1 ano',
-  'admin.sessionLengthHelp': 'Canto tempo segue iniciada a sesión sen volver escribir o contrasinal. Máis longa é máis cómoda; tamén é máis tempo que serve un token roubado.',
+  'admin.sessionLengthHelp':
+    'Canto tempo segue iniciada a sesión sen volver escribir o contrasinal. Máis longa é máis cómoda; tamén é máis tempo que serve un token roubado.',
   'events.assignmentMode': 'Como se reparten as entradas',
   'events.assignmentMode.OPEN': 'Todos ven todas',
   'events.assignmentMode.ASSIGNED': 'Asignaas quen crea o evento',
   'events.assignmentMode.SELF_CLAIM': 'Cada quen colle a sua',
-  'events.passwordHelp': 'Se pos contrasinal, quen reciba o evento tera que escribilo. Dallelo por outra via.',
+  'events.passwordHelp':
+    'Se pos contrasinal, quen reciba o evento tera que escribilo. Dallelo por outra via.',
   'tickets.assignTo': 'Asignar a alguen con conta',
   'tickets.holderEmail': 'Correo de quen a leva',
 
@@ -270,16 +281,20 @@ export const gl = {
   'tickets.assign': 'Asignar',
   'tickets.claim': 'Reclamar',
   'events.delete': 'Eliminar',
-  'events.deleteWarning': 'Borra «{name}» por completo: as entradas, o historial e os ficheiros, tamen para todos con quen se compartiu. Non se pode desfacer.',
+  'events.deleteWarning':
+    'Borra «{name}» por completo: as entradas, o historial e os ficheiros, tamen para todos con quen se compartiu. Non se pode desfacer.',
   'events.deleteConfirm': 'Eliminar o evento definitivamente',
   'tickets.withdraw': 'Retirar',
-  'tickets.lockedUnpaid': 'O código aínda non se pode ver: falta o pagamento. Aparecerá cando se marque como pagado.',
+  'tickets.lockedUnpaid':
+    'O código aínda non se pode ver: falta o pagamento. Aparecerá cando se marque como pagado.',
   'tickets.lockedBlocked': 'O código está bloqueado polo organizador polo momento.',
   'tickets.lockedUntil': 'O código verase a partir de {when}.',
   'tickets.lockedCountdown': 'O código verase dentro de {remaining}.',
   'tickets.return': 'Devolver a entrada',
-  'tickets.returnConfirm': 'Devolver esta entrada? Volverá quedar libre e deixarás de tela. Só se pode mentres non víches o código.',
-  'tickets.visibilityExplain': 'Escolle desde cando poderá ver o código quen a teña. Ata entón pódese devolver.',
+  'tickets.returnConfirm':
+    'Devolver esta entrada? Volverá quedar libre e deixarás de tela. Só se pode mentres non víches o código.',
+  'tickets.visibilityExplain':
+    'Escolle desde cando poderá ver o código quen a teña. Ata entón pódese devolver.',
   'tickets.visibleFrom': 'Ver o código desde',
   'tickets.setVisibility': 'Gardar',
   'tickets.visibleDayBefore': 'O día antes',
@@ -335,6 +350,12 @@ export const gl = {
     'Esta páxina leva máis de {limit} códigos e só se leron os {limit} primeiros. Divide o PDF para non perder as que faltan.',
   'ingest.warning.sharedPage':
     'Non se puido repartir esta páxina: cada entrada leva a folla enteira e con ela os códigos das demais.',
+  'payments.title': 'Contas do grupo',
+  'payments.allSettled': 'Non queda nada por cobrar.',
+  'payments.unassignedOwes': 'Entradas sen titular: {amount}',
+  'payments.owedTickets': '{count, plural, one {# entrada} other {# entradas}}',
+  'payment.summary': '{paid} de {total} pagadas',
+  'payment.owes': '{holder} debe {amount}',
   'tickets.symbolDrawing': 'Debuxando o código…',
   'tickets.symbolFailed': 'Non se puido debuxar este código. Aquí tes o valor:',
   'tickets.symbolLabel': 'Código da entrada: {value}',
@@ -371,7 +392,8 @@ export const gl = {
     'Segundo factor activo con {count, plural, one {# authenticator} other {# authenticators}}.',
   'account.secondFactorAdd': 'Engadir outro authenticator',
   'account.secondFactorRemove': 'Quitar',
-  'account.secondFactorRemoveConfirm': 'Quitar este authenticator? Se é o último, a conta quedará sen segundo factor.',
+  'account.secondFactorRemoveConfirm':
+    'Quitar este authenticator? Se é o último, a conta quedará sen segundo factor.',
   'account.secondFactorLabel': 'Nome (por exemplo, Móbil ou Copia)',
   'account.secondFactorUnnamed': 'Authenticator',
 
@@ -466,13 +488,15 @@ export const es: Record<WebMessageKey, string> = {
   'nav.admin': 'Administración',
   'nav.signOut': 'Salir',
   'deleteAccount.title': 'Eliminar la cuenta',
-  'deleteAccount.explain': 'Borra la cuenta, el baul, tus eventos y sus archivos. Los eventos que compartiste desaparecen tambien de las carteras de los demas.',
+  'deleteAccount.explain':
+    'Borra la cuenta, el baul, tus eventos y sus archivos. Los eventos que compartiste desaparecen tambien de las carteras de los demas.',
   'deleteAccount.start': 'Quiero eliminar mi cuenta',
   'deleteAccount.warning': 'Esto no se puede deshacer. No hay copia ni recuperacion posible.',
   'deleteAccount.confirmField': 'Contrasena (o correo, si entras con Google/llave)',
   'deleteAccount.confirm': 'Eliminar definitivamente',
   'admin.deleteUser': 'Eliminar la cuenta',
-  'admin.deleteUserWarning': 'Borra la cuenta, sus eventos y sus archivos, tambien de las carteras de quien los recibio. No se puede deshacer. Seguro?',
+  'admin.deleteUserWarning':
+    'Borra la cuenta, sus eventos y sus archivos, tambien de las carteras de quien los recibio. No se puede deshacer. Seguro?',
   'events.refresh': 'Actualizar',
   'admin.clearHandle': 'Liberar el nombre',
 
@@ -488,9 +512,11 @@ export const es: Record<WebMessageKey, string> = {
   'password.new': 'Contrasena nueva',
   'password.set': 'Poner contrasena',
   'password.change': 'Cambiar la contrasena',
-  'password.changeExplain': 'Quien ya lo abriera en esta sesion sigue dentro; las proximas aperturas piden la nueva.',
+  'password.changeExplain':
+    'Quien ya lo abriera en esta sesion sigue dentro; las proximas aperturas piden la nueva.',
   'password.remove': 'Quitar la contrasena',
-  'password.removeWarning': 'Sin contrasena, quien administra este servidor puede leer las entradas de este evento.',
+  'password.removeWarning':
+    'Sin contrasena, quien administra este servidor puede leer las entradas de este evento.',
   'handle.current': 'Tu nombre ahora mismo:',
   'handle.none': 'Todavia no tienes nombre de usuario.',
   'handle.saved': 'Nombre guardado.',
@@ -512,7 +538,8 @@ export const es: Record<WebMessageKey, string> = {
   'tags.create': 'Crear una etiqueta',
   'tags.edit': 'Editar',
   'tags.name': 'Nombre de la etiqueta',
-  'tags.empty': 'Todavia no tienes etiquetas. Sirven para encontrar despues lo que ahora tienes claro.',
+  'tags.empty':
+    'Todavia no tienes etiquetas. Sirven para encontrar despues lo que ahora tienes claro.',
   'tags.unnamed': 'Sin nombre',
   'tags.locked': 'Abre el baul para ver tus etiquetas: los nombres estan cifrados.',
   'tags.eventCount': '{count, plural, =0 {sin eventos} one {# evento} other {# eventos}}',
@@ -556,7 +583,8 @@ export const es: Record<WebMessageKey, string> = {
   'groups.subtitle': 'La gente con la que compartes mas de una vez.',
   'groups.create': 'Crear un grupo',
   'groups.name': 'Nombre del grupo',
-  'groups.empty': 'Todavia no tienes ningun grupo. Un grupo ahorra escribir los mismos correos en cada evento.',
+  'groups.empty':
+    'Todavia no tienes ningun grupo. Un grupo ahorra escribir los mismos correos en cada evento.',
   'groups.locked': 'Abre el baul para ver tus grupos: los nombres estan cifrados.',
   'groups.error.load': 'No se han podido cargar los grupos.',
   'groups.memberCount': '{count, plural, one {# persona} other {# personas}}',
@@ -568,13 +596,15 @@ export const es: Record<WebMessageKey, string> = {
   'groups.unnamed': 'Grupo sin nombre',
   'groups.unknownEmail': 'No hay ninguna cuenta con ese correo en este servidor.',
   'groups.knownEmail': 'Hay una cuenta con ese correo.',
-  'groups.deleteWarning': 'Al borrar el grupo se cierran todos los eventos que abria para las personas que estaban en el.',
+  'groups.deleteWarning':
+    'Al borrar el grupo se cierran todos los eventos que abria para las personas que estaban en el.',
   'groups.deleteConfirm': 'Borrar el grupo',
   'action.delete': 'Borrar',
   'sharing.title': 'Compartido con',
   'sharing.none': 'Este evento todavia no esta compartido con nadie.',
   'sharing.revoke': 'Quitar acceso',
-  'sharing.revokeExplain': 'Quitar el acceso impide ver el evento a partir de ahora. No recupera un archivo que ya se haya enviado.',
+  'sharing.revokeExplain':
+    'Quitar el acceso impide ver el evento a partir de ahora. No recupera un archivo que ya se haya enviado.',
   'sharing.shareWithGroup': 'Compartir con el grupo',
   'sharing.shareWithPerson': 'Compartir con esta persona',
   'sharing.group': 'Grupo',
@@ -582,25 +612,30 @@ export const es: Record<WebMessageKey, string> = {
   'sharing.noGroups': 'Todavia no tienes grupos. Puedes compartir con una persona por su correo.',
   'sharing.email': 'Correo de la persona',
   'claim.title': 'Coger una entrada',
-  'claim.explain': 'Quedan {count, plural, one {# entrada libre} other {# entradas libres}}. Coge la tuya.',
-    'claim.take': 'Coger una entrada al azar',
+  'claim.explain':
+    'Quedan {count, plural, one {# entrada libre} other {# entradas libres}}. Coge la tuya.',
+  'claim.take': 'Coger una entrada al azar',
   'sharing.state.pending': 'sin aceptar',
   'sharing.state.downloaded': 'ya descargado',
   'sharing.state.notDownloaded': 'aún no descargado',
-  'sharing.revokeConfirm.clean': 'Esta persona aún no ha descargado el evento, así que quitarle el acceso lo elimina por completo para ella. ¿Continuar?',
-  'sharing.revokeConfirm.downloaded': 'Esta persona ya ha descargado el evento en su dispositivo. Quitar el acceso impide que sincronice cambios nuevos, pero no borra lo que ya tiene: eso solo desaparece si ella lo elimina. ¿Continuar?',
+  'sharing.revokeConfirm.clean':
+    'Esta persona aún no ha descargado el evento, así que quitarle el acceso lo elimina por completo para ella. ¿Continuar?',
+  'sharing.revokeConfirm.downloaded':
+    'Esta persona ya ha descargado el evento en su dispositivo. Quitar el acceso impide que sincronice cambios nuevos, pero no borra lo que ya tiene: eso solo desaparece si ella lo elimina. ¿Continuar?',
   'admin.sessionLength': 'Duración de la sesión',
   'admin.sessionLength.default': 'Predeterminada del servidor',
   'admin.sessionLength.30': '30 días',
   'admin.sessionLength.90': '3 meses',
   'admin.sessionLength.180': '6 meses',
   'admin.sessionLength.365': '1 año',
-  'admin.sessionLengthHelp': 'Cuánto tiempo sigue iniciada la sesión sin volver a escribir la contraseña. Más larga es más cómoda; también es más tiempo que sirve un token robado.',
+  'admin.sessionLengthHelp':
+    'Cuánto tiempo sigue iniciada la sesión sin volver a escribir la contraseña. Más larga es más cómoda; también es más tiempo que sirve un token robado.',
   'events.assignmentMode': 'Como se reparten las entradas',
   'events.assignmentMode.OPEN': 'Todos ven todas',
   'events.assignmentMode.ASSIGNED': 'Las asigna quien crea el evento',
   'events.assignmentMode.SELF_CLAIM': 'Cada uno coge la suya',
-  'events.passwordHelp': 'Si pones contrasena, quien reciba el evento tendra que escribirla. Dasela por otra via.',
+  'events.passwordHelp':
+    'Si pones contrasena, quien reciba el evento tendra que escribirla. Dasela por otra via.',
   'tickets.assignTo': 'Asignar a alguien con cuenta',
   'tickets.holderEmail': 'Correo de quien la lleva',
 
@@ -717,16 +752,20 @@ export const es: Record<WebMessageKey, string> = {
   'tickets.assign': 'Asignar',
   'tickets.claim': 'Reclamar',
   'events.delete': 'Eliminar',
-  'events.deleteWarning': 'Borra «{name}» por completo: las entradas, el historial y los archivos, tambien para todos con quienes se compartio. No se puede deshacer.',
+  'events.deleteWarning':
+    'Borra «{name}» por completo: las entradas, el historial y los archivos, tambien para todos con quienes se compartio. No se puede deshacer.',
   'events.deleteConfirm': 'Eliminar el evento definitivamente',
   'tickets.withdraw': 'Retirar',
-  'tickets.lockedUnpaid': 'El código aún no se puede ver: falta el pago. Aparecerá cuando se marque como pagado.',
+  'tickets.lockedUnpaid':
+    'El código aún no se puede ver: falta el pago. Aparecerá cuando se marque como pagado.',
   'tickets.lockedBlocked': 'El código está bloqueado por el organizador de momento.',
   'tickets.lockedUntil': 'El código se verá a partir de {when}.',
   'tickets.lockedCountdown': 'El código se verá dentro de {remaining}.',
   'tickets.return': 'Devolver la entrada',
-  'tickets.returnConfirm': '¿Devolver esta entrada? Volverá a quedar libre y dejarás de tenerla. Solo se puede mientras no hayas visto el código.',
-  'tickets.visibilityExplain': 'Elige desde cuándo podrá ver el código quien la tenga. Hasta entonces se puede devolver.',
+  'tickets.returnConfirm':
+    '¿Devolver esta entrada? Volverá a quedar libre y dejarás de tenerla. Solo se puede mientras no hayas visto el código.',
+  'tickets.visibilityExplain':
+    'Elige desde cuándo podrá ver el código quien la tenga. Hasta entonces se puede devolver.',
   'tickets.visibleFrom': 'Ver el código desde',
   'tickets.setVisibility': 'Guardar',
   'tickets.visibleDayBefore': 'El día antes',
@@ -781,6 +820,12 @@ export const es: Record<WebMessageKey, string> = {
     'Esta página lleva más de {limit} códigos y solo se han leído los {limit} primeros. Divide el PDF para no perder las que faltan.',
   'ingest.warning.sharedPage':
     'No se ha podido repartir esta página: cada entrada lleva la hoja entera y con ella los códigos de las demás.',
+  'payments.title': 'Cuentas del grupo',
+  'payments.allSettled': 'No queda nada por cobrar.',
+  'payments.unassignedOwes': 'Entradas sin titular: {amount}',
+  'payments.owedTickets': '{count, plural, one {# entrada} other {# entradas}}',
+  'payment.summary': '{paid} de {total} pagadas',
+  'payment.owes': '{holder} debe {amount}',
   'tickets.symbolDrawing': 'Dibujando el código…',
   'tickets.symbolFailed': 'No se ha podido dibujar este código. Aquí tienes el valor:',
   'tickets.symbolLabel': 'Código de la entrada: {value}',
@@ -817,7 +862,8 @@ export const es: Record<WebMessageKey, string> = {
     'Segundo factor activo con {count, plural, one {# authenticator} other {# authenticators}}.',
   'account.secondFactorAdd': 'Añadir otro authenticator',
   'account.secondFactorRemove': 'Quitar',
-  'account.secondFactorRemoveConfirm': '¿Quitar este authenticator? Si es el último, la cuenta quedará sin segundo factor.',
+  'account.secondFactorRemoveConfirm':
+    '¿Quitar este authenticator? Si es el último, la cuenta quedará sin segundo factor.',
   'account.secondFactorLabel': 'Nombre (por ejemplo, Móvil o Copia)',
   'account.secondFactorUnnamed': 'Authenticator',
 
@@ -909,13 +955,15 @@ export const en: Record<WebMessageKey, string> = {
   'nav.admin': 'Administration',
   'nav.signOut': 'Sign out',
   'deleteAccount.title': 'Delete the account',
-  'deleteAccount.explain': 'Removes the account, the vault, your events and their files. Events you shared disappear from everyone else’s wallets too.',
+  'deleteAccount.explain':
+    'Removes the account, the vault, your events and their files. Events you shared disappear from everyone else’s wallets too.',
   'deleteAccount.start': 'I want to delete my account',
   'deleteAccount.warning': 'This cannot be undone. There is no copy and no recovery.',
   'deleteAccount.confirmField': 'Password (or email, if you sign in with Google/a key)',
   'deleteAccount.confirm': 'Delete for good',
   'admin.deleteUser': 'Delete the account',
-  'admin.deleteUserWarning': 'Removes the account, its events and its files, from the wallets of everyone who received them too. This cannot be undone. Sure?',
+  'admin.deleteUserWarning':
+    'Removes the account, its events and its files, from the wallets of everyone who received them too. This cannot be undone. Sure?',
   'events.refresh': 'Refresh',
   'admin.clearHandle': 'Free the name',
 
@@ -931,9 +979,11 @@ export const en: Record<WebMessageKey, string> = {
   'password.new': 'New password',
   'password.set': 'Set a password',
   'password.change': 'Change the password',
-  'password.changeExplain': 'Anyone who already opened it this session stays in; new openings ask for the new one.',
+  'password.changeExplain':
+    'Anyone who already opened it this session stays in; new openings ask for the new one.',
   'password.remove': 'Remove the password',
-  'password.removeWarning': 'Without a password, whoever runs this server can read this event\u2019s tickets.',
+  'password.removeWarning':
+    'Without a password, whoever runs this server can read this event\u2019s tickets.',
   'handle.current': 'Your name right now:',
   'handle.none': 'You have no username yet.',
   'handle.saved': 'Name saved.',
@@ -1010,13 +1060,15 @@ export const en: Record<WebMessageKey, string> = {
   'groups.unnamed': 'Unnamed group',
   'groups.unknownEmail': 'No account on this server uses that address.',
   'groups.knownEmail': 'An account uses that address.',
-  'groups.deleteWarning': 'Deleting the group closes every event it was opening for the people in it.',
+  'groups.deleteWarning':
+    'Deleting the group closes every event it was opening for the people in it.',
   'groups.deleteConfirm': 'Delete the group',
   'action.delete': 'Delete',
   'sharing.title': 'Shared with',
   'sharing.none': 'This event is not shared with anybody yet.',
   'sharing.revoke': 'Remove access',
-  'sharing.revokeExplain': 'Removing access stops them seeing the event from now on. It does not recall a file already sent.',
+  'sharing.revokeExplain':
+    'Removing access stops them seeing the event from now on. It does not recall a file already sent.',
   'sharing.shareWithGroup': 'Share with the group',
   'sharing.shareWithPerson': 'Share with this person',
   'sharing.group': 'Group',
@@ -1024,25 +1076,30 @@ export const en: Record<WebMessageKey, string> = {
   'sharing.noGroups': 'No groups yet. You can share with one person by address.',
   'sharing.email': 'Their email address',
   'claim.title': 'Take a ticket',
-  'claim.explain': '{count, plural, one {# ticket is} other {# tickets are}} still free. Take yours.',
-    'claim.take': 'Take one at random',
+  'claim.explain':
+    '{count, plural, one {# ticket is} other {# tickets are}} still free. Take yours.',
+  'claim.take': 'Take one at random',
   'sharing.state.pending': 'not yet accepted',
   'sharing.state.downloaded': 'already downloaded',
   'sharing.state.notDownloaded': 'not downloaded yet',
-  'sharing.revokeConfirm.clean': 'This person has not downloaded the event yet, so revoking removes it from them entirely. Continue?',
-  'sharing.revokeConfirm.downloaded': 'This person has already downloaded the event to their device. Revoking stops them syncing new changes, but does not delete what they already hold — that only goes if they delete it themselves. Continue?',
+  'sharing.revokeConfirm.clean':
+    'This person has not downloaded the event yet, so revoking removes it from them entirely. Continue?',
+  'sharing.revokeConfirm.downloaded':
+    'This person has already downloaded the event to their device. Revoking stops them syncing new changes, but does not delete what they already hold — that only goes if they delete it themselves. Continue?',
   'admin.sessionLength': 'Session length',
   'admin.sessionLength.default': 'Server default',
   'admin.sessionLength.30': '30 days',
   'admin.sessionLength.90': '3 months',
   'admin.sessionLength.180': '6 months',
   'admin.sessionLength.365': '1 year',
-  'admin.sessionLengthHelp': 'How long someone stays signed in without re-entering their password. Longer is more convenient; it is also longer that a stolen token keeps working.',
+  'admin.sessionLengthHelp':
+    'How long someone stays signed in without re-entering their password. Longer is more convenient; it is also longer that a stolen token keeps working.',
   'events.assignmentMode': 'How the tickets are shared out',
   'events.assignmentMode.OPEN': 'Everybody sees them all',
   'events.assignmentMode.ASSIGNED': 'The organiser assigns them',
   'events.assignmentMode.SELF_CLAIM': 'Each person takes one',
-  'events.passwordHelp': 'With a password, anybody you share the event with has to type it. Tell them another way.',
+  'events.passwordHelp':
+    'With a password, anybody you share the event with has to type it. Tell them another way.',
   'tickets.assignTo': 'Assign to somebody with an account',
   'tickets.holderEmail': 'Their email address',
 
@@ -1158,16 +1215,20 @@ export const en: Record<WebMessageKey, string> = {
   'tickets.assign': 'Assign',
   'tickets.claim': 'Claim',
   'events.delete': 'Delete',
-  'events.deleteWarning': 'Removes “{name}” entirely: the tickets, the history and the files, for everyone it was shared with too. This cannot be undone.',
+  'events.deleteWarning':
+    'Removes “{name}” entirely: the tickets, the history and the files, for everyone it was shared with too. This cannot be undone.',
   'events.deleteConfirm': 'Delete the event for good',
   'tickets.withdraw': 'Withdraw',
-  'tickets.lockedUnpaid': 'The code cannot be seen yet: it is unpaid. It appears once it is marked paid.',
+  'tickets.lockedUnpaid':
+    'The code cannot be seen yet: it is unpaid. It appears once it is marked paid.',
   'tickets.lockedBlocked': 'The organiser has the code blocked for now.',
   'tickets.lockedUntil': 'The code becomes visible from {when}.',
   'tickets.lockedCountdown': 'The code becomes visible in {remaining}.',
   'tickets.return': 'Return the ticket',
-  'tickets.returnConfirm': 'Return this ticket? It goes back to free and you stop holding it. Only possible while you have not seen the code.',
-  'tickets.visibilityExplain': 'Choose when the holder may see the code. Until then it can be returned.',
+  'tickets.returnConfirm':
+    'Return this ticket? It goes back to free and you stop holding it. Only possible while you have not seen the code.',
+  'tickets.visibilityExplain':
+    'Choose when the holder may see the code. Until then it can be returned.',
   'tickets.visibleFrom': 'Show the code from',
   'tickets.setVisibility': 'Save',
   'tickets.visibleDayBefore': 'The day before',
@@ -1222,6 +1283,12 @@ export const en: Record<WebMessageKey, string> = {
     'This page holds more than {limit} barcodes and only the first {limit} were read. Split the PDF so the rest are not lost.',
   'ingest.warning.sharedPage':
     'This page could not be divided: every ticket carries the whole sheet and the other codes on it.',
+  'payments.title': 'What the group owes',
+  'payments.allSettled': 'Nothing left to collect.',
+  'payments.unassignedOwes': 'Tickets with no holder: {amount}',
+  'payments.owedTickets': '{count, plural, one {# ticket} other {# tickets}}',
+  'payment.summary': '{paid} of {total} paid',
+  'payment.owes': '{holder} owes {amount}',
   'tickets.symbolDrawing': 'Drawing the code…',
   'tickets.symbolFailed': 'This code could not be drawn. Here is its value:',
   'tickets.symbolLabel': 'Ticket code: {value}',
@@ -1258,7 +1325,8 @@ export const en: Record<WebMessageKey, string> = {
     'Second factor on, with {count, plural, one {# authenticator} other {# authenticators}}.',
   'account.secondFactorAdd': 'Add another authenticator',
   'account.secondFactorRemove': 'Remove',
-  'account.secondFactorRemoveConfirm': 'Remove this authenticator? If it is the last one, the account will have no second factor.',
+  'account.secondFactorRemoveConfirm':
+    'Remove this authenticator? If it is the last one, the account will have no second factor.',
   'account.secondFactorLabel': 'Name (for example, Phone or Backup)',
   'account.secondFactorUnnamed': 'Authenticator',
 
