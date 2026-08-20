@@ -237,6 +237,17 @@ export interface IngestProposal {
   }[]
 }
 
+/** What the door is told about a code somebody just presented. */
+export interface CheckInResult {
+  outcome: 'ADMITTED' | 'ALREADY_USED' | 'WITHDRAWN' | 'UNKNOWN'
+  ticketId?: string
+  label?: string | null
+  holder?: string | null
+  /** When it was first admitted — the fact that makes a repeat worth reading. */
+  firstUsedAt?: string | null
+  usedCount?: number
+}
+
 export type PaymentState = 'UNPAID' | 'PARTIAL' | 'PAID' | 'WAIVED'
 export type PaymentVisibility = 'ALL' | 'HOLDER_ONLY' | 'CREATOR_ONLY'
 
@@ -271,6 +282,10 @@ export interface TicketSummary {
   barcodeAvailable?: boolean
   /** Whether this ticket has a pass of its own to show, gated exactly like the barcode. */
   documentAvailable?: boolean
+  /** When this seat was admitted at the door, or null. */
+  usedAt?: string | null
+  /** How many times its code has been presented. Above one is the number worth looking at. */
+  usedCount?: number
   assignmentMode: string
   assignmentState: string
   holderUserId?: string | null
@@ -518,6 +533,27 @@ export const api = {
       `/api/v1/tickets/${encodeURIComponent(ticketId)}/barcode`,
       json(locale),
     ),
+
+  // ── The door ─────────────────────────────────────────────────────────────────
+  checkIn: (locale: string, eventId: string, value: string) =>
+    request<CheckInResult>(`/api/v1/events/${encodeURIComponent(eventId)}/checkin`, {
+      ...json(locale),
+      method: 'POST',
+      body: { value },
+    }),
+
+  checkInTicket: (locale: string, ticketId: string) =>
+    request<CheckInResult>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/checkin`, {
+      ...json(locale),
+      method: 'POST',
+      body: {},
+    }),
+
+  undoCheckIn: (locale: string, ticketId: string) =>
+    request<{ used: boolean }>(`/api/v1/tickets/${encodeURIComponent(ticketId)}/checkin`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
 
   /**
    * The pass this ticket was cut from. Behind the same gate as the barcode, and fetching it
@@ -820,7 +856,10 @@ export const api = {
     }),
 
   groupMembers: (locale: string, id: string) =>
-    request<{ members: GroupMember[] }>(`/api/v1/groups/${encodeURIComponent(id)}/members`, json(locale)),
+    request<{ members: GroupMember[] }>(
+      `/api/v1/groups/${encodeURIComponent(id)}/members`,
+      json(locale),
+    ),
 
   addGroupMember: (locale: string, id: string, email: string) =>
     request<{ userId: string }>(`/api/v1/groups/${encodeURIComponent(id)}/members`, {
@@ -894,10 +933,10 @@ export const api = {
     }),
 
   adminClearHandle: (locale: string, userId: string) =>
-    request<{ cleared: boolean }>(
-      `/api/v1/admin/users/${encodeURIComponent(userId)}/handle`,
-      { ...json(locale), method: 'DELETE' },
-    ),
+    request<{ cleared: boolean }>(`/api/v1/admin/users/${encodeURIComponent(userId)}/handle`, {
+      ...json(locale),
+      method: 'DELETE',
+    }),
 
   adminUsers: (locale: string) =>
     request<{ users: AdminUser[] }>('/api/v1/admin/users', json(locale)),

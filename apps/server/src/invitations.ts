@@ -40,6 +40,8 @@ export async function invite(
     /** The event's name, already decrypted by the caller who had the key. */
     eventName: string
     inviterName: string
+    /** What they are being offered. Applied when they accept, since that is when access begins. */
+    role?: 'ORGANISER' | 'MEMBER'
   },
 ): Promise<{ invitationId: string; alreadyInvited: boolean }> {
   const existing = await deps.db.db
@@ -58,7 +60,12 @@ export async function invite(
     }
     await deps.db.db
       .updateTable('event_invitations')
-      .set({ state: 'PENDING', created_at: toInstant(), answered_at: null })
+      .set({
+        state: 'PENDING',
+        created_at: toInstant(),
+        answered_at: null,
+        role: input.role ?? 'MEMBER',
+      })
       .where('id', '=', existing.id)
       .execute()
     await notifyInvited(deps, input)
@@ -77,6 +84,7 @@ export async function invite(
       state: 'PENDING',
       created_at: toInstant(),
       answered_at: null,
+      role: input.role ?? 'MEMBER',
     })
     .execute()
 
@@ -195,7 +203,9 @@ export async function acceptInvitation(
       actorUserId: event.creator_user_id,
       subjectKind: 'USER',
       subjectId: input.userId,
-      role: 'MEMBER',
+      // What they were offered, not a fixed MEMBER. The creator's choice was made when they
+      // shared it; this is only the moment it takes effect.
+      role: invitation.role ?? 'MEMBER',
     })
   }
 
@@ -278,10 +288,16 @@ async function require(
   deps: EventDeps,
   invitationId: string,
   userId: string,
-): Promise<{ id: string; event_id: string; state: string; via_group_id: string | null }> {
+): Promise<{
+  id: string
+  event_id: string
+  state: string
+  via_group_id: string | null
+  role: 'ORGANISER' | 'MEMBER'
+}> {
   const row = await deps.db.db
     .selectFrom('event_invitations')
-    .select(['id', 'event_id', 'user_id', 'state', 'via_group_id'])
+    .select(['id', 'event_id', 'user_id', 'state', 'via_group_id', 'role'])
     .where('id', '=', invitationId)
     .executeTakeFirst()
   if (!row) {

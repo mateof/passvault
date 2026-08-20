@@ -203,6 +203,7 @@ Table event_invitations {
   state varchar(16) [not null, note: 'PENDING, ACCEPTED, DECLINED or WITHDRAWN. Access begins at ACCEPTED.']
   created_at varchar(32) [not null]
   answered_at varchar(32) [null]
+  role varchar(16) [not null, default: 'MEMBER', note: 'What the creator offered. A person gets no access row until they accept, so the choice waits here.']
 
   indexes {
     (user_id, state)
@@ -391,6 +392,15 @@ Table tickets {
   assigned_at varchar(24) [null]
   exported_at varchar(24) [null, note: 'When a copy last left this installation. Hygiene, not revocation.']
   status varchar(16) [not null, default: 'ACTIVE']
+  visible_from varchar(32) [null, note: 'The moment the holder may first see the barcode, as an absolute instant.']
+  visible_hours_before int [null, note: 'The same gate as hours before the event, so it follows a re-dated event. At most one of the two is set.']
+  creator_blocked int [not null, default: 0, note: 'The creator is holding the code back. Settable only while it is still unseen.']
+  revealed_at varchar(32) [null, note: 'When the code was first served to its holder. Past this it cannot be blocked: it may already be in a photograph.']
+  returned_at varchar(32) [null, note: 'When the holder handed the seat back and it went free again.']
+  share_permitted int [not null, default: 0, note: 'Whether the holder may pass this seat on. Off unless the creator lends it.']
+  used_at varchar(32) [null, note: 'When this seat was first admitted at the door.']
+  used_by_user_id varchar(36) [null, note: 'Who scanned it: the creator, or an organiser working the door.']
+  used_count int [not null, default: 0, note: 'How many times the code has been presented. Above one is the duplicate this exists to notice.']
   created_at varchar(24) [not null]
   updated_at varchar(24) [not null]
 

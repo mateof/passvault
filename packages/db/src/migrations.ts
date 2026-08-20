@@ -28,6 +28,61 @@ export function migrations(engine: Engine): Record<string, Migration> {
     '0006_download_marks_and_session_length': downloadMarksAndSessionLength(engine),
     '0007_refresh_tokens_and_multi_totp': refreshTokensAndMultiTotp(engine),
     '0008_ticket_visibility_and_returns': ticketVisibilityAndReturns(engine),
+    '0009_door_check_in': doorCheckIn(engine),
+  }
+}
+
+/**
+ * Marking a seat used at the door.
+ *
+ * Three columns on the ticket, none of them encrypted, for the same reason the visibility gate is
+ * not: a timestamp and the id of whoever scanned are not the barcode, and the server has to be
+ * able to answer "has this one been through already?" without holding a key.
+ *
+ * This does not stop anybody getting in. A barcode is a bearer token and the turnstile is the
+ * turnstile — what this adds is that the second person carrying the same code is *noticed*, at the
+ * moment it happens, by somebody who can do something about it, rather than discovered afterwards
+ * by whoever was refused.
+ */
+function doorCheckIn(engine: Engine): Migration {
+  const t = columnTypes(engine)
+  return {
+    async up(db: Kysely<unknown>): Promise<void> {
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('used_at', sql.raw(t.varchar(32)))
+        .execute()
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('used_by_user_id', sql.raw(t.varchar(36)), (column) =>
+          column.references('users.id'),
+        )
+        .execute()
+      // How many times the code has been presented, not just whether it has. A count of four says
+      // something a boolean cannot: somebody is passing it around.
+      await db.schema
+        .alterTable('tickets')
+        .addColumn('used_count', 'integer', (column) => column.notNull().defaultTo(0))
+        .execute()
+
+      // The role a personal invitation was offered with.
+      //
+      // Access for a person is written when they accept, not when they are asked, so until now
+      // the creator's choice had nowhere to live between the two and every accepted invitation
+      // became a MEMBER. That made "organiser" a thing only a group could be — and a door is
+      // worked by a person.
+      await db.schema
+        .alterTable('event_invitations')
+        .addColumn('role', sql.raw(t.varchar(16)), (column) => column.notNull().defaultTo('MEMBER'))
+        .execute()
+    },
+
+    async down(db: Kysely<unknown>): Promise<void> {
+      for (const column of ['used_at', 'used_by_user_id', 'used_count']) {
+        await db.schema.alterTable('tickets').dropColumn(column).execute()
+      }
+      await db.schema.alterTable('event_invitations').dropColumn('role').execute()
+    },
   }
 }
 
@@ -47,10 +102,7 @@ function ticketVisibilityAndReturns(engine: Engine): Migration {
         .alterTable('tickets')
         .addColumn('visible_from', sql.raw(t.varchar(32)))
         .execute()
-      await db.schema
-        .alterTable('tickets')
-        .addColumn('visible_hours_before', 'integer')
-        .execute()
+      await db.schema.alterTable('tickets').addColumn('visible_hours_before', 'integer').execute()
       await db.schema
         .alterTable('tickets')
         .addColumn('creator_blocked', 'integer', (column) => column.notNull().defaultTo(0))
@@ -291,10 +343,7 @@ function handlesTagsAndNotices(engine: Engine): Migration {
         .execute()
       // What the person called it, when they were asked. A phone says "Pixel 8"; a browser is
       // whatever its user agent claims, which is why the two are separate columns.
-      await db.schema
-        .alterTable('sessions')
-        .addColumn('label_cipher', sql.raw(t.binary))
-        .execute()
+      await db.schema.alterTable('sessions').addColumn('label_cipher', sql.raw(t.binary)).execute()
 
       /**
        * Labels, which are the user's own vocabulary for their wallet.
@@ -355,7 +404,9 @@ function handlesTagsAndNotices(engine: Engine): Migration {
         )
         // Which group carried it, when one did, so revoking the group can withdraw what it
         // brought without touching an invitation somebody sent by hand.
-        .addColumn('via_group_id', sql.raw(t.varchar(36)), (column) => column.references('groups.id'))
+        .addColumn('via_group_id', sql.raw(t.varchar(36)), (column) =>
+          column.references('groups.id'),
+        )
         .addColumn('state', sql.raw(t.varchar(16)), (column) => column.notNull())
         .addColumn('created_at', sql.raw(t.varchar(32)), (column) => column.notNull())
         .addColumn('answered_at', sql.raw(t.varchar(32)))

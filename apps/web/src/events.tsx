@@ -18,6 +18,7 @@ import { ApiError } from './api/client'
 import { useT } from './i18n'
 import { BarcodeSymbol } from './barcode'
 import { PaymentSummary } from './payments'
+import { DoorScanner } from './scanner'
 import type { WebMessageKey } from './i18n/messages'
 import { useKnownAddress } from './groups'
 import { TagForm } from './tags'
@@ -684,6 +685,8 @@ export function EventPage() {
         <DeleteEventForm eventId={id} eventName={event.name} />
       </Modal>
 
+      {event.isCreator !== false ? <DoorCard eventId={id} onChanged={load} /> : null}
+
       <PaymentSummary tickets={tickets} />
 
       <DocumentsCard eventId={id} tickets={tickets} onChanged={load} />
@@ -1335,6 +1338,20 @@ function TicketRow({
         <span>{ticket.label ?? ticket.id.slice(0, 8)}</span>
         {ticket.seat ? <span className="muted">{ticket.seat}</span> : null}
         <StateBadge state={ticket.assignmentState} />
+        {/* Visible on the row itself, not only inside it: at a door somebody is looking down a
+            list for the seat that has already been through, and opening twenty rows to find it
+            is not looking. */}
+        {ticket.usedAt ? (
+          <span className="used-badge">
+            {t('checkin.used')}
+            {(ticket.usedCount ?? 0) > 1 ? (
+              <span className="muted">
+                {' '}
+                · {t('checkin.usedTimes', { count: ticket.usedCount })}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
         <Icon name="chevron" size={18} className={`icon chevron${open ? ' chevron-open' : ''}`} />
       </button>
 
@@ -1423,6 +1440,35 @@ function TicketRow({
             </div>
           ) : null}
 
+          {/* Marking a seat in by hand, for a phone with a flat battery, and undoing a scan of
+              the wrong row — without which the fix for a mistake is a database client. */}
+          {isCreator ? (
+            <div className="button-row">
+              {ticket.usedAt ? (
+                <Button
+                  variant="quiet"
+                  onClick={async () => {
+                    await api.undoCheckIn(locale, ticket.id)
+                    await onChanged()
+                  }}
+                >
+                  {t('checkin.undo')}
+                </Button>
+              ) : (
+                <Button
+                  variant="quiet"
+                  icon="check"
+                  onClick={async () => {
+                    await api.checkInTicket(locale, ticket.id)
+                    await onChanged()
+                  }}
+                >
+                  {t('checkin.markUsed')}
+                </Button>
+              )}
+            </div>
+          ) : null}
+
           {isCreator ? (
             <>
               <Form
@@ -1502,6 +1548,31 @@ function TicketRow({
       ) : null}
     </li>
   )
+}
+
+/**
+ * The door, behind a button.
+ *
+ * Not open by default. Asking for the camera is a permission prompt, and a prompt that appears
+ * because somebody opened an event teaches people to dismiss prompts.
+ */
+function DoorCard({ eventId, onChanged }: { eventId: string; onChanged: () => Promise<void> }) {
+  const { t } = useT()
+  const [open, setOpen] = useState(false)
+
+  if (!open) {
+    return (
+      <Card title={t('checkin.title')} icon="ticket">
+        <p className="muted">{t('checkin.explain')}</p>
+        <div className="button-row">
+          <Button icon="check" onClick={() => setOpen(true)}>
+            {t('checkin.open')}
+          </Button>
+        </div>
+      </Card>
+    )
+  }
+  return <DoorScanner eventId={eventId} onChanged={() => void onChanged()} />
 }
 
 /**

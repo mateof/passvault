@@ -121,6 +121,7 @@ export async function addTickets(
         revealed_at: null,
         returned_at: null,
         share_permitted: 0,
+        used_count: 0,
         created_at: now,
         updated_at: now,
       })
@@ -687,6 +688,11 @@ export interface TicketProjection {
    * printed on it.
    */
   documentAvailable: boolean
+  /** When this seat was admitted at the door, or null. Plain for everyone: knowing that a
+   *  ticket has been used is not knowing its code. */
+  usedAt: string | null
+  /** How many times it has been presented. Above one means the same code arrived twice. */
+  usedCount: number
   assignmentMode: string
   assignmentState: string
   holderUserId: string | null
@@ -778,6 +784,8 @@ export async function projectTickets(
       'tickets.returned_at',
       'tickets.share_permitted',
       'tickets.document_blob_id',
+      'tickets.used_at',
+      'tickets.used_count',
       'payments.state as payment_state',
       'payments.amount_cents',
       'payments.currency',
@@ -855,6 +863,8 @@ export async function projectTickets(
           : null,
       barcodeAvailable: maySeeBarcode && row.barcode_cipher !== null,
       documentAvailable: maySeeBarcode && row.document_blob_id !== null,
+      usedAt: row.used_at,
+      usedCount: row.used_count,
       assignmentMode: row.assignment_mode,
       assignmentState: row.assignment_state,
       holderUserId: row.holder_user_id,

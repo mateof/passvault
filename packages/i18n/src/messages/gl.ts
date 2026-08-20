@@ -115,6 +115,7 @@ export const gl = {
   'payment.summary': '{paid} de {total} pagadas',
 
   // ─── Ingestion ───
+  'checkin.error.empty': 'Non se leu ningún código. Volve intentalo.',
   'ingest.error.unsupportedFile':
     'Non se recoñece este tipo de ficheiro. Admítense PDF, imaxes PNG ou JPG e pases .pkpass.',
   'ingest.error.fileTooLarge': 'O ficheiro pasa do tamaño máximo de {maxMegabytes} MB.',

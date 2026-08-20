@@ -54,6 +54,7 @@ import {
   type IngestErrorCode,
   type PageRasterizer,
 } from '@passvault/ingest'
+import { checkInByBarcode, checkInTicket, undoCheckIn, type CheckInResult } from './checkin.js'
 import { TkpakError, type DocumentMediaType } from '@passvault/tkpak'
 
 /**
@@ -2031,6 +2032,10 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         ...(body.subjectKind === 'GROUP' ? { viaGroupId: subjectId } : {}),
         eventName: projected.name,
         inviterName,
+        // The role travels with the offer. A person's access row is only written when they
+        // accept, so without this the creator's choice had nowhere to wait and everybody
+        // arrived as a MEMBER — which made "organiser" something only a group could be.
+        ...(body.role ? { role: body.role } : {}),
       })
       if (!outcome.alreadyInvited) {
         invited += 1
@@ -2243,6 +2248,57 @@ export async function buildServer(options: BuildOptions = {}): Promise<PassVault
         .header('cache-control', 'private, max-age=300')
         .send(Buffer.from(blob.bytes))
     )
+  })
+
+  // ── The door ────────────────────────────────────────────────────────────────
+
+  /**
+   * Admits whatever the door just scanned.
+   *
+   * The event key is needed because the answer depends on reading the sealed barcodes to find
+   * which seat this code belongs to. An unknown code answers 200 with `UNKNOWN`, not 404: at a
+   * gate, somebody holding a ticket for the wrong night is an ordinary event that deserves a
+   * sentence, and a queue is no place for an error page.
+   */
+  app.post('/api/v1/events/:id/checkin', async (request) => {
+    const { id } = eventParams.parse(request.params)
+    const { value } = z.object({ value: z.string().min(1).max(4096) }).parse(request.body)
+    const { session, eventKey } = await openEvent(request, id)
+    const result: CheckInResult = await checkInByBarcode(eventDeps, {
+      eventId: id,
+      actorUserId: session.user_id,
+      eventKey,
+      value,
+    })
+    return result
+  })
+
+  /** The same, for a seat picked off the list — a flat battery, a cracked screen, a lost phone. */
+  app.post('/api/v1/tickets/:id/checkin', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    const ticket = await db.db
+      .selectFrom('tickets')
+      .select('event_id')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    if (!ticket) {
+      throw notFound()
+    }
+    const { eventKey } = await openEvent(request, ticket.event_id)
+    return await checkInTicket(eventDeps, {
+      ticketId: id,
+      actorUserId: session.user_id,
+      eventKey,
+    })
+  })
+
+  /** Undoes an admission, because somebody will scan the wrong row. */
+  app.delete('/api/v1/tickets/:id/checkin', async (request) => {
+    const { id } = ticketParams.parse(request.params)
+    const session = await sessionOf(request)
+    await undoCheckIn(eventDeps, { ticketId: id, actorUserId: session.user_id })
+    return { used: false }
   })
 
   /**

@@ -101,6 +101,7 @@ export const es: Catalogue = {
   'payment.owes': '{holder} debe {amount}',
   'payment.summary': '{paid} de {total} pagadas',
 
+  'checkin.error.empty': 'No se ha leído ningún código. Vuelve a intentarlo.',
   'ingest.error.unsupportedFile':
     'No se reconoce este tipo de archivo. Se admiten PDF, imágenes PNG o JPG y pases .pkpass.',
   'ingest.error.fileTooLarge': 'El archivo pasa del tamaño máximo de {maxMegabytes} MB.',

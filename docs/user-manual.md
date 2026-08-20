@@ -75,6 +75,31 @@ it, so the same rules apply as to the code itself.
 
 ---
 
+## 3. The door
+
+Open the event and press **Open the door**. Point the camera at a ticket and it says
+one of four things: go ahead, already in, withdrawn, or not from this event. A code
+that has already been through reports *when* it went through and how many times it has
+been shown — which is the answer worth having while the person holding it is still
+standing in front of you.
+
+Read the threat model before relying on this. PassVault cannot stop anybody getting
+in: a barcode is a bearer token and the turnstile is the turnstile. What this does is
+notice the second copy at the moment it arrives, instead of leaving it to be
+discovered by whoever gets refused.
+
+The camera needs a secure connection (https) or localhost. Where there is none, or
+where a screen is too cracked or too dim to read, type the code in by hand. A seat can
+also be marked in from its row in the list — for a phone with a flat battery — and an
+admission can be undone if the wrong row was tapped.
+
+Only the creator and anybody they made an **organiser** of the event may work the
+door. A member cannot: being given a seat is not being given the guest list. To make
+somebody an organiser, share the event with them choosing that role; it takes effect
+when they accept.
+
+---
+
 ## 3. Handing tickets out
 
 A creator has two ways to give a seat away, and they are not the same thing:

@@ -51,6 +51,13 @@ went to such lengths not to hand around, and nothing is fetched from a CDN, so a
 displays in a basement venue with no signal. Beside it is the pass itself: the page the
 ticket was split from, or the region cut out of a sheet it shared with others.
 
+**The door.** A camera in the browser reads a ticket and says whether it has already
+been through, when, and how many times it has been presented. This is not access
+control — see the threat model — and it does not claim to be: it is the difference
+between noticing a duplicated code while its holder is in front of you and hearing
+about it from whoever was refused. Only the creator and the organisers they name may
+work it, and every scan leaves an audit line whether it admitted anybody or not.
+
 **Payment tracking.** The organiser records who has settled up, and chooses
 whether that is visible to everybody, only to the person concerned, or only to
 themselves. An unpaid seat can be kept locked until it is marked paid.

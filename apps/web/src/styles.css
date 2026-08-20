@@ -1178,3 +1178,44 @@ button.link {
   justify-content: space-between;
   gap: 0.25rem 0.75rem;
 }
+
+/* ── The door ───────────────────────────────────────────────────────────────── */
+
+.scanner {
+  display: flex;
+  justify-content: center;
+  margin: 0.5rem 0;
+}
+
+.scanner-view {
+  width: 100%;
+  max-width: 30rem;
+  /* A tall frame on a phone held upright, which is how somebody scans a screen held out to them. */
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #000;
+  border-radius: var(--radius);
+}
+
+.scanner-manual {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.scanner-manual .field-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Deliberately not a state colour from the semantic set: "already in" is a fact about the door,
+   not an assignment state, and confusing the two on one row would be worse than a plain chip. */
+.used-badge {
+  font-size: 0.8rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-inset);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}

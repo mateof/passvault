@@ -150,6 +150,8 @@ export interface EventInvitationsTable {
   state: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN'
   created_at: Instant
   answered_at: Instant | null
+  /** The role the creator offered, applied when the invitation is accepted. */
+  role: 'ORGANISER' | 'MEMBER'
 }
 
 export interface NotificationsTable {
@@ -308,6 +310,13 @@ export interface TicketsTable {
   /** Whether the holder may pass this ticket on. Off by default: sharing is the creator's to give,
    *  and this is the switch that lends it for one seat. */
   share_permitted: Flag
+  /** When this seat was first admitted at the door. Null while it has not been. */
+  used_at: Instant | null
+  /** Who scanned it — the creator, or an organiser working the door. */
+  used_by_user_id: string | null
+  /** How many times it has been presented. Above one is the interesting number: the same code
+   *  arriving twice is the duplicate this whole feature exists to notice. */
+  used_count: number
   created_at: Instant
   updated_at: Instant
 }
